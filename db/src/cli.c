@@ -1,5 +1,11 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+
 #include "context.h"
+#include "utils/cli.h"
+
 
 int main(int argc, char* argv[]) {
   Context* ctx = ctx_init();
@@ -8,18 +14,39 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
+  const char* schema_name = (argc > 1) ? argv[1] : "default.jdb";
   if (argc > 1) {
-    change_db(ctx, argv[1]);
+    switch_schema(ctx, argv[1]);
   } else {
-    fprintf(stderr, "No database file provided. Using default.\n");
-    change_db(ctx, "default.db");
+    fprintf(stderr, "No schema file provided, defaulting to " GREEN "%s\n" RESET, schema_name);
   }
 
-  char* buffer = "CREATE TABLE table_name (column1, column2, column3);";
+  char input[1024];
+  while (1) {
+    char short_cwd[256];
+    get_short_cwd(short_cwd, sizeof(short_cwd));
 
-  ExecutionResult result = process(ctx, buffer);
-  printf("Result: %s\n", result.message);
+    printf(CYAN "/%s " GREEN "[%s]" RESET "> " , short_cwd, schema_name);
+    fflush(stdout);
+
+    if (!fgets(input, sizeof(input), stdin)) {
+      printf("\nError reading input. Exiting...\n");
+      break;
+    }
+
+    input[strcspn(input, "\n")] = 0;
+
+    if (strcmp(input, ".quit") == 0) {
+      printf(GREEN "Exiting...\n" RESET);
+      break;
+    }
+
+    if (!process_dot_cmd(ctx, input)) {
+      ExecutionResult result = process(ctx, input);
+      printf("Result: %s sc: %d\n", result.message, result.status_code);
+    }
+  }
 
   ctx_free(ctx);
-  return result.status_code;
+  return 0;
 }

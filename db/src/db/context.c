@@ -48,11 +48,37 @@ ExecutionResult process(Context* ctx, char* buffer) {
   return execute_cmd(ctx, &cmd);
 }
 
+bool process_dot_cmd(Context* ctx, char* input) {
+  if (strncmp(input, ".schema", 7) == 0) {
+    char* schema_name = input + 8; 
+    while (*schema_name == ' ') schema_name++;
+
+    if (*schema_name == '\0') {
+      printf("Usage: .schema <schemaname>\n");
+    } else {
+      printf("Changing schema to: %s\n", schema_name);
+      switch_schema(ctx, schema_name);
+    }
+    return true;
+  } else if (strcmp(input, ".help") == 0) {
+    printf("Available commands:\n");
+    printf("  .schema <schemaname>  - Show schema of the given name\n");
+    printf("  .quit                 - Exit the program\n");
+    printf("  .help                 - Show this help message\n");
+    return true;
+  } else if (strcmp(input, ".quit") == 0) {
+    printf("Exiting...\n");
+    exit(0);
+  }
+
+  return false;
+}
+
 void process_file(char* filename) {
 
 }
 
-void change_db(Context* ctx, char* filename) {
+void switch_schema(Context* ctx, char* filename) {
   if (ctx->filename && strcmp(ctx->filename, filename) == 0) {
     return;
   }
