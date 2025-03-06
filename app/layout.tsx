@@ -1,6 +1,16 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Josefin_Sans, Comfortaa } from "next/font/google";
 import "./globals.css";
+
+const JosefinSans = Josefin_Sans({
+  variable: "--font-jose-sans",
+  subsets: ["latin"],
+});
+
+const ComfortaaFont = Comfortaa({
+  variable: "--font-comforta",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "Jugadbase",
@@ -15,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`antialiased`}
+        className={`${JosefinSans.variable} ${ComfortaaFont.variable} antialiased`}
       >
         {children}
       </body>
