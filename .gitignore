@@ -55,3 +55,4 @@ build/
 .vscode/
 data/
 node_modules/
+.next/
