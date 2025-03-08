@@ -67,8 +67,8 @@ Token* lexer_process_double_quote(Lexer* lexer);
 #endif
 
 struct ErrorTemplate {
-    const char* code;
-    const char* content;
+  const char* code;
+  const char* content;
 };
 
 extern struct ErrorTemplate templates[];

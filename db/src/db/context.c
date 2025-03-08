@@ -23,6 +23,7 @@ Context* ctx_init() {
   ctx->reader = NULL;
   ctx->writer = NULL;
   ctx->appender = NULL;
+  ctx->filename = NULL;
 
   ctx->uuid = uuid();
   if (!ctx->uuid) { 
@@ -36,16 +37,19 @@ Context* ctx_init() {
 }
 
 void ctx_free(Context* ctx) {
+  if (!ctx) return;
+
   parser_free(ctx->parser);
+  lexer_free(ctx->lexer);
+  free(ctx->uuid);
+  
+  if (ctx->filename) free(ctx->filename);
+
+  if (ctx->reader) io_close(ctx->reader);
+  if (ctx->writer) io_close(ctx->writer);
+  if (ctx->appender) io_close(ctx->appender);
+
   free(ctx);
-}
-
-ExecutionResult process(Context* ctx, char* buffer) {
-  lexer_set_buffer(ctx->lexer, buffer);
-  parser_reset(ctx->parser);
-
-  JQLCommand cmd = parser_parse(ctx->parser);
-  return execute_cmd(ctx, &cmd);
 }
 
 bool process_dot_cmd(Context* ctx, char* input) {
@@ -68,6 +72,7 @@ bool process_dot_cmd(Context* ctx, char* input) {
     return true;
   } else if (strcmp(input, ".quit") == 0) {
     printf("Exiting...\n");
+    ctx_free(ctx);
     exit(0);
   }
 
@@ -75,10 +80,12 @@ bool process_dot_cmd(Context* ctx, char* input) {
 }
 
 void process_file(char* filename) {
-
+  // TODO: Implement function
 }
 
 void switch_schema(Context* ctx, char* filename) {
+  if (!ctx) return;
+
   if (ctx->filename && strcmp(ctx->filename, filename) == 0) {
     return;
   }
@@ -88,6 +95,10 @@ void switch_schema(Context* ctx, char* filename) {
   }
 
   ctx->filename = strdup(filename);
+  if (!ctx->filename) {
+    fprintf(stderr, "Error: Memory allocation failed for filename.\n");
+    return;
+  }
 
   if (ctx->reader) io_close(ctx->reader);
   if (ctx->writer) io_close(ctx->writer);
@@ -96,58 +107,4 @@ void switch_schema(Context* ctx, char* filename) {
   ctx->reader = io_init(ctx->filename, IO_READ, 1024);
   ctx->writer = io_init(ctx->filename, IO_WRITE, 1024);
   ctx->appender = io_init(ctx->filename, IO_APPEND, 1024);
-}
-
-
-// ExecutionOrder* generate_execution_plan(JQLCommand* command) {
-//   ExecutionOrder* order = malloc(sizeof(ExecutionOrder));
-//   if (!order) return NULL;
-
-//   order->num_steps = 1;  
-//   order->steps = malloc(sizeof(ExecutionStep) * order->num_steps);
-//   if (!order->steps) {
-//     free(order);
-//     return NULL;
-//   }
-
-//   order->steps[0].type = EXECUTION_CREATE_TABLE;  
-//   order->steps[0].command = *command;  
-
-//   return order;
-// }
-
-ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
-  // ExecutionOrder* order = generate_execution_plan(cmd);
-  // if (!order) {
-  //   return (ExecutionResult){1, "Failed to generate execution plan"};
-  // }
-
-  ExecutionResult result = {0, "Execution successful"};
-
-  if (cmd->type == CMD_CREATE) {
-    result = execute_create_table(ctx, cmd);
-  }
-
-  // free(order->steps);
-  // free(order);
-
-  return result;
-}
-
-ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
-  if (!ctx || !ctx->writer) {
-    return (ExecutionResult){1, "Database not initialized"};
-  }
-  
-  char schema[512] = {0};
-  strcat(schema, " (");
-  for (int i = 0; i < cmd->column_count; i++) {
-    strcat(schema, cmd->columns[i]);
-    if (i < cmd->column_count - 1) strcat(schema, ", ");
-  }
-  strcat(schema, ")");
-
-  io_write_metadata(ctx->writer, cmd->table, schema);
-
-  return (ExecutionResult){0, "Table created successfully"};
 }

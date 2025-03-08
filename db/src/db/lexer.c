@@ -12,7 +12,9 @@ char* keywords[NO_OF_KEYWORDS] = {
   "AND", "OR", "NOT", "ORDER", "BY", "GROUP", "HAVING", "LIM", "OFFSET", "VALUES",
   "SET", "INTO", "AS", "JOIN", "ON", "IN", "IS", "NULL", "DISCT", "PK",
   "FK", "REF", "INDEX", "CAST", "CASE", "WHEN", "THEN", "ELSE", "END", "DEFAULT",
-  "CHECK", "UNIQUE", "CONSTR", "fSUM"
+  "CHECK", "UNIQUE", "CONSTR", "fSUM", "INT", "VARCHAR", "CHAR", "TEXT",
+  "BOOLEAN", "FLOAT", "DOUBLE", "DECIMAL", "DATE", "TIME", "DATETIME", "TIMESTAMP", "BLOB", "JSON",
+  "UUID"
 };
 
 
@@ -288,7 +290,9 @@ Token* lexer_handle_alpha(Lexer* lexer) {
     TOK_AND, TOK_OR, TOK_NOT, TOK_ODR, TOK_BY, TOK_GRP, TOK_HAV, TOK_LIM, TOK_OFF, TOK_VAL,
     TOK_SET, TOK_INT, TOK_AS, TOK_JN, TOK_ON, TOK_IN, TOK_IS, TOK_NL, TOK_DST, TOK_PK,
     TOK_FK, TOK_REF, TOK_IDX, TOK_CST, TOK_CSE, TOK_WHEN, TOK_THEN, TOK_ELS, TOK_END, TOK_DEF,
-    TOK_CHK, TOK_UNQ, TOK_CNST, TOK_FNSUM
+    TOK_CHK, TOK_UNQ, TOK_CNST, TOK_FNSUM, TOK_T_INT, TOK_T_VARCHAR, TOK_T_CHAR, TOK_T_TEXT,
+    TOK_T_BOOL, TOK_T_FLOAT, TOK_T_DOUBLE, TOK_T_DECIMAL, TOK_T_DATE, TOK_T_TIME, TOK_T_DATETIME,
+    TOK_T_TIMESTAMP, TOK_T_BLOB, TOK_T_JSON, TOK_T_UUID
   };
 
   for (uint8_t i = 0; i < NO_OF_KEYWORDS; i++) {
@@ -697,9 +701,9 @@ char* lexer_get_reference(Lexer* lexer) {
 }
 
 void lexer_report_error(Lexer* lexer, char* error_code, ...) {
-  if (error_code[0] != 'U' && error_code[0] != 'E') {
-    return;
-  }
+  // if (error_code[0] != 'U' && error_code[0] != 'E') {
+  //   return;
+  // }
 
   for (size_t i = 0; i < (sizeof(templates) / sizeof(templates[0])); i++) {        
     if (strcmp(templates[i].code, error_code) == 0) {
