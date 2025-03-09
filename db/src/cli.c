@@ -19,6 +19,7 @@ int main(int argc, char* argv[]) {
     switch_schema(ctx, argv[1]);
   } else {
     fprintf(stderr, "No schema file provided, defaulting to " GREEN "%s\n" RESET, schema_name);
+    switch_schema(ctx, schema_name);
   }
 
   char input[1024];
@@ -26,7 +27,7 @@ int main(int argc, char* argv[]) {
     char short_cwd[256];
     get_short_cwd(short_cwd, sizeof(short_cwd));
 
-    printf(CYAN "/%s " GREEN "[%s]" RESET "> " , short_cwd, schema_name);
+    printf(CYAN "/%s " GREEN "[%s]" RESET "> " , short_cwd, ctx->filename);
     fflush(stdout);
 
     if (!fgets(input, sizeof(input), stdin)) {

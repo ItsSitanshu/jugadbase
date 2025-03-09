@@ -56,3 +56,4 @@ build/
 data/
 node_modules/
 .next/
+*.jdb

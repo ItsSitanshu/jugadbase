@@ -54,17 +54,6 @@ size_t io_read(IO* io, void* buffer, size_t size) {
   return fread(buffer, 1, size, io->file);
 }
 
-void io_write_metadata(IO* io, const char* table_name, const char* schema) {
-  TableMetadata meta;
-  strncpy(meta.table_name, table_name, MAX_TABLE_NAME);
-  strncpy(meta.schema, schema, MAX_SCHEMA);
-  meta.root_offset = -1; 
-
-  fseek(io->file, 0, SEEK_END);
-  fwrite(&meta, sizeof(TableMetadata), 1, io->file);
-  io_flush(io);
-}
-
 TableMetadata* io_read_metadata(IO* io, const char* table_name) {
   fseek(io->file, 0, SEEK_SET);
   

@@ -9,8 +9,12 @@ typedef struct {
 } ExecutionResult;
 
 ExecutionResult process(Context* ctx, char* buffer);
-ExecutionOrder* generate_execution_plan(JQLCommand* command);
+
 ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd);
+
+void read_table_schema(Context* ctx);
+
+ExecutionOrder* generate_execution_plan(JQLCommand* command);
 
 #endif // EXECUTOR_H
