@@ -12,7 +12,7 @@ JugadBase is a simple and fun database designed for quick testing and prototypin
 ## Getting Started
 
 1. **Install JugadBase for JS**:
-  ```bash
+  ```
     npm install jugadbase
   ```
 
