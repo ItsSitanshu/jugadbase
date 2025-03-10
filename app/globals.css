@@ -3,6 +3,7 @@
 @theme {
   --font-sans: var(--font-jose-sans);
   --font-mono: var(--font-comforta);
+  --font-fira: var(--font-fira);
 }
 
 :root {
@@ -136,6 +137,10 @@ body {
 
 * {
   font-family: var(--font-jose-sans);  
+}
+
+.font-fira {
+  font-family: var(--font-fira);
 }
 
 @media (prefers-color-scheme: dark) {
