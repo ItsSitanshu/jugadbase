@@ -2,68 +2,65 @@
   "Introduction": {
     "title": "Introduction",
     "description": "Overview of Jugadbase, its purpose, and key features.",
-    "file": "index.md"
+    "file": "/"
   },
   "Getting Started": {
     "title": "Getting Started",
     "description": "Step-by-step guide to installing and setting up Jugad-DB.",
+    "file": "/quickstart",
     "subsections": {
       "Installation": {
         "title": "Installation",
         "description": "How to install Jugad-DB on different environments.",
-        "file": "quickstart/installation.md"
+        "file": "/quickstart/installation"
       },
       "Quickstart": {
-        "title": "Quickstart",
-        "description": "Basic tutorial to set up and start using Jugad-DB.",
-        "file": "quickstart/quickstart.md"
+        "title": "Setup",
+        "description": "Basic tutorial to set up and start using Jugadbase.",
+        "file": "/quickstart/setup.md"
       }
     }
   },
   "SDKs & Clients": {
     "title": "SDKs & Clients",
-    "description": "Available SDKs and clients to interact with Jugad-DB.",
+    "description": "Available SDKs and clients to interact with Jugadbase.",
+    "filename": "sdk/"
     "subsections": {
       "JavaScript SDK": {
         "title": "JavaScript SDK",
         "description": "Guide for integrating Jugad-DB with JavaScript applications.",
-        "file": "sdks/javascript.md"
+        "file": "sdk/javascript"
       },
       "Python SDK": {
         "title": "Python SDK",
         "description": "Guide for integrating Jugad-DB with Python applications.",
-        "file": "sdks/python.md"
+        "file": "sdk/python.md"
       },
-      "REST API": {
-        "title": "REST API",
-        "description": "Using Jugad-DB with RESTful API calls.",
-        "file": "sdks/rest.md"
-      }
     }
   },
   "Database API": {
     "title": "Database",
     "description": "Perform CRUD operations, queries, and manage data efficiently.",
-    "file": "database.md"
+    "file": "/database"
   },
   "Realtime Database": {
     "title": "Realtime Database",
     "description": "Enable real-time updates and live data synchronization.",
-    "file": "realtime.md"
+    "file": "/realtime"
   },
   "Authentication": {
     "title": "Authentication",
     "description": "Managing users, authentication flows, and security.",
-    "file": "auth.md"
+    "file": "/auth"
   },
   "Storage": {
     "title": "Storage",
     "description": "Handling file uploads and object storage within Jugad-DB.",
-    "file": "storage.md"
+    "file": "/storage"
   },
   "Permissions & Security": {
     "title": "Permissions & Security",
     "description": "Role-based access control (RBAC) and security best practices.",
-    "file": "permissions.md"
+    "file": "/permissions"
   }
 }
