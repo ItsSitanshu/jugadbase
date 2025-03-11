@@ -7,17 +7,17 @@
   "Getting Started": {
     "title": "Getting Started",
     "description": "Step-by-step guide to installing and setting up Jugad-DB.",
-    "file": "/quickstart",
+    "file": "quickstart",
     "subsections": {
       "Installation": {
         "title": "Installation",
         "description": "How to install Jugad-DB on different environments.",
-        "file": "/quickstart/installation"
+        "file": "quickstart/installation"
       },
       "Quickstart": {
         "title": "Setup",
         "description": "Basic tutorial to set up and start using Jugadbase.",
-        "file": "/quickstart/setup.md"
+        "file": "quickstart/setup.md"
       }
     }
   },
@@ -41,26 +41,26 @@
   "Database API": {
     "title": "Database",
     "description": "Perform CRUD operations, queries, and manage data efficiently.",
-    "file": "/database"
+    "file": "database"
   },
   "Realtime Database": {
     "title": "Realtime Database",
     "description": "Enable real-time updates and live data synchronization.",
-    "file": "/realtime"
+    "file": "realtime"
   },
   "Authentication": {
     "title": "Authentication",
     "description": "Managing users, authentication flows, and security.",
-    "file": "/auth"
+    "file": "auth"
   },
   "Storage": {
     "title": "Storage",
     "description": "Handling file uploads and object storage within Jugad-DB.",
-    "file": "/storage"
+    "file": "storage"
   },
   "Permissions & Security": {
     "title": "Permissions & Security",
     "description": "Role-based access control (RBAC) and security best practices.",
-    "file": "/permissions"
+    "file": "permissions"
   }
 }
