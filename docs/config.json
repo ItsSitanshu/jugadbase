@@ -24,7 +24,7 @@
   "SDKs & Clients": {
     "title": "SDKs & Clients",
     "description": "Available SDKs and clients to interact with Jugadbase.",
-    "filename": "sdk/"
+    "filename": "sdk/",
     "subsections": {
       "JavaScript SDK": {
         "title": "JavaScript SDK",
@@ -34,7 +34,7 @@
       "Python SDK": {
         "title": "Python SDK",
         "description": "Guide for integrating Jugad-DB with Python applications.",
-        "file": "sdk/python.md"
+        "file": "sdk/python"
       },
     }
   },
