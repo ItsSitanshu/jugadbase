@@ -13,6 +13,7 @@ import 'prismjs/themes/prism-twilight.css';
 import Navbar from '@/app/ui/Navbar';
 
 import './DocsMarkdown.css';
+import DocsSidebar from './DocsSidebar';
 
 interface Heading {
   level: number;
@@ -80,6 +81,7 @@ const DocsComponent = ({ page, subpage, subsubpage }: { page?: string; subpage?:
     <div className="min-h-screen min-w-screen bg-[var(--background)]">
       <Navbar />
       <div className="flex flex-row w-full h-full bg-[var(--background)] justify-center mt-5">
+        <DocsSidebar/>
         <div className="h-full w-1/2 bg-[var(--background)] text-[var(--foreground)]" >
           <ReactMarkdown 
             children={content}
