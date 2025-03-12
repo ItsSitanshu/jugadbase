@@ -53,12 +53,12 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_write(io, &column_count, sizeof(uint8_t));
 
   for (int i = 0; i < column_count; i++) {
-    uint8_t col_name_length = (uint8_t)strlen(cmd->columns[i]);
+    uint8_t col_name_length = (uint8_t)strlen(cmd->columns[i].name);
     io_write(io, &col_name_length, sizeof(uint8_t));
 
-    io_write(io, cmd->columns[i], col_name_length);
+    io_write(io, cmd->columns[i].name, col_name_length);
 
-    int col_type = cmd->column_types[i];
+    int col_type = cmd->columns[i].type;
     printf("%d\n", col_type);
     io_write(io, &col_type, sizeof(int));
   }
