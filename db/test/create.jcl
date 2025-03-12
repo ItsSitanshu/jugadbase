@@ -1,10 +1,19 @@
 CREATE TABLE users (
-  id INT PRM,
-  name TEXT
+  id SERIAL PRIMKEY,
+  username VARCHAR(50) UNIQUE NOT NULL,
+  email VARCHAR(100) UNIQUE NOT NULL CHECK (email LIKE '%@%'),
+  password_hash TEXT NOT NULL,
+  phone VARCHAR(15) UNIQUE,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 
 CREATE TABLE orders (
-  order_id INT PRM,
-  user_id INT FRN REF users(id),
-  amount INT
+  id SERIAL PRIMKEY,
+  user_id INT NOT NULL,
+  _status VARCHAR(20) CHECK (status IN ('pending', 'shipped', 'delivered', 'cancelled')) DEFAULT 'pending',
+  total_price DECIMAL(10,2) CHECK (total_price >= 0),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
