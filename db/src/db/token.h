@@ -32,6 +32,8 @@ typedef struct Token {
     TOK_T_BLOB,          // BLOB
     TOK_T_JSON,          // JSON
     TOK_T_UUID,          // UUID
+    TOK_T_SERIAL,          // SERIAL
+
 
     // Special tokens
     TOK_ERR,      // Error token
@@ -83,7 +85,7 @@ typedef struct Token {
     TOK_OFF,      // OFFSET
     TOK_VAL,      // VALUES
     TOK_SET,      // SET
-    TOK_INT,      // INTO
+    TOK_INTO,      // INTO
     TOK_AS,       // AS (alias)
     TOK_JN,       // JOIN
     TOK_ON,       // ON
