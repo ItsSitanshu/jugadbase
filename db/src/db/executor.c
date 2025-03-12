@@ -61,8 +61,6 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     int col_type = cmd->column_types[i];
     printf("%d\n", col_type);
     io_write(io, &col_type, sizeof(int));
-
-    printf("Column %d: Name: %s, Length: %d, Type: %d\n", i, cmd->columns[i], col_name_length, col_type);
   }
 
   io_flush(io);  

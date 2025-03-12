@@ -669,7 +669,15 @@ Token* lexer_process_double_quote(Lexer* lexer) {
 
 
 struct ErrorTemplate templates[] = {
-  {"U_NUM_LIT_TYPE", "Unexpected numeric literal found - accepted formats: docs::literals::numeric"},
+  {"SYE_UNSUPPORTED", "Unsupported syntax"},
+  {"SYE_E_CNA", "Expected a column name"},
+  {"SYE_E_MEM", "Memory allocation error"},
+  {"SYE_E_CTYPE", "Invalid column type"},
+  {"SYE_E_TAFCR", "Expected 'TABLE' after 'CREATE'"},
+  {"SYE_E_TNAFTA", "Expected table name after 'TABLE'"},
+  {"SYE_E_PRNAFDYNA", "Expected opening parenthesis after table name"},
+  {"SYE_E_CPRORCOM", "Expected closing parenthesis or comma"},
+  {"SYE_E_CPR", "Expected closing parenthesis"},
 };
 
 char* lexer_get_reference(Lexer* lexer) {
