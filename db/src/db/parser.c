@@ -21,7 +21,6 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   cmd->function_count = 0;
   cmd->columns = NULL;
   cmd->values = NULL;
-  cmd->column_types = NULL;  // Initialize column types as NULL
   cmd->constraints = NULL;
   cmd->functions = NULL;
   memset(cmd->table, 0, MAX_IDENTIFIER_LEN);
@@ -57,13 +56,11 @@ void jql_command_free(JQLCommand* cmd) {
 
   free(cmd->columns);
   free(cmd->values);
-  free(cmd->column_types);
   free(cmd->constraints);
   free(cmd->functions);
 
   free(cmd);
 }
-
 
 JQLCommand parser_parse(Parser* parser) {
   JQLCommand command;
@@ -81,43 +78,97 @@ JQLCommand parser_parse(Parser* parser) {
 
 bool parse_column_definition(Parser *parser, JQLCommand *command) {
   if (parser->cur->type != TOK_ID) {
-    REPORT_ERROR(parser->lexer, "SYE_E_CNA");
+    REPORT_ERROR(parser->lexer, "SYE_E_CNAME");
     return false;
   }
 
-  command->columns = (char **)realloc(command->columns, (command->column_count + 1) * sizeof(char *));
-  if (!command->columns) {
-    REPORT_ERROR(parser->lexer, "SYE_E_MEM");
-    return false;
-  }
+  ColumnDefinition column;
+  memset(&column, 0, sizeof(ColumnDefinition));
 
-  command->column_types = (int *)realloc(command->column_types, (command->column_count + 1) * sizeof(int));
-  if (!command->column_types) {
-    REPORT_ERROR(parser->lexer, "SYE_E_MEM");
-    return false;
-  }
-
-  command->columns[command->column_count] = strdup(parser->cur->value);
-  if (!command->columns[command->column_count]) {
-    REPORT_ERROR(parser->lexer, "SYE_E_MEM");
-    return false;
-  }
-
+  strcpy(column.name, parser->cur->value);
   parser_consume(parser);
-
-  printf("%s %d %d\n", parser->cur->value, parser->cur->type, VALID_TYPES_MASK & (1 << parser->cur->type));
 
   if (!is_valid_data_type(parser)) {
-    REPORT_ERROR(parser->lexer, "SYE_E_CTYPE");
+    REPORT_ERROR(parser->lexer, "SYE_E_CDTYPE");
     return false;
   }
 
-  command->column_types[command->column_count] = parser->cur->type;
-
+  column.type = parser->cur->type;
   parser_consume(parser);
 
-  command->column_count++;
-  
+  while (parser->cur->type != TOK_COM && parser->cur->type != TOK_RP) {
+    switch (parser->cur->type) {
+      case TOK_PK:
+        column.is_primary_key = true;
+        break;
+      case TOK_UNQ:
+        column.is_unique = true;
+        break;
+      case TOK_NOT:
+        parser_consume(parser); 
+
+        if (parser->cur->type != TOK_NL) {
+          REPORT_ERROR(parser->lexer, "SYE_E_NLAFNOT");
+          return false;
+        }
+
+        column.is_not_null = true;
+        break;
+      case TOK_DEF:
+        parser_consume(parser);
+        if (parser->cur->type != TOK_VAL) {
+          REPORT_ERROR(parser->lexer, "SYE_E_DEFVAL");
+          return false;
+        }
+        strcpy(column.default_value, parser->cur->value);
+        column.has_default = true;
+        break;
+      case TOK_CHK:
+        break;
+      case TOK_FK:
+        parser_consume(parser);
+        if (parser->cur->type != TOK_REF) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_REF");
+          return false;
+        }
+        parser_consume(parser);
+        if (parser->cur->type != TOK_ID) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_TBL");
+          return false;
+        }
+        strcpy(column.foreign_table, parser->cur->value);
+        parser_consume(parser);
+
+        if (parser->cur->type != TOK_LP) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_LP");
+          return false;
+        }
+        parser_consume(parser);
+
+        if (parser->cur->type != TOK_ID) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_COL");
+          return false;
+        }
+        strcpy(column.foreign_column, parser->cur->value);
+        parser_consume(parser);
+
+        if (parser->cur->type != TOK_RP) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_RP");
+          return false;
+        }
+        break;
+      case TOK_IDX:
+        column.is_index = true;
+        break;
+      default:
+        REPORT_ERROR(parser->lexer, "SYE_E_UNEXPECTED");
+        return false;
+    }
+
+    parser_consume(parser);
+  }
+
+  command->columns[command->column_count++] = column;
   return true;
 }
 
@@ -126,19 +177,16 @@ JQLCommand parser_parse_create_table(Parser *parser) {
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_CREATE;
 
-
   parser_consume(parser);
 
   if (parser->cur->type != TOK_TBL) {
-    // SYNTAX ERROR [EXPECTED] TABLE AFTER CREATE
     REPORT_ERROR(parser->lexer, "SYE_E_TAFCR");
     return command;
   }
-  
+
   parser_consume(parser);
 
   if (parser->cur->type != TOK_ID) {
-    // SYNTAX ERROR [EXPECTED] TABLE NAME AFTER TABLE
     REPORT_ERROR(parser->lexer, "SYE_E_TNAFTA");
     return command;
   }
@@ -147,11 +195,10 @@ JQLCommand parser_parse_create_table(Parser *parser) {
   parser_consume(parser);
 
   if (parser->cur->type != TOK_LP) {
-    // SYNTAX ERROR [EXPECTED] PAREN AFTER "TABLE"
     REPORT_ERROR(parser->lexer, "SYE_E_PRNAFDYNA");
     return command;
   }
-  
+
   parser_consume(parser);
 
   while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
@@ -164,14 +211,12 @@ JQLCommand parser_parse_create_table(Parser *parser) {
     } else if (parser->cur->type == TOK_RP) {
       break;
     } else {
-      // SYNTAX ERROR [EXPECTED] CLOSING PAREN OR COMMA
       REPORT_ERROR(parser->lexer, "SYE_E_CPRORCOM");
       return command;
     }
   }
 
   if (parser->cur->type != TOK_RP) {
-    // SYNTAX ERROR [EXPECTED] CLOSING PAREN
     REPORT_ERROR(parser->lexer, "SYE_E_CPR");
     return command;
   }
@@ -180,6 +225,7 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   return command;
 }
+
 
 void parser_consume(Parser* parser) {
   if (parser->cur->type == TOK_EOF) {

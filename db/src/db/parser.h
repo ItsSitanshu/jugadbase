@@ -70,12 +70,32 @@ typedef struct ExecutionOrder {
 } ExecutionOrder;
 
 typedef struct {
+  char name[MAX_IDENTIFIER_LEN];
+  int type;
+ 
+  bool is_primary_key;
+  bool is_unique;
+  bool is_not_null;
+  bool is_index;
+  bool is_auto_increment;
+  
+  bool has_default;
+  char default_value[MAX_IDENTIFIER_LEN];
+  
+  bool has_check;
+  char check_expr[MAX_IDENTIFIER_LEN];
+  
+  bool is_foreign_key;
+  char foreign_table[MAX_IDENTIFIER_LEN];
+  char foreign_column[MAX_IDENTIFIER_LEN];
+} ColumnDefinition;
+
+typedef struct {
   JQLCommandType type;
   char table[MAX_IDENTIFIER_LEN]; 
 
   int column_count;
-  char** columns;        
-  int* column_types; 
+  ColumnDefinition* columns;        
 
   int value_count;
   char** values;  
