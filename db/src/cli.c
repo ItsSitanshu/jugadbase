@@ -14,7 +14,7 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  const char* schema_name = (argc > 1) ? argv[1] : "default.jdb";
+  char* schema_name = (argc > 1) ? argv[1] : "default.jdb";
   if (argc > 1) {
     switch_schema(ctx, argv[1]);
   } else {
