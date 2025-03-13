@@ -17,8 +17,6 @@ char* keywords[NO_OF_KEYWORDS] = {
   "UUID", "SERIAL"
 };
 
-
-
 Lexer* lexer_init() {
   Lexer* lexer = calloc(1, sizeof(Lexer));
   if (!lexer) {
@@ -678,6 +676,9 @@ struct ErrorTemplate templates[] = {
   {"SYE_E_PRNAFDYNA", "Expected opening parenthesis after table name"},
   {"SYE_E_CPRORCOM", "Expected closing parenthesis or comma"},
   {"SYE_E_CPR", "Expected closing parenthesis"},
+  {"SYE_E_CPR", "Expected closing parenthesis"},
+  {"SYE_E_VARCHAR_VALUE", "Expected a value > 0 and <= 255 to specify number of charachters, not VARCHAR(%s)"},
+  {"SYE_U_COLDEF", "Expected a proper column definition, not '%s'"},
 };
 
 char* lexer_get_reference(Lexer* lexer) {
