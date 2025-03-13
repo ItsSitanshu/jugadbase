@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NO_OF_KEYWORDS 59
+#define NO_OF_KEYWORDS 60
 #define KEYWORDS keywords
 
 #define MAX_KEYWORD_LEN 9
@@ -150,7 +150,8 @@ typedef struct Token {
   (1 << TOK_T_TIMESTAMP) |\
   (1 << TOK_T_BLOB) |     \
   (1 << TOK_T_JSON) |     \
-  (1 << TOK_T_UUID)       \
+  (1 << TOK_T_UUID) |     \
+  (1 << TOK_T_SERIAL)       \
 )
 
 #endif // TOKEN_H
