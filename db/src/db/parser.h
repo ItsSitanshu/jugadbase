@@ -72,6 +72,9 @@ typedef struct ExecutionOrder {
 typedef struct {
   char name[MAX_IDENTIFIER_LEN];
   int type;
+  uint8_t type_varchar;
+  uint8_t type_decimal_precision;
+  uint8_t type_decimal_scale;
  
   bool is_primary_key;
   bool is_unique;

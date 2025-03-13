@@ -96,6 +96,57 @@ bool parse_column_definition(Parser *parser, JQLCommand *command) {
   column.type = parser->cur->type;
   parser_consume(parser);
 
+  if (column.type == TOK_T_VARCHAR && parser->cur->type == TOK_LP) {
+    parser_consume(parser);
+    if (parser->cur->type != TOK_L_U8 || parser->cur->value[0] == '0') {
+      REPORT_ERROR(parser->lexer, "SYE_E_VARCHAR_VALUE", parser->cur->value);
+      return false;
+    }
+
+    column.type_varchar = (uint8_t)atoi(parser->cur->value);
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "SYE_E_CPR");
+      return false;
+    }
+
+    parser_consume(parser);
+  }
+
+  if (column.type == TOK_T_DECIMAL && parser->cur->type == TOK_LP) {
+    parser_consume(parser);
+    if (parser->cur->type != TOK_L_U8 || parser->cur->value[0] == '0') {
+      REPORT_ERROR(parser->lexer, "SYE_E_PRECISION_VALUE", parser->cur->value);
+      return false;
+    }
+
+    column.type_decimal_precision = (uint8_t)atoi(parser->cur->value);
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_COM) {
+      REPORT_ERROR(parser->lexer, "SYE_E_COMMA");
+      return false;
+    }
+
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_L_U8 || parser->cur->value[0] == '0') {
+      REPORT_ERROR(parser->lexer, "SYE_E_PRECISION_VALUE", parser->cur->value);
+      return false;
+    }
+
+    column.type_decimal_scale = (uint8_t)atoi(parser->cur->value);
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "SYE_E_CPR");
+      return false;
+    }
+
+    parser_consume(parser);
+  }
+
   while (parser->cur->type != TOK_COM && parser->cur->type != TOK_RP) {
     switch (parser->cur->type) {
       case TOK_PK:
@@ -161,14 +212,17 @@ bool parse_column_definition(Parser *parser, JQLCommand *command) {
         column.is_index = true;
         break;
       default:
-        REPORT_ERROR(parser->lexer, "SYE_E_UNEXPECTED");
+        REPORT_ERROR(parser->lexer, "SYE_U_COLDEF", parser->cur->value);
         return false;
     }
 
     parser_consume(parser);
   }
 
-  command->columns[command->column_count++] = column;
+  command->columns[command->column_count] = column;
+  command->column_count += 1;
+  command->columns = realloc(command->columns, ((command->column_count + 1) * sizeof(ColumnDefinition)));
+
   return true;
 }
 
@@ -200,6 +254,9 @@ JQLCommand parser_parse_create_table(Parser *parser) {
   }
 
   parser_consume(parser);
+
+  command.columns = calloc(1, sizeof(ColumnDefinition));
+  command.column_count = 0;
 
   while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
     if (!parse_column_definition(parser, &command)) {
