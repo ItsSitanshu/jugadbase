@@ -40,7 +40,6 @@ void ctx_free(Context* ctx) {
   if (!ctx) return;
 
   parser_free(ctx->parser);
-  lexer_free(ctx->lexer);
   free(ctx->uuid);
   
   if (ctx->filename) free(ctx->filename);
@@ -104,7 +103,18 @@ void switch_schema(Context* ctx, char* filename) {
   if (ctx->writer) io_close(ctx->writer);
   if (ctx->appender) io_close(ctx->appender);
 
-  ctx->reader = io_init(ctx->filename, IO_READ, 1024);
   ctx->writer = io_init(ctx->filename, IO_WRITE, 1024);
+  if (!ctx->writer) {
+    fprintf(stderr, "Error: Failed to initialize writer for %s\n", ctx->filename);
+  }
+  
   ctx->appender = io_init(ctx->filename, IO_APPEND, 1024);
+  if (!ctx->appender) {
+    fprintf(stderr, "Error: Failed to initialize appender for %s\n", ctx->filename);
+  }
+
+  ctx->reader = io_init(ctx->filename, IO_READ, 1024);
+  if (!ctx->reader) {
+    fprintf(stderr, "Error: Failed to initialize reader for %s\n", ctx->filename);
+  }  
 }
