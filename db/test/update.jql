@@ -1,3 +1,0 @@
-UPDATE users SET name = 'Charlie' WHERE id = 2;
-
-SELECT * FROM users WHERE id = 2;

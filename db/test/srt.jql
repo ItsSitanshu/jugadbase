@@ -1,4 +1,0 @@
-SELECT name 
-FROM users 
-ODR name DSRT 
-LIM 1;
