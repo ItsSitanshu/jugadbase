@@ -1,0 +1,31 @@
+name: Main Database CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential cmake pkg-config check ctest
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Debug
+
+      - name: Build Project
+        run: cmake --build build -- -j$(nproc)
+
+      - name: Run Tests
+        run: |
+          chmod +x build/tests
+          ctest --test-dir build --output-on-failure
