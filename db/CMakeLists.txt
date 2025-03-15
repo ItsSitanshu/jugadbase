@@ -22,8 +22,13 @@ target_link_libraries(jugad-svr PRIVATE jugadbase)
 
 enable_testing()
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(CHECK REQUIRED check)
+
+include_directories(${CHECK_INCLUDE_DIRS})
 file(GLOB TEST_SOURCES test/*.c)
+
 add_executable(tests ${TEST_SOURCES})
-target_link_libraries(tests PRIVATE jugadbase)
+target_link_libraries(tests PRIVATE jugadbase ${CHECK_LIBRARIES} rt m pthread)
 
 add_test(NAME tests COMMAND tests)
