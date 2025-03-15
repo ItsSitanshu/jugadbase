@@ -1,0 +1,5 @@
+INSERT INTO users (id, name) VALUES (1, 'Alice'), (2, 'Bob');
+
+INSERT INTO orders (order_id, user_id, amount) VALUES (101, 1, 500), (102, 1, 300), (103, 2, 700);
+
+SELECT * FROM users;

@@ -1,0 +1,3 @@
+SELECT user_id, SUM(amount) AS total_spent 
+FROM orders 
+GROUP BY user_id;
