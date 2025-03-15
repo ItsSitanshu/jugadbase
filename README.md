@@ -3,7 +3,7 @@
 
 ## To-do List
 
-- Implement proper parsing
+- ~~Implement proper parsing~~
 - Implement `CREATE TABLE` with `KP` (Primary Key) and `FRN` (Foreign Key)  
 - Support 
   - `INSERT`
