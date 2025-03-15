@@ -15,15 +15,16 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   if (!cmd) return NULL;
 
   cmd->type = type;
-  cmd->column_count = 0;
+  cmd->schema.column_count = 0;
+  cmd->schema.columns = NULL;
   cmd->value_count = 0;
   cmd->constraint_count = 0;
   cmd->function_count = 0;
-  cmd->columns = NULL;
   cmd->values = NULL;
   cmd->constraints = NULL;
   cmd->functions = NULL;
-  memset(cmd->table, 0, MAX_IDENTIFIER_LEN);
+
+  memset(cmd->schema.table_name, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->conditions, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->order_by, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->group_by, 0, MAX_IDENTIFIER_LEN);
@@ -54,7 +55,8 @@ void parser_free(Parser* parser) {
 void jql_command_free(JQLCommand* cmd) {
   if (!cmd) return;
 
-  free(cmd->columns);
+  free(cmd->schema.columns);
+  
   free(cmd->values);
   free(cmd->constraints);
   free(cmd->functions);
@@ -219,9 +221,9 @@ bool parse_column_definition(Parser *parser, JQLCommand *command) {
     parser_consume(parser);
   }
 
-  command->columns[command->column_count] = column;
-  command->column_count += 1;
-  command->columns = realloc(command->columns, ((command->column_count + 1) * sizeof(ColumnDefinition)));
+  command->schema.columns[command->schema.column_count] = column;
+  command->schema.column_count += 1;
+  command->schema.columns = realloc(command->schema.columns, ((command->schema.column_count + 1) * sizeof(ColumnDefinition)));
 
   return true;
 }
@@ -245,7 +247,7 @@ JQLCommand parser_parse_create_table(Parser *parser) {
     return command;
   }
 
-  strcpy(command.table, parser->cur->value);
+  strcpy(command.schema.table_name, parser->cur->value);
   parser_consume(parser);
 
   if (parser->cur->type != TOK_LP) {
@@ -255,8 +257,8 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   parser_consume(parser);
 
-  command.columns = calloc(1, sizeof(ColumnDefinition));
-  command.column_count = 0;
+  command.schema.columns = calloc(1, sizeof(ColumnDefinition));
+  command.schema.column_count = 0;
 
   while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
     if (!parse_column_definition(parser, &command)) {

@@ -94,11 +94,14 @@ typedef struct {
 } ColumnDefinition;
 
 typedef struct {
-  JQLCommandType type;
-  char table[MAX_IDENTIFIER_LEN]; 
+  char table_name[MAX_IDENTIFIER_LEN]; 
+  uint8_t column_count;
+  ColumnDefinition* columns;
+} TableSchema;
 
-  int column_count;
-  ColumnDefinition* columns;        
+typedef struct {
+  JQLCommandType type;
+  TableSchema schema;
 
   int value_count;
   char** values;  
