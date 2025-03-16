@@ -145,6 +145,7 @@ JQLCommand parser_parse_create_table(Parser *parser);
 void parser_consume(Parser* parser);
 
 bool is_valid_data_type(Parser *parser);
+bool is_valid_default(Parser* parser, int column_type, int literal_type);
 ASTNode* parse_expression(Parser* parser);
 
 
