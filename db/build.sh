@@ -41,5 +41,5 @@ if [ "$RUN_AFTER_BUILD" -eq 1 ]; then
 fi
 
 if [ "$RUN_TESTS" -eq 1 ]; then
-  ./tests
+  ctest --test-dir . --output-on-failure
 fi
