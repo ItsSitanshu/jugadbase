@@ -36,11 +36,20 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
   return result;
 }
 
-
 ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
+  /*
+  [1B] Table Name Length; [var] Table Name; [1B] Column Count;
+    For each column:
+      [1B] Column Name Length; [var] Column Name; [4B] Column Type; [1B] Varchar Length (dependent);
+      [1B] Decimal Precision; [1B] Decimal Scale; [1B] Flags (PK, UQ, NN, IDX, AI); [1B] Has Default; 
+      [var] Default Value (dependent); [1B] Has Check; [var] Check Expression (dependent);
+      [1B] Is Foreign Key; [var] Foreign Table Name (dependent); [var] Foreign Column Name (dependent);
+  */
+  
   if (!ctx || !cmd || !ctx->appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
+
 
   IO* io = ctx->appender;
   TableSchema schema = cmd->schema;
@@ -53,13 +62,39 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_write(io, &column_count, sizeof(uint8_t));
 
   for (int i = 0; i < column_count; i++) {
-    uint8_t col_name_length = (uint8_t)strlen(schema.columns[i].name);
+    ColumnDefinition* col = &schema.columns[i];
+
+    uint8_t col_name_length = (uint8_t)strlen(col->name);
     io_write(io, &col_name_length, sizeof(uint8_t));
+    io_write(io, col->name, col_name_length);
 
-    io_write(io, schema.columns[i].name, col_name_length);
+    io_write(io, &col->type, sizeof(int));
 
-    int col_type = schema.columns[i].type;
-    io_write(io, &col_type, sizeof(int));
+    io_write(io, &col->type_varchar, sizeof(uint8_t));
+    io_write(io, &col->type_decimal_precision, sizeof(uint8_t));
+    io_write(io, &col->type_decimal_scale, sizeof(uint8_t));
+
+    io_write(io, &col->is_primary_key, sizeof(bool));
+    io_write(io, &col->is_unique, sizeof(bool));
+    io_write(io, &col->is_not_null, sizeof(bool));
+    io_write(io, &col->is_index, sizeof(bool));
+    io_write(io, &col->is_auto_increment, sizeof(bool));
+
+    io_write(io, &col->has_default, sizeof(bool));
+    if (col->has_default) {
+      io_write(io, col->default_value, MAX_IDENTIFIER_LEN);
+    }
+
+    io_write(io, &col->has_check, sizeof(bool));
+    if (col->has_check) {
+      io_write(io, col->check_expr, MAX_IDENTIFIER_LEN);
+    }
+
+    io_write(io, &col->is_foreign_key, sizeof(bool));
+    if (col->is_foreign_key) {
+      io_write(io, col->foreign_table, MAX_IDENTIFIER_LEN);
+      io_write(io, col->foreign_column, MAX_IDENTIFIER_LEN);
+    }
   }
 
   io_flush(io);  
@@ -75,10 +110,7 @@ TableSchema read_table_schema(Context* ctx) {
   }
 
   TableSchema schema;
-  memset(&schema, 0, sizeof(TableSchema));  // Zero out the struct
-  memset(schema.table_name, 0, MAX_IDENTIFIER_LEN);
-
-  schema.table_name[0] = '\0';
+  memset(&schema, 0, sizeof(TableSchema));
 
   uint8_t table_name_length;
   if (io_read(ctx->reader, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
@@ -114,27 +146,29 @@ TableSchema read_table_schema(Context* ctx) {
     uint8_t col_name_length;
     if (io_read(ctx->reader, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
       fprintf(stderr, "Error: Failed to read column name length.\n");
+      free(schema.columns);
       return (TableSchema){};
     }
 
     if (col_name_length >= MAX_IDENTIFIER_LEN) {
       fprintf(stderr, "Error: Column name too long.\n");
+      free(schema.columns);
       return (TableSchema){};
     }
 
     if (io_read(ctx->reader, col->name, col_name_length) != col_name_length) {
       fprintf(stderr, "Error: Failed to read column name.\n");
+      free(schema.columns);
       return (TableSchema){};
     }
     col->name[col_name_length] = '\0';
 
     if (io_read(ctx->reader, &col->type, sizeof(int)) != sizeof(int)) {
       fprintf(stderr, "Error: Failed to read column type.\n");
+      free(schema.columns);
       return (TableSchema){};
     }
 
-    // Commenting out additional metadata
-    /*
     io_read(ctx->reader, &col->type_varchar, sizeof(uint8_t));
     io_read(ctx->reader, &col->type_decimal_precision, sizeof(uint8_t));
     io_read(ctx->reader, &col->type_decimal_scale, sizeof(uint8_t));
@@ -147,25 +181,36 @@ TableSchema read_table_schema(Context* ctx) {
 
     io_read(ctx->reader, &col->has_default, sizeof(bool));
     if (col->has_default) {
-      io_read(ctx->reader, col->default_value, MAX_IDENTIFIER_LEN);
+      if (io_read(ctx->reader, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+        fprintf(stderr, "Error: Failed to read default value.\n");
+        free(schema.columns);
+        return (TableSchema){};
+      }
     }
 
     io_read(ctx->reader, &col->has_check, sizeof(bool));
     if (col->has_check) {
-      io_read(ctx->reader, col->check_expr, MAX_IDENTIFIER_LEN);
+      if (io_read(ctx->reader, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+        fprintf(stderr, "Error: Failed to read check constraint.\n");
+        free(schema.columns);
+        return (TableSchema){};
+      }
     }
 
     io_read(ctx->reader, &col->is_foreign_key, sizeof(bool));
     if (col->is_foreign_key) {
-      io_read(ctx->reader, col->foreign_table, MAX_IDENTIFIER_LEN);
-      io_read(ctx->reader, col->foreign_column, MAX_IDENTIFIER_LEN);
+      if (io_read(ctx->reader, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN ||
+          io_read(ctx->reader, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+        fprintf(stderr, "Error: Failed to read foreign key details.\n");
+        free(schema.columns);
+        return (TableSchema){};
+      }
     }
-    */
   }
-
 
   return schema;
 }
+
 
 // ExecutionOrder* generate_execution_plan(JQLCommand* command) {
 //   ExecutionOrder* order = malloc(sizeof(ExecutionOrder));
