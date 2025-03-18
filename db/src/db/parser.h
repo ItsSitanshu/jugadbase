@@ -3,7 +3,12 @@
 
 #include "lexer.h"
 
-#define MAX_COLUMNS 100 
+#define MAX_COLUMNS 256
+#define MAX_TEXT_SIZE 256
+#define MAX_DECIMAL_LEN 256
+#define MAX_BLOB_SIZE 512
+#define MAX_JSON_SIZE 512
+#define MAX_VARCHAR_SIZE 255
 
 typedef enum {
   AST_COMMAND,
@@ -70,6 +75,26 @@ typedef struct ExecutionOrder {
 } ExecutionOrder;
 
 typedef struct {
+  uint8_t column_index;
+  uint8_t type; 
+  
+  union {  
+    int int_value;
+    float float_value;
+    double double_value;
+    bool bool_value;
+    char str_value[MAX_IDENTIFIER_LEN]; 
+    uint8_t blob_value[MAX_BLOB_SIZE]; 
+    uint8_t json_value[MAX_JSON_SIZE]; 
+    struct { int precision; int scale; char decimal_value[MAX_DECIMAL_LEN]; } decimal;
+    struct { int year, month, day; } date;
+    struct { int hours, minutes, seconds; } time;
+    struct { int year, month, day, hours, minutes, seconds; } datetime;
+    struct { int timestamp; } timestamp;
+  };
+} ColumnValue;
+
+typedef struct {
   char name[MAX_IDENTIFIER_LEN];
   int type;
   uint8_t type_varchar;
@@ -104,7 +129,7 @@ typedef struct {
   TableSchema schema;
 
   int value_count;
-  char** values;  
+  ColumnValue* values;
 
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
   char order_by[MAX_IDENTIFIER_LEN];  // ORDER BY clause
@@ -141,11 +166,13 @@ void jql_command_free(JQLCommand* cmd);
 JQLCommand parser_parse(Parser* parser);
 
 JQLCommand parser_parse_create_table(Parser *parser);
+JQLCommand parser_parse_insert(Parser *parser);
 
 void parser_consume(Parser* parser);
 
 bool is_valid_data_type(Parser *parser);
 bool is_valid_default(Parser* parser, int column_type, int literal_type);
+bool parse_value(Parser* parser, ColumnValue* col_val);
 ASTNode* parse_expression(Parser* parser);
 
 
