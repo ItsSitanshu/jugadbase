@@ -12,8 +12,11 @@ ExecutionResult process(Context* ctx, char* buffer);
 
 ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd);
+ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd);
 
 TableSchema read_table_schema(Context* ctx);
+void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def);
+bool parse_uuid_string(const char* uuid_str, uint8_t* output);
 
 ExecutionOrder* generate_execution_plan(JQLCommand* command);
 

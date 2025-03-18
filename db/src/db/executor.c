@@ -24,7 +24,7 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
       result = execute_create_table(ctx, cmd);
       break;
     case CMD_INSERT:
-      result = (ExecutionResult){1, "INSERT not implemented yet"};
+      result = execute_insert(ctx, cmd);
       break;
     case CMD_SELECT:
       result = (ExecutionResult){1, "SELECT not implemented yet"};
@@ -211,6 +211,142 @@ TableSchema read_table_schema(Context* ctx) {
   return schema;
 }
 
+
+ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
+  if (!ctx || !cmd || !ctx->appender) {
+      return (ExecutionResult){1, "Invalid execution context or command"};
+  }
+
+  IO* io = ctx->appender;
+  
+  cmd->schema = read_table_schema(ctx);
+
+  uint8_t column_count = (uint8_t)cmd->schema.column_count;
+  io_write(io, &column_count, sizeof(uint8_t));
+
+  for (uint8_t i = 0; i < column_count; i++) {
+    ColumnValue* col_val = &cmd->values[i];
+    ColumnDefinition* col_def = &cmd->schema.columns[i]; 
+
+    io_write(io, &col_val->column_index, sizeof(uint8_t));
+
+    write_column_value(io, col_val, col_def);
+  }
+
+  io_flush(io);
+  return (ExecutionResult){0, "Record inserted successfully"};
+}
+
+void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def) {
+  uint16_t text_len, str_len, max_len;
+
+  switch (col_def->type) {
+    case TOK_T_INT:
+    case TOK_T_SERIAL:
+      io_write(io, &col_val->int_value, sizeof(int));
+      break;
+
+    case TOK_T_BOOL:
+      uint8_t bool_value = col_val->bool_value ? 1 : 0;
+      io_write(io, &bool_value, sizeof(uint8_t));
+      break;
+
+    case TOK_T_FLOAT:
+      io_write(io, &col_val->float_value, sizeof(float));
+      break;
+
+    case TOK_T_DOUBLE:
+      io_write(io, &col_val->double_value, sizeof(double));
+      break;
+
+    case TOK_T_DECIMAL:
+      io_write(io, &col_val->decimal.precision, sizeof(int));
+      io_write(io, &col_val->decimal.scale, sizeof(int));
+      io_write(io, col_val->decimal.decimal_value, MAX_DECIMAL_LEN);
+      break;
+
+    case TOK_T_UUID: 
+      size_t uuid_len = strlen(col_val->str_value);
+      
+      if (uuid_len == 36) {  
+        uint8_t binary_uuid[16];
+        if (!parse_uuid_string(col_val->str_value, binary_uuid)) {
+          fprintf(stderr, "Error: Invalid UUID format.\n");
+          return;
+        }
+        io_write(io, binary_uuid, 16);
+      } else if (uuid_len == 16) {
+          io_write(io, col_val->str_value, 16);
+      } else {
+          fprintf(stderr, "Error: Invalid UUID length.\n");
+          return;
+      }
+      break;
+
+    case TOK_T_TIMESTAMP:
+    case TOK_T_DATETIME:
+    case TOK_T_TIME:
+    case TOK_T_DATE:
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR: 
+      str_len = (uint16_t)strlen(col_val->str_value);
+      max_len = col_def->type_varchar == 0 ? 255 : col_def->type_varchar;
+
+      if (str_len > max_len) {
+        str_len = max_len;
+      }
+
+      io_write(io, &str_len, sizeof(uint8_t));
+      io_write(io, col_val->str_value, str_len);
+      break;
+
+    case TOK_T_TEXT:
+    case TOK_T_JSON:
+      text_len = (uint16_t)strlen(col_val->str_value);
+      max_len = (col_def->type == TOK_T_JSON) ? MAX_JSON_SIZE : MAX_TEXT_SIZE;
+
+      if (text_len > max_len) {
+          text_len = max_len;
+      }
+      io_write(io, &text_len, sizeof(uint16_t));
+      io_write(io, col_val->str_value, text_len);
+      break;
+
+    // case TOK_T_BLOB: // TODO: SUPPORT BLOBs
+    //   uint16_t blob_size = col_val->blob_value.size;
+    //   if (blob_size > MAX_BLOB_SIZE) {
+    //       fprintf(stderr, "Error: Blob size exceeds limit.\n");
+    //       return;
+    //   }
+    //   io_write(io, &blob_size, sizeof(uint16_t));
+    //   io_write(io, col_val->blob_value.data, blob_size);
+    //   break;
+    // 
+
+    default:
+      fprintf(stderr, "Error: Unsupported data type.\n");
+      break;
+  }
+}
+
+bool parse_uuid_string(const char* uuid_str, uint8_t* output) {
+  if (strlen(uuid_str) != 36) return false; 
+
+  static const char hex_map[] = "0123456789abcdef";
+  size_t j = 0;
+
+  for (size_t i = 0; i < 36; i++) {
+      if (uuid_str[i] == '-') continue;
+
+      const char* p = strchr(hex_map, tolower(uuid_str[i]));
+      if (!p) return false;
+
+      output[j / 2] = (output[j / 2] << 4) | (p - hex_map);
+      j++;
+  }
+
+  return j == 32;
+}
 
 // ExecutionOrder* generate_execution_plan(JQLCommand* command) {
 //   ExecutionOrder* order = malloc(sizeof(ExecutionOrder));
