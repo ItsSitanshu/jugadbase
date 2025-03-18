@@ -72,6 +72,8 @@ JQLCommand parser_parse(Parser* parser) {
   switch (parser->cur->type) {
     case TOK_CRT:
       return parser_parse_create_table(parser);
+    case TOK_INS:
+      return parser_parse_insert(parser);
     default:
       REPORT_ERROR(parser->lexer, "SYE_UNSUPPORTED");
       return command;
@@ -248,7 +250,6 @@ bool parse_column_definition(Parser *parser, JQLCommand *command) {
 
   command->schema.columns[command->schema.column_count] = column;
   command->schema.column_count += 1;
-  command->schema.columns = realloc(command->schema.columns, ((command->schema.column_count + 1) * sizeof(ColumnDefinition)));
 
   return true;
 }
@@ -282,7 +283,7 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   parser_consume(parser);
 
-  command.schema.columns = calloc(1, sizeof(ColumnDefinition));
+  command.schema.columns = calloc(MAX_COLUMNS, sizeof(ColumnDefinition));
   command.schema.column_count = 0;
 
   while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
@@ -302,6 +303,102 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   if (parser->cur->type != TOK_RP) {
     REPORT_ERROR(parser->lexer, "SYE_E_CPR");
+    return command;
+  }
+
+  parser_consume(parser);
+
+  return command;
+}
+
+JQLCommand parser_parse_insert(Parser *parser) {
+  JQLCommand command;
+  memset(&command, 0, sizeof(JQLCommand));
+  command.type = CMD_INSERT;
+
+  parser_consume(parser); 
+
+  if (parser->cur->type != TOK_INTO) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_INTO");
+    return command;
+  }
+
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
+    return command;
+  }
+
+  strcpy(command.schema.table_name, parser->cur->value);
+  parser_consume(parser); 
+
+  // if (parser->cur->type == TOK_LP) { // TODO: Implement specified order inserts
+  //   parser_consume(parser);
+    
+  //   command.insert.column_count = 0;
+  //   command.insert.columns = calloc(MAX_COLUMNS, sizeof(char *));
+
+  //   while (parser->cur->type == TOK_ID) {
+  //     command.insert.columns[command.insert.column_count] = strdup(parser->cur->value);
+  //     command.insert.column_count++;
+
+  //     parser_consume(parser);
+
+  //     if (parser->cur->type == TOK_COM) {
+  //       parser_consume(parser); // Consume ','
+  //     } else if (parser->cur->type == TOK_RP) {
+  //       break;
+  //     } else {
+  //       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_COLUMN_LIST");
+  //       return command;
+  //     }
+  //   }
+
+  //   if (parser->cur->type != TOK_RP) {
+  //     REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
+  //     return command;
+  //   }
+
+  //   parser_consume(parser);
+  // }
+
+  if (parser->cur->type != TOK_VAL) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_VALUES");
+    return command;
+  }
+
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_LP) {
+    REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_LP_VALUES");
+    return command;
+  }
+
+  parser_consume(parser); 
+
+  command.values = calloc(MAX_COLUMNS, sizeof(ColumnValue));
+  command.value_count = 0;
+
+  while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
+    if (!parse_value(parser, &command.values[command.value_count])) {
+      return command;
+    }
+
+    command.value_count++;
+
+    if (parser->cur->type == TOK_COM) {
+      parser_consume(parser); 
+    } else if (parser->cur->type == TOK_RP) {
+      break;
+    } else {
+    REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUES");
+      return command;
+    }
+  }
+
+  if (parser->cur->type != TOK_RP) {
+    REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP_VALUES");
     return command;
   }
 
@@ -365,4 +462,60 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type) {
     default:
       return false;
   }
+}
+
+bool parse_value(Parser* parser, ColumnValue* col_val) {
+  memset(col_val, 0, sizeof(ColumnValue));  // Ensure clean struct
+
+  switch (parser->cur->type) {
+    case TOK_L_I8:
+    case TOK_L_I16:
+    case TOK_L_I32:
+    case TOK_L_I64:
+      col_val->type = parser->cur->type;
+      col_val->int_value = strtol(parser->cur->value, NULL, 10);
+      break;
+
+    case TOK_L_U8:
+    case TOK_L_U16:
+    case TOK_L_U32:
+    case TOK_L_U64:
+      col_val->type = parser->cur->type;
+      col_val->int_value = strtoul(parser->cur->value, NULL, 10);
+      break;
+
+    case TOK_L_FLOAT:
+      col_val->type = TOK_L_FLOAT;
+      col_val->float_value = strtof(parser->cur->value, NULL);
+      break;
+
+    case TOK_L_DOUBLE:
+      col_val->type = TOK_L_DOUBLE;
+      col_val->double_value = strtod(parser->cur->value, NULL);
+      break;
+
+    case TOK_L_BOOL:
+      col_val->type = TOK_L_BOOL;
+      col_val->bool_value = (strcmp(parser->cur->value, "true") == 0);
+      break;
+
+    case TOK_L_STRING:
+      col_val->type = TOK_L_STRING;
+      strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
+      col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';  // Null-terminate
+      break;
+
+    case TOK_L_CHAR:
+      col_val->type = TOK_L_CHAR;
+      col_val->str_value[0] = parser->cur->value[0];  
+      col_val->str_value[1] = '\0';
+      break;
+
+    default:
+      REPORT_ERROR(parser->lexer, "SYE_E_UNSUPPORTED_LITERAL_TYPE");
+      return false;
+  }
+
+  parser_consume(parser);
+  return true;
 }
