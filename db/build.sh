@@ -38,6 +38,7 @@ cd $BUILD_DIR && make
 
 if [ "$RUN_AFTER_BUILD" -eq 1 ]; then
   ./jugad-cli
+  xxd default.jdb
 fi
 
 if [ "$RUN_TESTS" -eq 1 ]; then
