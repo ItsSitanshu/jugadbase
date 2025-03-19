@@ -213,26 +213,61 @@ TableSchema read_table_schema(Context* ctx) {
 
 
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
+  /*
+  [2B] Row Length; [4B] Row ID; [1B] Column Count;
+    For each column:
+      [1B] Column Index; [var] Column Value (dependent);
+  */
   if (!ctx || !cmd || !ctx->appender) {
-      return (ExecutionResult){1, "Invalid execution context or command"};
+    return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
   IO* io = ctx->appender;
-  
   cmd->schema = read_table_schema(ctx);
 
   uint8_t column_count = (uint8_t)cmd->schema.column_count;
+
+  ColumnDefinition* primary_key_col = NULL;
+  ColumnValue* primary_key_val = NULL;
+
+  for (uint8_t i = 0; i < column_count; i++) {
+    if (cmd->schema.columns[i].is_primary_key) {
+      primary_key_col = &cmd->schema.columns[i];
+      primary_key_val = &cmd->values[i];
+      break;
+    }
+  }
+
+  if (primary_key_col) {
+    if (btree_search(ctx->btree, primary_key_val) != -1) {
+      return (ExecutionResult){1, "Primary Key already exists"};
+    }
+  }
+
+  long row_start = io_tell(io);
+  uint16_t row_length = 0;
+  io_write(io, &row_length, sizeof(uint16_t));
+
+  uint32_t row_id = 4294967295; // test
+  io_write(io, &row_id, sizeof(uint32_t));      
   io_write(io, &column_count, sizeof(uint8_t));
 
   for (uint8_t i = 0; i < column_count; i++) {
     ColumnValue* col_val = &cmd->values[i];
-    ColumnDefinition* col_def = &cmd->schema.columns[i]; 
+    ColumnDefinition* col_def = &cmd->schema.columns[i];
 
     io_write(io, &col_val->column_index, sizeof(uint8_t));
-
-    write_column_value(io, col_val, col_def);
+    write_column_value(io, col_val, col_def); 
   }
 
+  io_flush(io);
+
+  row_length = (uint16_t)(io_tell(io) - row_start);
+  uint16_t row_length_BE = (row_length >> 8) | (row_length << 8);
+  io_seek_write(ctx->writer, row_start, &row_length_BE, sizeof(uint16_t)); 
+  
+  io_seek(io, row_start + row_length);  
+  
   io_flush(io);
   return (ExecutionResult){0, "Record inserted successfully"};
 }

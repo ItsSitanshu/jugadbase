@@ -33,6 +33,16 @@ Context* ctx_init() {
     return NULL;
   }
 
+  ctx->btree = btree_create();
+  if (!ctx->btree) {
+    parser_free(ctx->parser);
+    lexer_free(ctx->lexer);
+    free(ctx);
+    return NULL;
+  }
+
+  ctx->next_row_id = 0;
+
   return ctx;
 }
 

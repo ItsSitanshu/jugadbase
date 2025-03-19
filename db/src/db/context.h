@@ -15,6 +15,9 @@ typedef struct Context {
 
   char* filename;
   char* uuid;
+
+  BTree* btree;
+  uint32_t next_row_id; 
 } Context;
 
 
