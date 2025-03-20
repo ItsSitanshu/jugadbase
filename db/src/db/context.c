@@ -113,18 +113,66 @@ void switch_schema(Context* ctx, char* filename) {
   if (ctx->writer) io_close(ctx->writer);
   if (ctx->appender) io_close(ctx->appender);
 
-  ctx->writer = io_init(ctx->filename, IO_WRITE, 1024);
-  if (!ctx->writer) {
-    fprintf(stderr, "Error: Failed to initialize writer for %s\n", ctx->filename);
+  struct stat buffer;
+  int file_exists = (stat(ctx->filename, &buffer) == 0);
+
+  if (!file_exists) {
+    FILE* file = fopen(ctx->filename, "wb");
+    if (!file) {
+      fprintf(stderr, "Error: Failed to create database file %s\n", ctx->filename);
+      return;
+    }
+
+    uint32_t db_init = DB_INIT_MAGIC;
+    fwrite(&db_init, sizeof(uint32_t), 1, file);
+    fclose(file);
   }
-  
+
   ctx->appender = io_init(ctx->filename, IO_APPEND, 1024);
   if (!ctx->appender) {
     fprintf(stderr, "Error: Failed to initialize appender for %s\n", ctx->filename);
   }
 
+  ctx->writer = io_init(ctx->filename, IO_WRITE, 1024);
+  if (!ctx->writer) {
+    fprintf(stderr, "Error: Failed to initialize writer for %s\n", ctx->filename);
+  }
+
   ctx->reader = io_init(ctx->filename, IO_READ, 1024);
   if (!ctx->reader) {
     fprintf(stderr, "Error: Failed to initialize reader for %s\n", ctx->filename);
-  }  
+  }
+
+  load_table_catalog(ctx);
+}
+
+void load_table_catalog(Context* ctx) {
+  if (!ctx || !ctx->reader) return;
+
+  IO* io = ctx->reader;
+  uint32_t db_init;
+
+  if (io_read(io, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    printf("Error: Failed to read DB INIT\n");
+    return;
+  }
+
+  if (db_init != DB_INIT_MAGIC) {
+    printf("Error: Invalid database file (wrong DB INIT)\n");
+    return;
+  }
+
+  ctx->table_count = 0;  
+
+  while (io_read(io, &ctx->table_catalog[ctx->table_count].name_length, sizeof(uint8_t)) == sizeof(uint8_t)) {
+    TableCatalogEntry* entry = &ctx->table_catalog[ctx->table_count];
+
+    io_read(io, entry->name, entry->name_length);
+    entry->name[entry->name_length] = '\0';
+
+    io_read(io, &entry->offset, sizeof(uint32_t));
+    ctx->table_count++;
+
+    if (ctx->table_count >= MAX_TABLES) break;  // Prevent overflow
+  }
 }
