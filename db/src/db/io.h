@@ -44,7 +44,7 @@ void io_close(IO* io);
 void io_flush(IO* io);
 void io_write(IO* io, const void* data, size_t size);
 size_t io_read(IO* io, void* buffer, size_t size);
-void io_seek(IO* io, long offset);
+void io_seek(IO* io, long offset, int whence);
 void io_seek_write(IO* io, long offset, const void* data, size_t size);
 long io_tell(IO* io);
 

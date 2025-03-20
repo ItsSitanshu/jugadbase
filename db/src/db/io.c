@@ -4,8 +4,9 @@ IO* io_init(const char* filename, IOMode mode, size_t buffer_capacity) {
   IO* io = malloc(sizeof(IO));
   if (!io) exit(EXIT_FAILURE);
 
-  const char* mode_str = (mode == IO_READ) ? "rb" : (mode == IO_WRITE) ? "wb" : "ab";
+  const char* mode_str = (mode == IO_READ) ? "rb" : (mode == IO_WRITE) ? "r+b" : "ab+";
   io->file = fopen(filename, mode_str);
+
   if (!io->file) {
     free(io);
     return NULL;
@@ -55,13 +56,14 @@ size_t io_read(IO* io, void* buffer, size_t size) {
   return fread(buffer, 1, size, io->file);
 }
 
-void io_seek(IO* io, long offset) {
-  if (io->buf_size > 0) {
-    fwrite(io->buffer, io->buf_size, 1, io->file);
-    io->buf_size = 0;
+void io_seek(IO* io, long offset, int whence) {
+  if (!io || !io->file) return;
+
+  if (io->buf_size > 0 && whence == SEEK_SET) {
+    io_flush(io);
   }
 
-  fseek(io->file, offset, SEEK_SET);
+  fseek(io->file, offset, whence);
 }
 
 void io_seek_write(IO* io, long offset, const void* data, size_t size) {
