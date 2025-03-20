@@ -74,6 +74,13 @@ typedef struct ExecutionOrder {
   struct ExecutionOrder *next;
 } ExecutionOrder;
 
+
+typedef struct {
+  uint8_t name_length;
+  char name[MAX_IDENTIFIER_LEN]; 
+  uint32_t offset; 
+} TableCatalogEntry;
+
 typedef struct {
   uint8_t column_index;
   uint8_t type; 
@@ -96,23 +103,24 @@ typedef struct {
 
 typedef struct {
   char name[MAX_IDENTIFIER_LEN];
-  int type;
-  uint8_t type_varchar;
+
+  int type;  
+  uint8_t type_varchar;  
   uint8_t type_decimal_precision;
   uint8_t type_decimal_scale;
- 
+
   bool is_primary_key;
   bool is_unique;
   bool is_not_null;
   bool is_index;
   bool is_auto_increment;
-  
+
   bool has_default;
   char default_value[MAX_IDENTIFIER_LEN];
-  
+
   bool has_check;
   char check_expr[MAX_IDENTIFIER_LEN];
-  
+
   bool is_foreign_key;
   char foreign_table[MAX_IDENTIFIER_LEN];
   char foreign_column[MAX_IDENTIFIER_LEN];
