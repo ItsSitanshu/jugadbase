@@ -25,7 +25,7 @@ START_TEST(test_read_table_schema) {
   ExecutionResult res = process(ctx, create_query);
   ck_assert_int_eq(res.status_code, 0);
 
-  TableSchema schema = read_table_schema(ctx);
+  TableSchema schema = read_table_schema(ctx, "users");
 
   ck_assert_str_eq(schema.table_name, "users");
   ck_assert_int_eq(schema.column_count, 5);
