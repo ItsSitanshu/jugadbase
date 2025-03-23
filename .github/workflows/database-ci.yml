@@ -20,12 +20,12 @@ jobs:
           sudo apt install -y build-essential cmake pkg-config check
 
       - name: Configure CMake
-        run: cmake -B db/build -S db -DCMAKE_BUILD_TYPE=Debug
+        run: cmake -B build -S db -DCMAKE_BUILD_TYPE=Debug
 
       - name: Build Project
-        run: cmake --build db/build -- -j$(nproc)
+        run: cmake --build build -- -j$(nproc)
 
       - name: Run Tests
         run: |
-          chmod +x db/build/tests
-          ctest --test-dir db/build --output-on-failure
+          chmod +x build/tests
+          ctest --test-dir build --output-on-failure
