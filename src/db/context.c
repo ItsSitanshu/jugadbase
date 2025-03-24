@@ -42,6 +42,7 @@ Context* ctx_init() {
   }
 
   ctx->next_row_id = 0;
+  ctx->db_file = NULL;
 
   return ctx;
 }
@@ -147,32 +148,77 @@ void switch_schema(Context* ctx, char* filename) {
 }
 
 void load_table_catalog(Context* ctx) {
-  if (!ctx || !ctx->reader) return;
+  if (!ctx || !ctx->reader) {
+    fprintf(stderr, "Error: Invalid context or missing reader.\n");
+    return;
+  }
 
   IO* io = ctx->reader;
   uint32_t db_init;
 
   if (io_read(io, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
-    printf("Error: Failed to read DB INIT\n");
+    fprintf(stderr, "Error: Failed to read database initialization magic number.\n");
     return;
   }
 
   if (db_init != DB_INIT_MAGIC) {
-    printf("Error: Invalid database file (wrong DB INIT)\n");
+    fprintf(stderr, "Error: Invalid database file (wrong DB INIT magic number: 0x%X).\n", db_init);
     return;
   }
 
-  ctx->table_count = 0;  
+  ctx->table_count = 0;
 
-  while (io_read(io, &ctx->table_catalog[ctx->table_count].name_length, sizeof(uint8_t)) == sizeof(uint8_t)) {
-    TableCatalogEntry* entry = &ctx->table_catalog[ctx->table_count];
+  if (io_read(io, &ctx->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    fprintf(stderr, "Error: Failed to read database initialization magic number.\n");
+    return;
+  }
+  
+  printf("%d!\n", ctx->table_count);
 
-    io_read(io, entry->name, entry->name_length);
+  if (ctx->table_count > MAX_TABLES) {
+    fprintf(stderr, "Error: Invalid database file, exceeds number of max databases\n");
+    return;
+  }
+
+  uint32_t tc = 0;
+
+  while (tc < MAX_TABLES ) {
+    TableCatalogEntry* entry = &ctx->table_catalog[tc];
+
+    if (io_read(io, &entry->offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
+      fprintf(stderr, "Error: Failed to read table offset.\n");
+      return;
+    }
+
+    printf("READ SCHMEA OFF: %d\n", entry->offset);
+
+    if (io_read(io, &entry->name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+      break; 
+    }
+
+    if (entry->name_length == 0 || entry->name_length >= sizeof(entry->name)) {
+      fprintf(stderr, "Error: Invalid table name length (%u).\n", entry->name_length);
+      return;
+    }
+
+    printf("tnl: %d\n", entry->name_length);
+
+    if (io_read(io, entry->name, entry->name_length) != entry->name_length) {
+      fprintf(stderr, "Error: Failed to read table name.\n");
+      return;
+    }
     entry->name[entry->name_length] = '\0';
 
-    io_read(io, &entry->offset, sizeof(uint32_t));
-    ctx->table_count++;
+    printf("%s\n", entry->name);
+    uint32_t seek_offset = (entry->name_length + sizeof(uint32_t) + sizeof(uint8_t));
+    printf("%d - %d; cur: %ld\n", entry->offset, seek_offset, io_tell(io));
+    io_seek(io, (entry->offset - seek_offset), SEEK_CUR);
 
-    if (ctx->table_count >= MAX_TABLES) break;  // Prevent overflow
+    printf("%ld\n", io_tell(io));
+
+
+    tc++;
   }
+
+  printf("Successfully loaded %lu table(s) from the catalog.\n", ctx->table_count);
 }

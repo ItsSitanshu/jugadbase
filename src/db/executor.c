@@ -40,6 +40,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   /*
   [4B]  DB_INIT_MAGIC
   [4B]  Table Count
+  (every file not every entry) 
 
   For each table:
     [4B] Schema Offset
@@ -128,11 +129,10 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_flush(io);
 
   table_count++;
-  uint32_t table_count_BE = (table_count >> 8) | (table_count << 8);
   io_seek_write(ctx->writer, schema_offset - 4, &table_count, sizeof(uint32_t)); 
   
   uint32_t schema_length = (uint32_t)(io_tell(io) - schema_offset);
-  uint32_t schema_length_BE = (schema_length >> 8) | (schema_length << 8);
+  printf("SCHMEA OFF: %d\n", schema_length);
   io_seek_write(ctx->writer, schema_offset, &schema_length, sizeof(uint32_t)); 
 
   return (ExecutionResult){0, "Table schema written successfully"};
@@ -297,7 +297,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   uint16_t row_length = 0;
   io_write(io, &row_length, sizeof(uint16_t));
 
-  uint32_t row_id = 4294967295; // test
+  uint32_t row_id = 1; // test
   io_write(io, &row_id, sizeof(uint32_t));      
   io_write(io, &column_count, sizeof(uint8_t));
 

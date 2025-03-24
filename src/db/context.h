@@ -3,6 +3,8 @@
 
 #include "parser.h"
 #include "io.h"
+#include "page.h"
+
 #include <sys/stat.h>
 
 #define MAX_COMMANDS 1024
@@ -24,6 +26,9 @@ typedef struct Context {
 
   TableCatalogEntry table_catalog[MAX_TABLES];
   size_t table_count;
+
+  FILE* db_file;
+  Page current_page;
 } Context;
 
 Context* ctx_init();
