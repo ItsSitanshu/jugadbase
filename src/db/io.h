@@ -8,7 +8,8 @@
 
 #define MAX_TABLE_NAME 32
 #define MAX_SCHEMA 128
-#define BTREE_ORDER 4  
+#define BTREE_ORDER 4
+#define TABLE_COUNT_OFFSET 4UL
 
 typedef enum { IO_READ, IO_WRITE, IO_APPEND } IOMode;
 
@@ -45,7 +46,7 @@ void io_flush(IO* io);
 void io_write(IO* io, const void* data, size_t size);
 size_t io_read(IO* io, void* buffer, size_t size);
 void io_seek(IO* io, long offset, int whence);
-void io_seek_write(IO* io, long offset, const void* data, size_t size);
+void io_seek_write(IO* io, long offset, const void* data, size_t size, int whence);
 long io_tell(IO* io);
 
 void io_write_metadata(IO* io, const char* table_name, const char* schema);

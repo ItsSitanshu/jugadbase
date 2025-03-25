@@ -66,10 +66,10 @@ void io_seek(IO* io, long offset, int whence) {
   fseek(io->file, offset, whence);
 }
 
-void io_seek_write(IO* io, long offset, const void* data, size_t size) {
+void io_seek_write(IO* io, long offset, const void* data, size_t size, int whence) {
   io_flush(io);
 
-  if (fseek(io->file, offset, SEEK_SET) != 0) {
+  if (fseek(io->file, offset, whence) != 0) {
     perror("io_seek_write: seek failed");
     exit(1);
   }
@@ -150,8 +150,6 @@ BTreeNode* btree_create_node(bool is_leaf) {
 
 long btree_search(BTree* tree, void* key) {
   if (!tree || !tree->root) return -1;
-
-  
 
   BTreeNode* node = tree->root;
   while (node) {
