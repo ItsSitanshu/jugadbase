@@ -22,6 +22,7 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
   switch (cmd->type) {
     case CMD_CREATE:
       result = execute_create_table(ctx, cmd);
+      load_table_catalog(ctx);
       break;
     case CMD_INSERT:
       result = execute_insert(ctx, cmd);
@@ -138,6 +139,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_seek(ctx->writer, schema_offset, SEEK_SET); 
   io_write(ctx->writer, &schema_length, sizeof(uint32_t)); 
 
+  io_flush(ctx->writer);
 
   return (ExecutionResult){0, "Table schema written successfully"};
 }
@@ -148,49 +150,34 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
     return (TableSchema){};
   }
 
+  uint8_t found_idx;
+  uint32_t initial_offset = 0;
+
+  for (int i = 0; i < ctx->table_count; i++) {
+    if (strcmp(ctx->table_catalog[i].name, table_name) == 0) {
+      break;
+    }
+    initial_offset += ctx->table_catalog[i].offset;
+  }
+
   IO* io = ctx->reader;
   TableSchema schema;
   memset(&schema, 0, sizeof(TableSchema));
 
-  io_seek(io, 0, SEEK_SET);
-  io_seek(io, sizeof(uint32_t), SEEK_SET);
+  io_seek(io, (sizeof(uint32_t) * 3), SEEK_SET);
+  io_seek(io, initial_offset, SEEK_CUR);
   
-  uint32_t table_count;
-  if (io_read(io, &table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
-    fprintf(stderr, "Error: Failed to read table count.\n");
+  uint8_t table_name_length;
+  if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    fprintf(stderr, "Error: Failed to read table name length.\n");
     return (TableSchema){};
   }
 
-  uint32_t schema_offset = 0;
-  for (uint32_t i = 0; i < table_count; i++) {
-    uint32_t offset;
-    if (io_read(io, &offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
-      fprintf(stderr, "Error: Failed to read schema offset.\n");
-      return (TableSchema){};
-    }
-
-    uint8_t table_name_length;
-    if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
-      fprintf(stderr, "Error: Failed to read table name length.\n");
-      return (TableSchema){};
-    }
-
-    if (io_read(io, schema.table_name, table_name_length) != table_name_length) {
-      fprintf(stderr, "Error: Failed to read table name.\n");
-      return (TableSchema){};
-    }
-    schema.table_name[table_name_length] = '\0';
-
-    if (strcmp(schema.table_name, table_name) == 0) {
-      schema_offset = offset;
-      break;
-    }
-  }
-
-  if (schema_offset == 0) {
-    fprintf(stderr, "Error: Table '%s' not found.\n", table_name);
+  if (io_read(io, schema.table_name, table_name_length) != table_name_length) {
+    fprintf(stderr, "Error: Failed to read table name.\n");
     return (TableSchema){};
   }
+  schema.table_name[table_name_length] = '\0';
   
   if (io_read(io, &schema.column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     fprintf(stderr, "Error: Failed to read column count.\n");
@@ -276,6 +263,11 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   IO* io = ctx->appender;
 
   TableSchema schema = read_table_schema(ctx, cmd->schema.table_name);
+  
+  if (memcmp(&schema, &INVALID_SCHEMA, sizeof(TableSchema)) == 0) {
+    return (ExecutionResult){0, "Error!"};
+  }
+
   cmd->schema = schema;
 
   uint8_t column_count = (uint8_t)cmd->schema.column_count;

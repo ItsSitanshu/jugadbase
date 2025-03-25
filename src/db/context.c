@@ -150,6 +150,7 @@ void switch_schema(Context* ctx, char* filename) {
   }
 
   load_table_catalog(ctx);
+  printf("Successfully loaded %lu table(s) from the catalog.\n", ctx->table_count);
 }
 
 void load_table_catalog(Context* ctx) {
@@ -215,6 +216,4 @@ void load_table_catalog(Context* ctx) {
 
     tc++;
   }
-
-  printf("Successfully loaded %lu table(s) from the catalog.\n", ctx->table_count);
 }

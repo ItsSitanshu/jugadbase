@@ -8,6 +8,8 @@ typedef struct {
   char *message;
 } ExecutionResult;
 
+static const TableSchema INVALID_SCHEMA = (TableSchema){};
+
 ExecutionResult process(Context* ctx, char* buffer);
 
 ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd);
