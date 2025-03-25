@@ -4,7 +4,7 @@
 ## To-do List
 
 - ~~Implement proper parsing~~
-- FIX BUG: offset from [create_table()](https://github.com/ItsSitanshu/jugadbase/blob/5ec3f58/src/db/executor.c#L39-L139) doesn't work as expected
+- ~~FIX BUG: offset from [create_table()](https://github.com/ItsSitanshu/jugadbase/blob/5ec3f58/src/db/executor.c#L39-L139) doesn't work as expected~~
 - Implement `CREATE TABLE` with `KP` (Primary Key) and `FRN` (Foreign Key)  
 - Support 
   - `INSERT`
