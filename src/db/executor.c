@@ -81,8 +81,11 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     io_write(io, &table_count, sizeof(uint32_t)); 
   }
 
-  uint32_t schema_offset = io_tell(io);  
+  uint32_t schema_offset = 0;
   io_write(io, &schema_offset, sizeof(uint32_t));  
+  io_flush(io);
+
+  schema_offset = io_tell(io) - sizeof(uint32_t);  
 
   uint8_t table_name_length = (uint8_t)strlen(schema.table_name);
   io_write(io, &table_name_length, sizeof(uint8_t));
@@ -129,11 +132,12 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_flush(io);
 
   table_count++;
-  io_seek_write(ctx->writer, schema_offset - 4, &table_count, sizeof(uint32_t)); 
+  io_seek_write(ctx->writer, TABLE_COUNT_OFFSET, &table_count, sizeof(uint32_t), SEEK_SET); 
   
   uint32_t schema_length = (uint32_t)(io_tell(io) - schema_offset);
-  printf("SCHMEA OFF: %d\n", schema_length);
-  io_seek_write(ctx->writer, schema_offset, &schema_length, sizeof(uint32_t)); 
+  io_seek(ctx->writer, schema_offset, SEEK_SET); 
+  io_write(ctx->writer, &schema_length, sizeof(uint32_t)); 
+
 
   return (ExecutionResult){0, "Table schema written successfully"};
 }
@@ -187,7 +191,7 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
     fprintf(stderr, "Error: Table '%s' not found.\n", table_name);
     return (TableSchema){};
   }
-
+  
   if (io_read(io, &schema.column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     fprintf(stderr, "Error: Failed to read column count.\n");
     return (TableSchema){};
@@ -312,8 +316,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   io_flush(io);
 
   row_length = (uint16_t)(io_tell(io) - row_start);
-  uint16_t row_length_BE = (row_length >> 8) | (row_length << 8);
-  io_seek_write(ctx->writer, row_start, &row_length_BE, sizeof(uint16_t)); 
+  io_seek_write(ctx->writer, row_start, &row_length, sizeof(uint16_t), SEEK_SET); 
   
   io_seek(io, row_start + row_length, SEEK_SET);  
   
