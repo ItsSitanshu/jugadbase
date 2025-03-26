@@ -5,6 +5,9 @@
 
 - ~~Implement proper parsing~~
 - ~~FIX BUG: offset from [create_table()](https://github.com/ItsSitanshu/jugadbase/blob/5ec3f58/src/db/executor.c#L39-L139) doesn't work as expected~~
+- Design and implement a directory-based storage system for database files
+- Create a structure to handle multiple files for tables, indexes, and metadata
+- Implement logic for linking tables with their corresponding .idx files
 - Implement `CREATE TABLE` with `KP` (Primary Key) and `FRN` (Foreign Key)  
 - Support 
   - `INSERT`
@@ -26,3 +29,5 @@
 - Add support for stored procedures  
 - Implement views and triggers  
 - Add replication and sharding for scalability  
+- Add support for database-specific file management, including backing up and restoring individual files
+- Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
