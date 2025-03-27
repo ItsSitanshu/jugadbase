@@ -73,7 +73,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   }
 
   IO* io = ctx->appender;
-  TableSchema schema = cmd->schema;
+  TableSchema* schema = cmd->schema;
   
   uint32_t table_count;
   io_seek(io, sizeof(uint32_t), SEEK_SET);
@@ -88,15 +88,15 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
 
   schema_offset = io_tell(io) - sizeof(uint32_t);  
 
-  uint8_t table_name_length = (uint8_t)strlen(schema.table_name);
+  uint8_t table_name_length = (uint8_t)strlen(schema->table_name);
   io_write(io, &table_name_length, sizeof(uint8_t));
-  io_write(io, schema.table_name, table_name_length);
+  io_write(io, schema->table_name, table_name_length);
 
-  uint8_t column_count = (uint8_t)schema.column_count;
+  uint8_t column_count = (uint8_t)schema->column_count;
   io_write(io, &column_count, sizeof(uint8_t));
 
   for (int i = 0; i < column_count; i++) {
-    ColumnDefinition* col = &schema.columns[i];
+    ColumnDefinition* col = &schema->columns[i];
 
     uint8_t col_name_length = (uint8_t)strlen(col->name);
     io_write(io, &col_name_length, sizeof(uint8_t));
@@ -144,10 +144,10 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   return (ExecutionResult){0, "Table schema written successfully"};
 }
 
-TableSchema read_table_schema(Context* ctx, char* table_name) {
+TableSchema* read_table_schema(Context* ctx, char* table_name) {
   if (!ctx || !ctx->reader) {
     fprintf(stderr, "Error: No database file is open.\n");
-    return (TableSchema){};
+    return NULL;
   }
 
   uint8_t found_idx;
@@ -161,8 +161,7 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
   }
 
   IO* io = ctx->reader;
-  TableSchema schema;
-  memset(&schema, 0, sizeof(TableSchema));
+  TableSchema* schema = malloc(sizeof(TableSchema));
 
   io_seek(io, (sizeof(uint32_t) * 3), SEEK_SET);
   io_seek(io, initial_offset, SEEK_CUR);
@@ -170,40 +169,40 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     fprintf(stderr, "Error: Failed to read table name length.\n");
-    return (TableSchema){};
+    return NULL;
   }
 
-  if (io_read(io, schema.table_name, table_name_length) != table_name_length) {
+  if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     fprintf(stderr, "Error: Failed to read table name.\n");
-    return (TableSchema){};
+    return NULL;
   }
-  schema.table_name[table_name_length] = '\0';
+  schema->table_name[table_name_length] = '\0';
   
-  if (io_read(io, &schema.column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
+  if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     fprintf(stderr, "Error: Failed to read column count.\n");
-    return (TableSchema){};
+    return NULL;
   }
 
-  schema.columns = malloc(sizeof(ColumnDefinition) * schema.column_count);
-  if (!schema.columns) {
+  schema->columns = malloc(sizeof(ColumnDefinition) * schema->column_count);
+  if (!schema->columns) {
     fprintf(stderr, "Error: Memory allocation failed for columns.\n");
-    return (TableSchema){};
+    return NULL;
   }
 
-  for (uint8_t i = 0; i < schema.column_count; i++) {
-    ColumnDefinition* col = &schema.columns[i];
+  for (uint8_t i = 0; i < schema->column_count; i++) {
+    ColumnDefinition* col = &schema->columns[i];
 
     uint8_t col_name_length;
     if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
       fprintf(stderr, "Error: Failed to read column name length.\n");
-      free(schema.columns);
-      return (TableSchema){};
+      free(schema->columns);
+      return NULL;
     }
 
     if (io_read(io, col->name, col_name_length) != col_name_length) {
       fprintf(stderr, "Error: Failed to read column name.\n");
-      free(schema.columns);
-      return (TableSchema){};
+      free(schema->columns);
+      return NULL;
     }
     col->name[col_name_length] = '\0';
 
@@ -222,8 +221,8 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
     if (col->has_default) {
       if (io_read(ctx->reader, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
         fprintf(stderr, "Error: Failed to read default value.\n");
-        free(schema.columns);
-        return (TableSchema){};
+        free(schema->columns);
+        return NULL;
       }
     }
 
@@ -231,8 +230,8 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
     if (col->has_check) {
       if (io_read(ctx->reader, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
         fprintf(stderr, "Error: Failed to read check constraint.\n");
-        free(schema.columns);
-        return (TableSchema){};
+        free(schema->columns);
+        return NULL;
       }
     }
 
@@ -241,8 +240,8 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
       if (io_read(ctx->reader, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN ||
           io_read(ctx->reader, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
         fprintf(stderr, "Error: Failed to read foreign key details.\n");
-        free(schema.columns);
-        return (TableSchema){};
+        free(schema->columns);
+        return NULL;
       }
     }
   }
@@ -251,70 +250,67 @@ TableSchema read_table_schema(Context* ctx, char* table_name) {
 }
 
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
-  /*
-  [2B] Row Length; [4B] Row ID; [1B] Column Count;
-    For each column:
-      [1B] Column Index; [var] Column Value (dependent);
-  */
   if (!ctx || !cmd || !ctx->appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
   IO* io = ctx->appender;
-
-  TableSchema schema = read_table_schema(ctx, cmd->schema.table_name);
+  TableSchema* schema = read_table_schema(ctx, cmd->schema->table_name);
   
-  if (memcmp(&schema, &INVALID_SCHEMA, sizeof(TableSchema)) == 0) {
-    return (ExecutionResult){0, "Error!"};
+  if (!schema) {
+    return (ExecutionResult){0, "Error: Invalid schema"};
   }
 
   cmd->schema = schema;
-
-  uint8_t column_count = (uint8_t)cmd->schema.column_count;
+  uint8_t column_count = (uint8_t)cmd->schema->column_count;
 
   ColumnDefinition* primary_key_col = NULL;
   ColumnValue* primary_key_val = NULL;
 
   for (uint8_t i = 0; i < column_count; i++) {
-    if (cmd->schema.columns[i].is_primary_key) {
-      primary_key_col = &cmd->schema.columns[i];
+    if (cmd->schema->columns[i].is_primary_key) {
+      primary_key_col = &cmd->schema->columns[i];
       primary_key_val = &cmd->values[i];
       break;
     }
   }
 
-  if (primary_key_col) {
-    if (btree_search(ctx->btree, primary_key_val) != -1) {
-      return (ExecutionResult){1, "Primary Key already exists"};
-    }
+  if (primary_key_col) {  
+    // if (btree_search(ctx->btree, primary_key_val) != -1) {
+    //   return (ExecutionResult){1, "Primary Key already exists"};
+    // }
   }
 
   long row_start = io_tell(io);
   uint16_t row_length = 0;
-  io_write(io, &row_length, sizeof(uint16_t));
 
-  uint32_t row_id = 1; // test
-  io_write(io, &row_id, sizeof(uint32_t));      
+  uint32_t row_id = ctx->next_row_id++;
+
+  // btree_insert(ctx->btree, primary_key_val, row_start);
+
+  io_write(io, &row_length, sizeof(uint16_t));  
+  io_write(io, &row_id, sizeof(uint32_t));
   io_write(io, &column_count, sizeof(uint8_t));
 
   for (uint8_t i = 0; i < column_count; i++) {
     ColumnValue* col_val = &cmd->values[i];
-    ColumnDefinition* col_def = &cmd->schema.columns[i];
+    ColumnDefinition* col_def = &cmd->schema->columns[i];
 
     io_write(io, &col_val->column_index, sizeof(uint8_t));
-    write_column_value(io, col_val, col_def); 
+    write_column_value(io, col_val, col_def);
   }
 
   io_flush(io);
 
   row_length = (uint16_t)(io_tell(io) - row_start);
-  io_seek_write(ctx->writer, row_start, &row_length, sizeof(uint16_t), SEEK_SET); 
-  
-  io_seek(io, row_start + row_length, SEEK_SET);  
-  
+  io_seek_write(ctx->writer, row_start, &row_length, sizeof(uint16_t), SEEK_SET);
+
+  io_seek(io, row_start + row_length, SEEK_SET);
   io_flush(io);
+
   return (ExecutionResult){0, "Record inserted successfully"};
 }
+
 
 void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def) {
   uint16_t text_len, str_len, max_len;

@@ -8,15 +8,13 @@ typedef struct {
   char *message;
 } ExecutionResult;
 
-static const TableSchema INVALID_SCHEMA = (TableSchema){};
-
 ExecutionResult process(Context* ctx, char* buffer);
 
 ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd);
 
-TableSchema read_table_schema(Context* ctx, char* table_name);
+TableSchema* read_table_schema(Context* ctx, char* table_name);
 void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def);
 
 uint32_t get_table_offset(Context* ctx, const char* table_name);

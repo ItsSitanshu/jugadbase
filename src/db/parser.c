@@ -15,8 +15,8 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   if (!cmd) return NULL;
 
   cmd->type = type;
-  cmd->schema.column_count = 0;
-  cmd->schema.columns = NULL;
+  cmd->schema->column_count = 0;
+  cmd->schema->columns = NULL;
   cmd->value_count = 0;
   cmd->constraint_count = 0;
   cmd->function_count = 0;
@@ -24,7 +24,7 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   cmd->constraints = NULL;
   cmd->functions = NULL;
 
-  memset(cmd->schema.table_name, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->schema->table_name, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->conditions, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->order_by, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->group_by, 0, MAX_IDENTIFIER_LEN);
@@ -55,7 +55,7 @@ void parser_free(Parser* parser) {
 void jql_command_free(JQLCommand* cmd) {
   if (!cmd) return;
 
-  free(cmd->schema.columns);
+  free(cmd->schema->columns);
   
   free(cmd->values);
   free(cmd->constraints);
@@ -248,8 +248,8 @@ bool parse_column_definition(Parser *parser, JQLCommand *command) {
     parser_consume(parser);
   }
 
-  command->schema.columns[command->schema.column_count] = column;
-  command->schema.column_count += 1;
+  command->schema->columns[command->schema->column_count] = column;
+  command->schema->column_count += 1;
 
   return true;
 }
@@ -258,6 +258,8 @@ JQLCommand parser_parse_create_table(Parser *parser) {
   JQLCommand command;
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_CREATE;
+
+  command.schema = malloc(sizeof(TableSchema));
 
   parser_consume(parser);
 
@@ -273,7 +275,7 @@ JQLCommand parser_parse_create_table(Parser *parser) {
     return command;
   }
 
-  strcpy(command.schema.table_name, parser->cur->value);
+  strcpy(command.schema->table_name, parser->cur->value);
   parser_consume(parser);
 
   if (parser->cur->type != TOK_LP) {
@@ -283,8 +285,8 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   parser_consume(parser);
 
-  command.schema.columns = calloc(MAX_COLUMNS, sizeof(ColumnDefinition));
-  command.schema.column_count = 0;
+  command.schema->columns = calloc(MAX_COLUMNS, sizeof(ColumnDefinition));
+  command.schema->column_count = 0;
 
   while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
     if (!parse_column_definition(parser, &command)) {
@@ -330,7 +332,7 @@ JQLCommand parser_parse_insert(Parser *parser) {
     return command;
   }
 
-  strcpy(command.schema.table_name, parser->cur->value);
+  strcpy(command.schema->table_name, parser->cur->value);
   parser_consume(parser); 
 
   // if (parser->cur->type == TOK_LP) { // TODO: Implement specified order inserts
