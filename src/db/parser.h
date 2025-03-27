@@ -2,6 +2,7 @@
 #define JQL_COMMAND_H
 
 #include "lexer.h"
+#include "io.h"
 
 #define MAX_COLUMNS 256
 #define MAX_TEXT_SIZE 256
@@ -130,11 +131,12 @@ typedef struct {
   char table_name[MAX_IDENTIFIER_LEN]; 
   uint8_t column_count;
   ColumnDefinition* columns;
+  BTree** btree;
 } TableSchema;
 
 typedef struct {
   JQLCommandType type;
-  TableSchema schema;
+  TableSchema* schema;
 
   int value_count;
   ColumnValue* values;

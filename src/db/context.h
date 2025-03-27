@@ -17,11 +17,10 @@ typedef struct Context {
   IO* reader;
   IO* writer;
   IO* appender;
-
+  
   char* filename;
   char* uuid;
 
-  BTree* btree;
   uint32_t next_row_id; 
 
   TableCatalogEntry table_catalog[MAX_TABLES];
