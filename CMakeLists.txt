@@ -6,6 +6,7 @@ set(CMAKE_BUILD_TYPE Debug CACHE STRING "Choose build type (Debug, Release, RelW
 set(CMAKE_C_STANDARD 11)
 
 set(CMAKE_C_FLAGS_DEBUG "-g")
+add_definitions(-DDB_ROOT_DIRECTORY="${CMAKE_BINARY_DIR}")
 
 include_directories(src/db src/utils src/tests)
 

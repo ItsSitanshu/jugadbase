@@ -33,6 +33,8 @@ Context* ctx_init() {
     return NULL;
   }
 
+  ctx->fs = fs_init(DB_ROOT_DIRECTORY);
+
   ctx->next_row_id = 0;
   ctx->db_file = NULL;
 
@@ -43,6 +45,7 @@ void ctx_free(Context* ctx) {
   if (!ctx) return;
 
   parser_free(ctx->parser);
+  fs_free(ctx->fs);
   free(ctx->uuid);
   
   if (ctx->filename) free(ctx->filename);

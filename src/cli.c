@@ -6,9 +6,9 @@
 #include "executor.h"
 #include "utils/cli.h"
 
-
 int main(int argc, char* argv[]) {
   Context* ctx = ctx_init();
+  
   if (!ctx) {
     fprintf(stderr, "Failed to initialize context\n");
     return 1;

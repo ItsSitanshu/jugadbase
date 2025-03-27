@@ -4,6 +4,7 @@
 #include "parser.h"
 #include "io.h"
 #include "page.h"
+#include "fs.h"
 
 #include <sys/stat.h>
 
@@ -26,6 +27,7 @@ typedef struct Context {
   TableCatalogEntry table_catalog[MAX_TABLES];
   size_t table_count;
 
+  FS* fs;
   FILE* db_file;
   Page current_page;
 } Context;
