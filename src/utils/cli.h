@@ -10,6 +10,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "../utils/log.h"
+
 void get_short_cwd(char* buffer, size_t size) {
   char cwd[1024];
   if (getcwd(cwd, sizeof(cwd)) != NULL) {
