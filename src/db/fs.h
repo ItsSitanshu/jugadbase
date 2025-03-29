@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+
 #if defined(_WIN32) || defined(_WIN64)
   #include <direct.h> 
   #define PATH_SEPARATOR "\\"
@@ -12,6 +13,11 @@
   #include <sys/stat.h>
   #define PATH_SEPARATOR "/"
 #endif
+
+#ifndef LOGS_VERBOSE
+  #define LOGS_VERBOSE 0
+#endif
+
 
 #define MAX_PATH_LENGTH 512
 
@@ -32,6 +38,20 @@ static int create_directory(const char* path) {
     }
   #endif
   return 0;
+}
+
+static void create_file(const char* file_path) {
+  FILE *file = fopen(file_path, "r");
+  if (file) {
+    fclose(file);
+  } else {
+    file = fopen(file_path, "w");
+    if (file) {
+      fclose(file); 
+    } else {
+      perror("Error: Failed to create file");
+    }
+  }
 }
 
 // Directory structure for storing database files:
