@@ -8,7 +8,7 @@
 
 int main(int argc, char* argv[]) {
   Context* ctx = ctx_init();
-  
+
   if (!ctx) {
     fprintf(stderr, "Failed to initialize context\n");
     return 1;
@@ -18,8 +18,17 @@ int main(int argc, char* argv[]) {
   if (argc > 1) {
     switch_schema(ctx, argv[1]);
   } else {
-    fprintf(stderr, "No schema file provided, defaulting to " GREEN "%s\n" RESET, schema_name);
     switch_schema(ctx, schema_name);
+  }
+
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--verbose") == 0 && i + 1 < argc) {
+      verbosity_level = atoi(argv[++i]); 
+    }
+  }
+
+  if (verbosity_level == 1) {
+    LOG_WARN("Invalid verbosity level: %d. Defaulting to WARN.", verbosity_level);
   }
 
   char input[1024];
