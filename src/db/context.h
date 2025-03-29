@@ -39,6 +39,7 @@ bool process_dot_cmd(Context* ctx, char* input);
 void process_file(char* filename);
 
 void load_table_catalog(Context* ctx);
+void load_table_schema(Context* ctx);
 void switch_schema(Context* ctx, char* filename);
 
 #endif // CONTEXT_H

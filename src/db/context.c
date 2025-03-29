@@ -148,67 +148,139 @@ void switch_schema(Context* ctx, char* filename) {
   printf("Successfully loaded %lu table(s) from the catalog.\n", ctx->table_count);
 }
 
+
 void load_table_catalog(Context* ctx) {
-  if (!ctx || !ctx->reader) {
-    fprintf(stderr, "Error: Invalid context or missing reader.\n");
+  if (!ctx || !ctx->fs || !ctx->filename) return;
+
+  char schema_path[MAX_PATH_LENGTH];
+  snprintf(schema_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", ctx->fs->tables_dir, ctx->filename);
+
+  load_table_schema(ctx);
+
+  DIR* dir = opendir(schema_path);
+  if (!dir) {
+    perror("Error: Failed to open schema directory");
     return;
   }
 
-  IO* io = ctx->reader;
+  struct dirent* entry;
+  uint32_t tc = 0;
+
+  while ((entry = readdir(dir)) != NULL) {
+    if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
+      while (tc < ctx->table_count && strcmp(entry->d_name, ctx->table_catalog[tc].name) != 0) {
+        tc++;
+      }
+
+      if (tc < ctx->table_count && strcmp(entry->d_name, ctx->table_catalog[tc].name) == 0) {
+        char table_path[MAX_PATH_LENGTH];
+
+        int ret = snprintf(table_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", schema_path, entry->d_name);
+        if (ret >= MAX_PATH_LENGTH) {
+          fprintf(stderr, "Warning: Table path is too long, truncating to fit buffer size.\n");
+          table_path[MAX_PATH_LENGTH - 1] = '\0'; 
+        }
+
+        char index_file[MAX_PATH_LENGTH], data_file[MAX_PATH_LENGTH];
+        
+        ret = snprintf(index_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "xyz_row.idx", table_path);
+        if (ret >= MAX_PATH_LENGTH) {
+          fprintf(stderr, "Warning: Index file path is too long, truncating to fit buffer size.\n");
+          index_file[MAX_PATH_LENGTH - 1] = '\0';  
+        }
+
+        ret = snprintf(data_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "rows.db", table_path);
+        if (ret >= MAX_PATH_LENGTH) {
+          fprintf(stderr, "Warning: Data file path is too long, truncating to fit buffer size.\n");
+          data_file[MAX_PATH_LENGTH - 1] = '\0';
+        }
+
+        if (access(index_file, F_OK) == 0 && access(data_file, F_OK) == 0) {
+          tc++;  
+        }
+      }
+    }
+  }
+
+  if (tc < ctx->table_count) {
+    fprintf(stderr, "Warning: Not all directories match the expected table names from the schema.\n");
+  }
+
+  closedir(dir);
+}
+
+
+
+void load_table_schema(Context* ctx) {
+  if (!ctx || !ctx->fs) {
+    fprintf(stderr, "Error: Invalid context or missing filesystem.\n");
+    return;
+  }
+
+  char schema_path[MAX_PATH_LENGTH];
+  snprintf(schema_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "schema", ctx->fs->tables_dir);
+
+  printf("%s\n", schema_path);
+  FILE* file = fopen(schema_path, "rb");
+  if (!file) {
+    perror("Error: Failed to open schema file");
+    return;
+  }
+
   uint32_t db_init;
-
-  io_seek(io, 0, SEEK_SET);
-
-  if (io_read(io, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
+  if (fread(&db_init, sizeof(uint32_t), 1, file) != 1) {
     fprintf(stderr, "Error: Failed to read database initialization magic number.\n");
+    fclose(file);
     return;
   }
 
   if (db_init != DB_INIT_MAGIC) {
     fprintf(stderr, "Error: Invalid database file (wrong DB INIT magic number: 0x%X).\n", db_init);
+    fclose(file);
     return;
   }
 
-  ctx->table_count = 0;
-
-  if (io_read(io, &ctx->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
-    fprintf(stderr, "Error: Failed to read database initialization magic number.\n");
+  if (fread(&ctx->table_count, sizeof(uint32_t), 1, file) != 1) {
+    fprintf(stderr, "Error: Failed to read table count.\n");
+    fclose(file);
     return;
   }
-  
+
   if (ctx->table_count > MAX_TABLES) {
-    fprintf(stderr, "Error: Invalid database file, exceeds number of max databases\n");
+    fprintf(stderr, "Error: Table count exceeds maximum allowed tables.\n");
+    fclose(file);
     return;
   }
 
   uint32_t tc = 0;
-
   while (tc < ctx->table_count) {
     TableCatalogEntry* entry = &ctx->table_catalog[tc];
 
-    if (io_read(io, &entry->offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    if (fread(&entry->offset, sizeof(uint32_t), 1, file) != 1) {
       fprintf(stderr, "Error: Failed to read table offset.\n");
-      return;
+      break;
     }
 
-    if (io_read(io, &entry->name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
-      break; 
+    if (fread(&entry->name_length, sizeof(uint8_t), 1, file) != 1) {
+      fprintf(stderr, "Error: Failed to read table name length.\n");
+      break;
     }
 
     if (entry->name_length == 0 || entry->name_length >= sizeof(entry->name)) {
       fprintf(stderr, "Error: Invalid table name length (%u).\n", entry->name_length);
-      return;
+      break;
     }
 
-    if (io_read(io, entry->name, entry->name_length) != entry->name_length) {
+    if (fread(entry->name, sizeof(char), entry->name_length, file) != entry->name_length) {
       fprintf(stderr, "Error: Failed to read table name.\n");
-      return;
+      break;
     }
     entry->name[entry->name_length] = '\0';
 
-    uint32_t seek_offset = (entry->name_length + sizeof(uint32_t) + sizeof(uint8_t));
-    io_seek(io, (entry->offset - seek_offset), SEEK_CUR);
+    fseek(file, (entry->offset - (entry->name_length + sizeof(uint32_t) + sizeof(uint8_t))), SEEK_CUR);
 
     tc++;
   }
+
+  fclose(file);
 }
