@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <dirent.h>
+
 #ifdef _WIN32
 #include <windows.h>
 #include <stdio.h>

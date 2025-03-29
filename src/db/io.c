@@ -1,5 +1,7 @@
 #include "io.h"
 
+#include "../utils/log.h"
+
 IO* io_init(const char* filename, IOMode mode, size_t buffer_capacity) {
   IO* io = malloc(sizeof(IO));
   if (!io) exit(EXIT_FAILURE);
