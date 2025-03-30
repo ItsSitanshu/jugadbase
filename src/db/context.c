@@ -1,32 +1,36 @@
 #include "context.h"
 #include "executor.h"
-
 #include "uuid.h"
 
+#include "../utils/log.h"
+
 Context* ctx_init() {
-  Context* ctx = malloc(sizeof(Context));
-  if (!ctx) return NULL; 
+  Context* ctx = (Context*)malloc(sizeof(Context));
+  if (!ctx) {
+    LOG_FATAL("Failed to allocate memory for context.");
+    return NULL;
+  }
+
+  memset(ctx, 0, sizeof(Context));
 
   ctx->lexer = lexer_init();
   if (!ctx->lexer) {
+    LOG_FATAL("Failed to initialize lexer.");
     free(ctx);
     return NULL;
   }
 
   ctx->parser = parser_init(ctx->lexer);
   if (!ctx->parser) {
+    LOG_FATAL("Failed to initialize parser.");
     lexer_free(ctx->lexer);
     free(ctx);
     return NULL;
   }
 
-  ctx->reader = NULL;
-  ctx->writer = NULL;
-  ctx->appender = NULL;
-  ctx->filename = NULL;
-
   ctx->uuid = uuid();
-  if (!ctx->uuid) { 
+  if (!ctx->uuid) {
+    LOG_FATAL("Failed to generate UUID.");
     parser_free(ctx->parser);
     lexer_free(ctx->lexer);
     free(ctx);
@@ -34,9 +38,49 @@ Context* ctx_init() {
   }
 
   ctx->fs = fs_init(DB_ROOT_DIRECTORY);
+  if (!ctx->fs) {
+    LOG_FATAL("Failed to initialize file system.");
+    free(ctx->uuid);
+    parser_free(ctx->parser);
+    lexer_free(ctx->lexer);
+    free(ctx);
+    return NULL;
+  }
 
-  ctx->next_row_id = 0;
+  ctx->schema.name = (char*)malloc(MAX_IDENTIFIER_LEN);
+  if (!ctx->schema.name) {
+    LOG_FATAL("Failed to allocate memory for schema name.");
+    fs_free(ctx->fs);
+    free(ctx->uuid);
+    parser_free(ctx->parser);
+    lexer_free(ctx->lexer);
+    free(ctx);
+    return NULL;
+  }
+  memset(ctx->schema.name, 0, MAX_IDENTIFIER_LEN);
+
+  ctx->schema.next_row_id = 0;
+  ctx->schema.reader = NULL;
+  ctx->schema.writer = NULL;
+  ctx->schema.appender = NULL;
+
+  ctx->idx.reader = NULL;
+  ctx->idx.writer = NULL;
+  ctx->idx.appender = NULL;
+
+  ctx->table_count = 0;
+  memset(ctx->table_catalog, 0, sizeof(ctx->table_catalog));
+
+  ctx->tc_reader = NULL;
+  ctx->tc_writer = NULL;
+  ctx->tc_appender = NULL;
+
   ctx->db_file = NULL;
+
+  memset(&ctx->current_page, 0, sizeof(Page));
+
+  load_table_catalog(ctx);
+  LOG_INFO("Successfully loaded %lu table(s) from catalog", ctx->table_count);
 
   return ctx;
 }
@@ -47,12 +91,21 @@ void ctx_free(Context* ctx) {
   parser_free(ctx->parser);
   fs_free(ctx->fs);
   free(ctx->uuid);
-  
-  if (ctx->filename) free(ctx->filename);
 
-  if (ctx->reader) io_close(ctx->reader);
-  if (ctx->writer) io_close(ctx->writer);
-  if (ctx->appender) io_close(ctx->appender);
+  if (ctx->schema.reader) io_close(ctx->schema.reader);
+  if (ctx->schema.writer) io_close(ctx->schema.writer);
+  if (ctx->schema.appender) io_close(ctx->schema.appender);
+  free(ctx->schema.name);
+
+  if (ctx->idx.reader) io_close(ctx->idx.reader);
+  if (ctx->idx.writer) io_close(ctx->idx.writer);
+  if (ctx->idx.appender) io_close(ctx->idx.appender);
+
+  if (ctx->tc_reader) io_close(ctx->tc_reader);
+  if (ctx->tc_writer) io_close(ctx->tc_writer);
+  if (ctx->tc_appender) io_close(ctx->tc_appender);
+
+  if (ctx->db_file) fclose(ctx->db_file);
 
   free(ctx);
 }
@@ -63,20 +116,17 @@ bool process_dot_cmd(Context* ctx, char* input) {
     while (*schema_name == ' ') schema_name++;
 
     if (*schema_name == '\0') {
-      printf("Usage: .schema <schemaname>\n");
+      LOG_WARN("Usage: .schema <schemaname>");
     } else {
-      printf("Changing schema to: %s\n", schema_name);
+      LOG_INFO("Changing schema to: %s", schema_name);
       switch_schema(ctx, schema_name);
     }
     return true;
   } else if (strcmp(input, ".help") == 0) {
-    printf("Available commands:\n");
-    printf("  .schema <schemaname>  - Show schema of the given name\n");
-    printf("  .quit                 - Exit the program\n");
-    printf("  .help                 - Show this help message\n");
+    LOG_INFO("Available commands:\n  .schema <schemaname>  - Show schema of the given name\n  .quit                 - Exit the program\n  .help                 - Show this help message");
     return true;
   } else if (strcmp(input, ".quit") == 0) {
-    printf("Exiting...\n");
+    LOG_INFO("Exiting...");
     ctx_free(ctx);
     exit(0);
   }
@@ -88,96 +138,103 @@ void process_file(char* filename) {
   // TODO: Implement function
 }
 
-void switch_schema(Context* ctx, char* filename) {
+void switch_schema(Context* ctx, char* schema_name) {
   if (!ctx) return;
 
-  if (ctx->filename && strcmp(ctx->filename, filename) == 0) {
+  if (strcmp(ctx->schema.name, schema_name) == 0) {
+    LOG_DEBUG("Schema %s is already loaded.", schema_name);
     return;
   }
 
-  if (ctx->filename) {
-    free(ctx->filename);
+  load_table_catalog(ctx);
+
+  bool schema_found = false;
+  TableCatalogEntry* schema_entry = NULL;
+
+  for (size_t i = 0; i < ctx->table_count; i++) {
+    if (strcmp(ctx->table_catalog[i].name, schema_name) == 0) {
+      schema_entry = &ctx->table_catalog[i];
+      schema_found = true;
+      break;
+    }
   }
 
-  ctx->filename = strdup(filename);
-  if (!ctx->filename) {
-    fprintf(stderr, "Error: Memory allocation failed for filename.\n");
+  if (!schema_found) {
+    LOG_ERROR("Schema %s not found in the table catalog.", schema_name);
     return;
   }
 
-  if (ctx->reader) io_close(ctx->reader);
-  if (ctx->writer) io_close(ctx->writer);
-  if (ctx->appender) io_close(ctx->appender);
+  char schema_path[MAX_PATH_LENGTH];
+  snprintf(schema_path, sizeof(schema_path), "%s/%s/rows.db", ctx->fs->tables_dir, schema_name);
 
   struct stat buffer;
-  int file_exists = (stat(ctx->filename, &buffer) == 0);
+  int file_exists = (stat(schema_path, &buffer) == 0);
 
   if (!file_exists) {
-    FILE* file = fopen(ctx->filename, "wb");
+    FILE* file = fopen(schema_path, "w");
     if (!file) {
-      fprintf(stderr, "Error: Failed to create database file %s\n", ctx->filename);
+      LOG_ERROR("Failed to create database file %s", schema_path);
       return;
     }
 
     uint32_t db_init = DB_INIT_MAGIC;
     uint32_t table_count = 0;
-
     fwrite(&db_init, sizeof(uint32_t), 1, file);
-
     fwrite(&table_count, sizeof(uint32_t), 1, file);
-
     fclose(file);
   }
 
-  ctx->appender = io_init(ctx->filename, IO_APPEND, 1024);
-  if (!ctx->appender) {
-    fprintf(stderr, "Error: Failed to initialize appender for %s\n", ctx->filename);
+  if (ctx->schema.reader) io_close(ctx->schema.reader);
+  if (ctx->schema.writer) io_close(ctx->schema.writer);
+  if (ctx->schema.appender) io_close(ctx->schema.appender);
+
+  IO* reader = io_init(schema_path, IO_READ, 1024);
+  IO* writer = io_init(schema_path, IO_WRITE, 1024);
+  IO* appender = io_init(schema_path, IO_APPEND, 1024);
+
+  if (!reader || !writer || !appender) {
+    LOG_ERROR("Failed to initialize I/O for schema %s", schema_name);
+    return;
   }
 
-  ctx->writer = io_init(ctx->filename, IO_WRITE, 1024);
-  if (!ctx->writer) {
-    fprintf(stderr, "Error: Failed to initialize writer for %s\n", ctx->filename);
-  }
+  ctx->schema.name = strdup(schema_name);
+  ctx->schema.reader = reader;
+  ctx->schema.writer = writer;
+  ctx->schema.appender = appender;
 
-  ctx->reader = io_init(ctx->filename, IO_READ, 1024);
-  if (!ctx->reader) {
-    fprintf(stderr, "Error: Failed to initialize reader for %s\n", ctx->filename);
-  }
-
-  load_table_catalog(ctx);
-  printf("Successfully loaded %lu table(s) from the catalog.\n", ctx->table_count);
+  LOG_INFO("Successfully loaded schema %s and initialized I/O.", schema_name);
 }
 
-
 void load_table_catalog(Context* ctx) {
-  if (!ctx || !ctx->fs || !ctx->filename) return;
-
-  char schema_path[MAX_PATH_LENGTH];
-  snprintf(schema_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", ctx->fs->tables_dir, ctx->filename);
+  if (!ctx || !ctx->fs) return;
 
   load_table_schema(ctx);
 
-  DIR* dir = opendir(schema_path);
+  DIR* dir = opendir(ctx->fs->tables_dir);
   if (!dir) {
-    perror("Error: Failed to open schema directory");
+    LOG_ERROR("Failed to open schema directory: %s", ctx->fs->tables_dir);
     return;
   }
+
+  ctx->tc_reader = io_init(ctx->fs->schema_file, IO_READ, 1024);
+  ctx->tc_writer = io_init(ctx->fs->schema_file, IO_WRITE, 1024);;
+  ctx->tc_appender = io_init(ctx->fs->schema_file, IO_APPEND, 1024);;
 
   struct dirent* entry;
   uint32_t tc = 0;
 
   while ((entry = readdir(dir)) != NULL) {
     if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-      while (tc < ctx->table_count && strcmp(entry->d_name, ctx->table_catalog[tc].name) != 0) {
-        tc++;
+      if (tc < ctx->table_count && (strcmp(entry->d_name, ctx->table_catalog[tc].name) == 0)) {
+        tc += 1;
       }
 
       if (tc < ctx->table_count && strcmp(entry->d_name, ctx->table_catalog[tc].name) == 0) {
         char table_path[MAX_PATH_LENGTH];
 
-        int ret = snprintf(table_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", schema_path, entry->d_name);
+        int ret = snprintf(table_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", ctx->fs->tables_dir, entry->d_name);
         if (ret >= MAX_PATH_LENGTH) {
-          fprintf(stderr, "Warning: Table path is too long, truncating to fit buffer size.\n");
+          LOG_WARN("Table path is too long, truncating to fit buffer size.");
           table_path[MAX_PATH_LENGTH - 1] = '\0'; 
         }
 
@@ -185,13 +242,13 @@ void load_table_catalog(Context* ctx) {
         
         ret = snprintf(index_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "xyz_row.idx", table_path);
         if (ret >= MAX_PATH_LENGTH) {
-          fprintf(stderr, "Warning: Index file path is too long, truncating to fit buffer size.\n");
+          LOG_WARN("Index file path is too long, truncating to fit buffer size.");
           index_file[MAX_PATH_LENGTH - 1] = '\0';  
         }
 
         ret = snprintf(data_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "rows.db", table_path);
         if (ret >= MAX_PATH_LENGTH) {
-          fprintf(stderr, "Warning: Data file path is too long, truncating to fit buffer size.\n");
+          LOG_WARN("Data file path is too long, truncating to fit buffer size.");
           data_file[MAX_PATH_LENGTH - 1] = '\0';
         }
 
@@ -202,52 +259,45 @@ void load_table_catalog(Context* ctx) {
     }
   }
 
-  if (tc < ctx->table_count) {
-    fprintf(stderr, "Warning: Not all directories match the expected table names from the schema.\n");
-  }
-
   closedir(dir);
 }
 
-
-
 void load_table_schema(Context* ctx) {
   if (!ctx || !ctx->fs) {
-    fprintf(stderr, "Error: Invalid context or missing filesystem.\n");
+    LOG_ERROR("Invalid context or missing filesystem.");
     return;
   }
 
   char schema_path[MAX_PATH_LENGTH];
   snprintf(schema_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "schema", ctx->fs->tables_dir);
 
-  printf("%s\n", schema_path);
   FILE* file = fopen(schema_path, "rb");
   if (!file) {
-    perror("Error: Failed to open schema file");
+    LOG_ERROR("Failed to open schema file: %s", schema_path);
     return;
   }
 
   uint32_t db_init;
   if (fread(&db_init, sizeof(uint32_t), 1, file) != 1) {
-    fprintf(stderr, "Error: Failed to read database initialization magic number.\n");
+    LOG_ERROR("Failed to read database initialization magic number.");
     fclose(file);
     return;
   }
 
   if (db_init != DB_INIT_MAGIC) {
-    fprintf(stderr, "Error: Invalid database file (wrong DB INIT magic number: 0x%X).\n", db_init);
+    LOG_ERROR("Invalid database file (wrong DB INIT magic number: 0x%X).", db_init);
     fclose(file);
     return;
   }
 
   if (fread(&ctx->table_count, sizeof(uint32_t), 1, file) != 1) {
-    fprintf(stderr, "Error: Failed to read table count.\n");
+    LOG_ERROR("Failed to read table count.");
     fclose(file);
     return;
   }
 
   if (ctx->table_count > MAX_TABLES) {
-    fprintf(stderr, "Error: Table count exceeds maximum allowed tables.\n");
+    LOG_ERROR("Table count exceeds maximum allowed tables.");
     fclose(file);
     return;
   }
@@ -257,22 +307,22 @@ void load_table_schema(Context* ctx) {
     TableCatalogEntry* entry = &ctx->table_catalog[tc];
 
     if (fread(&entry->offset, sizeof(uint32_t), 1, file) != 1) {
-      fprintf(stderr, "Error: Failed to read table offset.\n");
+      LOG_ERROR("Failed to read table offset.");
       break;
     }
 
     if (fread(&entry->name_length, sizeof(uint8_t), 1, file) != 1) {
-      fprintf(stderr, "Error: Failed to read table name length.\n");
+      LOG_ERROR("Failed to read table name length.");
       break;
     }
 
     if (entry->name_length == 0 || entry->name_length >= sizeof(entry->name)) {
-      fprintf(stderr, "Error: Invalid table name length (%u).\n", entry->name_length);
+      LOG_ERROR("Invalid table name length (%u).", entry->name_length);
       break;
     }
 
     if (fread(entry->name, sizeof(char), entry->name_length, file) != entry->name_length) {
-      fprintf(stderr, "Error: Failed to read table name.\n");
+      LOG_ERROR("Failed to read table name.");
       break;
     }
     entry->name[entry->name_length] = '\0';

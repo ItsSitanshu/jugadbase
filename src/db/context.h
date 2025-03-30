@@ -15,20 +15,32 @@
 typedef struct Context {
   Lexer* lexer;
   Parser* parser;
-  IO* reader;
-  IO* writer;
-  IO* appender;
-  
-  char* filename;
   char* uuid;
-
-  uint32_t next_row_id; 
 
   TableCatalogEntry table_catalog[MAX_TABLES];
   size_t table_count;
 
   FS* fs;
   FILE* db_file;
+
+  IO* tc_reader;
+  IO* tc_writer;
+  IO* tc_appender;
+
+  struct {
+    IO* reader;
+    IO* writer;
+    IO* appender;
+    uint32_t next_row_id; 
+    char* name;
+  } schema;
+
+  struct {
+    IO* reader;
+    IO* writer;
+    IO* appender;
+  } idx;
+
   Page current_page;
 } Context;
 
@@ -40,6 +52,6 @@ void process_file(char* filename);
 
 void load_table_catalog(Context* ctx);
 void load_table_schema(Context* ctx);
-void switch_schema(Context* ctx, char* filename);
+void switch_schema(Context* ctx, char* schema_name);
 
 #endif // CONTEXT_H
