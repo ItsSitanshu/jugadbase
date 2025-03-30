@@ -5,8 +5,19 @@
 
 #include "executor.h"
 #include "utils/cli.h"
+#include "utils/log.h"
 
 int main(int argc, char* argv[]) {
+  for (int i = 1; i < argc; i++) {
+    if (strcmp(argv[i], "--verbose") == 0 && i + 1 < argc) {
+      *verbosity_level = atoi(argv[++i]); 
+    }
+  }
+
+  if (*verbosity_level == 1) {
+    LOG_WARN("Invalid verbosity level: %d. Defaulting to WARN.", *verbosity_level);
+  }
+
   Context* ctx = ctx_init();
 
   if (!ctx) {
@@ -14,29 +25,12 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  char* schema_name = (argc > 1) ? argv[1] : "default.jdb";
-  if (argc > 1) {
-    switch_schema(ctx, argv[1]);
-  } else {
-    switch_schema(ctx, schema_name);
-  }
-
-  for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--verbose") == 0 && i + 1 < argc) {
-      verbosity_level = atoi(argv[++i]); 
-    }
-  }
-
-  if (verbosity_level == 1) {
-    LOG_WARN("Invalid verbosity level: %d. Defaulting to WARN.", verbosity_level);
-  }
-
   char input[1024];
   while (1) {
     char short_cwd[256];
     get_short_cwd(short_cwd, sizeof(short_cwd));
 
-    printf(CYAN "/%s " GREEN "[%s]" RESET "> " , short_cwd, ctx->filename);
+    printf(COLOR_RED "/%s " COLOR_MAGENTA "[jugad-cli]" COLOR_RESET "> " , short_cwd);
     fflush(stdout);
 
     if (!fgets(input, sizeof(input), stdin)) {
@@ -47,7 +41,7 @@ int main(int argc, char* argv[]) {
     input[strcspn(input, "\n")] = 0;
 
     if (strcmp(input, ".quit") == 0) {
-      printf(GREEN "Exiting...\n" RESET);
+      LOG_INFO("Exiting...");
       break;
     }
 
