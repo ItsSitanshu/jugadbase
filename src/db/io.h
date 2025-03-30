@@ -67,6 +67,7 @@ size_t io_read(IO* io, void* buffer, size_t size);
 void io_seek(IO* io, long offset, int whence);
 void io_seek_write(IO* io, long offset, const void* data, size_t size, int whence);
 long io_tell(IO* io);
+void io_clear_buffer(IO* io);
 
 TableMetadata* io_read_metadata(IO* io, const char* table_name);
 
