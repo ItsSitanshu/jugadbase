@@ -1,11 +1,6 @@
 #ifndef CLI_H
 #define CLI_H
 
-
-#define GREEN   "\033[1;32m"
-#define CYAN    "\033[1;36m"
-#define RESET   "\033[0m"
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
