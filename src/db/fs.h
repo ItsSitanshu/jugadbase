@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
+#include <stdint.h>
 
 #if defined(_WIN32) || defined(_WIN64)
   #include <direct.h> 
@@ -49,7 +49,7 @@ static void create_file(const char* file_path) {
     if (file) {
       fclose(file); 
     } else {
-      perror("Error: Failed to create file");
+      LOG_ERROR("Failed to create file \n\t > %s\n", file_path);
     }
   }
 }
@@ -69,6 +69,7 @@ typedef struct {
   char* config_dir;
   char* global_transaction_log;
   char* db_config_file;
+  char* schema_file;
   char* logging_config_file;
 } FS;
 
