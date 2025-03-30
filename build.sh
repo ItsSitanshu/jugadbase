@@ -37,8 +37,7 @@ cmake -B $BUILD_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_MODULE_PATH=/usr/shar
 cd $BUILD_DIR && make
 
 if [ "$RUN_AFTER_BUILD" -eq 1 ]; then
-  ./jugad-cli
-  xxd default.jdb
+  ./jugad-cli --verbose 3
 fi
 
 if [ "$RUN_TESTS" -eq 1 ]; then

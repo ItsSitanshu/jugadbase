@@ -1,2 +1,4 @@
 #include "log.h"
-int verbosity_level = 1; 
+
+int actual_verbosity_level = 1;
+int* verbosity_level = &actual_verbosity_level; 
