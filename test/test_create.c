@@ -5,16 +5,10 @@
 
 #include "executor.h"
 
-#define TEST_SCHEMA_FILE "test.jdb"
-
 START_TEST(test_read_table_schema) {
-  unlink(TEST_SCHEMA_FILE);  
-
   Context* ctx = ctx_init();
   ck_assert_ptr_nonnull(ctx);
-
-  switch_schema(ctx, TEST_SCHEMA_FILE);
-
+  
   char* create_query = "CREATE TABLE users ("
                        "id SERIAL PRIMKEY, "
                        "name VARCHAR(50) NOT NULL UNIQUE, "
@@ -25,7 +19,7 @@ START_TEST(test_read_table_schema) {
   ExecutionResult res = process(ctx, create_query);
   ck_assert_int_eq(res.status_code, 0);
 
-  TableSchema* schema = read_table_schema(ctx, "users");
+  TableSchema* schema = find_table_schema_tc(ctx, "users");
 
   ck_assert_str_eq(schema->table_name, "users");
   ck_assert_int_eq(schema->column_count, 5);

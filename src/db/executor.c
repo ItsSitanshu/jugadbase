@@ -166,114 +166,28 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     return (ExecutionResult){0, "Table creation failed"};;
   }
 
+  char rows_file[MAX_PATH_LENGTH];
+  int ret = snprintf(rows_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "rows.db", table_dir);
+  if (ret >= MAX_PATH_LENGTH) {
+    LOG_WARN("Rows file path is too long, truncating to fit buffer size.");
+    rows_file[MAX_PATH_LENGTH - 1] = '\0';
+  }
+
+  FILE* rows_fp = fopen(rows_file, "w");
+  if (!rows_fp) {
+    LOG_ERROR("Failed to create rows file: %s", rows_file);
+    rmdir(table_dir);
+    return (ExecutionResult){0, "Failed to create rows file"};
+  }
+
+  fclose(rows_fp);
+
   io_flush(ctx->tc_writer);
 
+  load_tc(ctx);
+  load_schema_tc(ctx, schema->table_name);
+
   return (ExecutionResult){0, "Table schema written successfully"};
-}
-
-TableSchema* read_table_schema(Context* ctx, char* table_name) {
-  if (!ctx || !ctx->schema.reader) {
-    fprintf(stderr, "Error: No database file is open.\n");
-    return NULL;
-  }
-
-  uint8_t found_idx;
-  uint32_t initial_offset = 0;
-
-  for (int i = 0; i < ctx->table_count; i++) {
-    if (strcmp(ctx->table_catalog[i].name, table_name) == 0) {
-      break;
-    }
-    initial_offset += ctx->table_catalog[i].offset;
-  }
-
-  IO* io = ctx->schema.reader;
-  TableSchema* schema = malloc(sizeof(TableSchema));
-
-  io_seek(io, (sizeof(uint32_t) * 3), SEEK_SET);
-  io_seek(io, initial_offset, SEEK_CUR);
-  
-  uint8_t table_name_length;
-  if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
-    fprintf(stderr, "Error: Failed to read table name length.\n");
-    return NULL;
-  }
-
-  if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
-    fprintf(stderr, "Error: Failed to read table name.\n");
-    return NULL;
-  }
-  schema->table_name[table_name_length] = '\0';
-  
-  if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
-    fprintf(stderr, "Error: Failed to read column count.\n");
-    return NULL;
-  }
-
-  schema->columns = malloc(sizeof(ColumnDefinition) * schema->column_count);
-  if (!schema->columns) {
-    fprintf(stderr, "Error: Memory allocation failed for columns.\n");
-    return NULL;
-  }
-
-  for (uint8_t i = 0; i < schema->column_count; i++) {
-    ColumnDefinition* col = &schema->columns[i];
-
-    uint8_t col_name_length;
-    if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
-      fprintf(stderr, "Error: Failed to read column name length.\n");
-      free(schema->columns);
-      return NULL;
-    }
-
-    if (io_read(io, col->name, col_name_length) != col_name_length) {
-      fprintf(stderr, "Error: Failed to read column name.\n");
-      free(schema->columns);
-      return NULL;
-    }
-    col->name[col_name_length] = '\0';
-
-    io_read(io, &col->type, sizeof(uint32_t));
-    io_read(io, &col->type_varchar, sizeof(uint8_t));
-    io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
-    io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
-
-    io_read(ctx->schema.reader, &col->is_primary_key, sizeof(bool));
-    io_read(ctx->schema.reader, &col->is_unique, sizeof(bool));
-    io_read(ctx->schema.reader, &col->is_not_null, sizeof(bool));
-    io_read(ctx->schema.reader, &col->is_index, sizeof(bool));
-    io_read(ctx->schema.reader, &col->is_auto_increment, sizeof(bool));
-
-    io_read(ctx->schema.reader, &col->has_default, sizeof(bool));
-    if (col->has_default) {
-      if (io_read(ctx->schema.reader, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-        fprintf(stderr, "Error: Failed to read default value.\n");
-        free(schema->columns);
-        return NULL;
-      }
-    }
-
-    io_read(ctx->schema.reader, &col->has_check, sizeof(bool));
-    if (col->has_check) {
-      if (io_read(ctx->schema.reader, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-        fprintf(stderr, "Error: Failed to read check constraint.\n");
-        free(schema->columns);
-        return NULL;
-      }
-    }
-
-    io_read(ctx->schema.reader, &col->is_foreign_key, sizeof(bool));
-    if (col->is_foreign_key) {
-      if (io_read(ctx->schema.reader, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN ||
-          io_read(ctx->schema.reader, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-        fprintf(stderr, "Error: Failed to read foreign key details.\n");
-        free(schema->columns);
-        return NULL;
-      }
-    }
-  }
-
-  return schema;
 }
 
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
@@ -281,10 +195,11 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 
   if (!ctx || !cmd || !ctx->tc_appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
-  }
+  } 
 
   IO* io_A = ctx->tc_appender;
-  TableSchema* schema = read_table_schema(ctx, cmd->schema->table_name);
+
+  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
   
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
@@ -436,8 +351,8 @@ void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def)
 
 uint32_t get_table_offset(Context* ctx, const char* table_name) {
   for (int i = 0; i < ctx->table_count; i++) {
-    if (strcmp(ctx->table_catalog[i].name, table_name) == 0) {
-      return ctx->table_catalog[i].offset;
+    if (strcmp(ctx->tc[i].name, table_name) == 0) {
+      return ctx->tc[i].offset;
     }
   }
   return 0;  

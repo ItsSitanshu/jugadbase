@@ -69,7 +69,7 @@ Context* ctx_init() {
   ctx->idx.appender = NULL;
 
   ctx->table_count = 0;
-  memset(ctx->table_catalog, 0, sizeof(ctx->table_catalog));
+  memset(ctx->tc, 0, sizeof(ctx->tc));
 
   ctx->tc_reader = NULL;
   ctx->tc_writer = NULL;
@@ -79,7 +79,10 @@ Context* ctx_init() {
 
   memset(&ctx->current_page, 0, sizeof(Page));
 
-  load_table_catalog(ctx);
+  load_tc(ctx);
+  if (!load_initial_schema(ctx)) {
+    LOG_FATAL("Failed to read schema");
+  }
   LOG_INFO("Successfully loaded %lu table(s) from catalog", ctx->table_count);
 
   return ctx;
@@ -146,14 +149,14 @@ void switch_schema(Context* ctx, char* schema_name) {
     return;
   }
 
-  load_table_catalog(ctx);
+  load_tc(ctx);
 
   bool schema_found = false;
   TableCatalogEntry* schema_entry = NULL;
 
   for (size_t i = 0; i < ctx->table_count; i++) {
-    if (strcmp(ctx->table_catalog[i].name, schema_name) == 0) {
-      schema_entry = &ctx->table_catalog[i];
+    if (strcmp(ctx->tc[i].name, schema_name) == 0) {
+      schema_entry = &ctx->tc[i];
       schema_found = true;
       break;
     }
@@ -205,7 +208,7 @@ void switch_schema(Context* ctx, char* schema_name) {
   LOG_INFO("Successfully loaded schema %s and initialized I/O.", schema_name);
 }
 
-void load_table_catalog(Context* ctx) {
+void load_tc(Context* ctx) {
   if (!ctx || !ctx->fs) return;
 
   load_table_schema(ctx);
@@ -225,38 +228,38 @@ void load_table_catalog(Context* ctx) {
 
   while ((entry = readdir(dir)) != NULL) {
     if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
-      if (tc < ctx->table_count && (strcmp(entry->d_name, ctx->table_catalog[tc].name) == 0)) {
-        tc += 1;
+      bool found = false;
+
+      for (int i = 0; i < ctx->table_count; i++) {
+        if (strcmp(entry->d_name, ctx->tc[i].name) == 0) {
+          found = true;
+          break;
+        }
       }
 
-      if (tc < ctx->table_count && strcmp(entry->d_name, ctx->table_catalog[tc].name) == 0) {
-        char table_path[MAX_PATH_LENGTH];
+      if (!found) {
+        continue; 
+      }
 
-        int ret = snprintf(table_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", ctx->fs->tables_dir, entry->d_name);
-        if (ret >= MAX_PATH_LENGTH) {
-          LOG_WARN("Table path is too long, truncating to fit buffer size.");
-          table_path[MAX_PATH_LENGTH - 1] = '\0'; 
-        }
+      char table_path[MAX_PATH_LENGTH];
+      snprintf(table_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", ctx->fs->tables_dir, entry->d_name);
 
-        char index_file[MAX_PATH_LENGTH], data_file[MAX_PATH_LENGTH];
-        
-        ret = snprintf(index_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "xyz_row.idx", table_path);
-        if (ret >= MAX_PATH_LENGTH) {
-          LOG_WARN("Index file path is too long, truncating to fit buffer size.");
-          index_file[MAX_PATH_LENGTH - 1] = '\0';  
-        }
+      char data_file[MAX_PATH_LENGTH];
+      snprintf(data_file, MAX_PATH_LENGTH, "%.*s" PATH_SEPARATOR "rows.db",
+        (int)(MAX_PATH_LENGTH - 10), table_path);
 
-        ret = snprintf(data_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "rows.db", table_path);
-        if (ret >= MAX_PATH_LENGTH) {
-          LOG_WARN("Data file path is too long, truncating to fit buffer size.");
-          data_file[MAX_PATH_LENGTH - 1] = '\0';
-        }
-
-        if (access(index_file, F_OK) == 0 && access(data_file, F_OK) == 0) {
-          tc++;  
-        }
+      if (access(data_file, F_OK) == 0) {
+        tc += 1;  
+      } else {
+        LOG_WARN("Data file missing: %s", data_file);
       }
     }
+  }
+
+
+  if (tc < ctx->table_count) {
+    LOG_WARN("Not all directories match the expected table names from the schema.");
+    LOG_DEBUG("Table Catalog defines %ld whilst %d were read", ctx->table_count, tc);
   }
 
   closedir(dir);
@@ -304,7 +307,7 @@ void load_table_schema(Context* ctx) {
 
   uint32_t tc = 0;
   while (tc < ctx->table_count) {
-    TableCatalogEntry* entry = &ctx->table_catalog[tc];
+    TableCatalogEntry* entry = &ctx->tc[tc];
 
     if (fread(&entry->offset, sizeof(uint32_t), 1, file) != 1) {
       LOG_ERROR("Failed to read table offset.");
@@ -333,4 +336,279 @@ void load_table_schema(Context* ctx) {
   }
 
   fclose(file);
+}
+
+unsigned int hash_table_name(const char* table_name) {
+  unsigned int hash = 0;
+  while (*table_name) {
+    hash = (hash << 5) + hash + *table_name++;
+  }
+  return hash % MAX_TABLES;
+}
+
+bool load_schema_tc(Context* ctx, char* table_name) {
+  if (!ctx || !ctx->tc_reader) {
+    LOG_ERROR("No database file is open.");
+    return false;
+  }
+
+  unsigned int idx = hash_table_name(table_name);
+  if (ctx->tc[idx].schema) {
+    if (strcmp(ctx->tc[idx].schema->table_name, table_name) == 0) {
+      return true;
+    }
+  }
+
+  uint32_t initial_offset = 12;
+  for (int i = 0; i < ctx->table_count; i++) {
+    if (strcmp(ctx->tc[i].name, table_name) != 0) {
+      // LOG_DEBUG("> %lu\n", initial_offset);
+      // initial_offset += ctx->tc[i].offset;
+      // LOG_DEBUG(">> %lu\n", initial_offset);
+      break;
+    }
+  }
+
+  IO* io = ctx->tc_reader;
+  TableSchema* schema = malloc(sizeof(TableSchema));
+  if (!schema) {
+    LOG_ERROR("Memory allocation failed for schema.");
+    return false;
+  }
+
+  io_seek(io, initial_offset, SEEK_SET);
+
+  uint8_t table_name_length;
+  if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    LOG_ERROR("Failed to read table name length.");
+    free(schema);
+    return false;
+  }
+
+  LOG_DEBUG("%u\n", table_name_length);
+
+
+  if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
+    LOG_ERROR("Failed to read table name.");
+    free(schema);
+    return false;
+  }
+  schema->table_name[table_name_length] = '\0';
+
+  if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    LOG_ERROR("Failed to read column count.");
+    free(schema);
+    return false;
+  }
+
+  schema->columns = malloc(sizeof(ColumnDefinition) * schema->column_count);
+  if (!schema->columns) {
+    LOG_ERROR("Memory allocation failed for columns.");
+    free(schema);
+    return false;
+  }
+  
+  for (uint8_t i = 0; i < schema->column_count; i++) {
+    ColumnDefinition* col = &schema->columns[i];
+
+    uint8_t col_name_length;
+    if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+      LOG_ERROR("Failed to read column name length.");
+      free(schema->columns);
+      free(schema);
+      return false;
+    }
+
+    if (io_read(io, col->name, col_name_length) != col_name_length) {
+      LOG_ERROR("Failed to read column name.");
+      free(schema->columns);
+      free(schema);
+      return false;
+    }
+    col->name[col_name_length] = '\0';
+
+    io_read(io, &col->type, sizeof(uint32_t));
+    io_read(io, &col->type_varchar, sizeof(uint8_t));
+    io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
+    io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
+
+    io_read(io, &col->is_primary_key, sizeof(bool));
+    io_read(io, &col->is_unique, sizeof(bool));
+    io_read(io, &col->is_not_null, sizeof(bool));
+    io_read(io, &col->is_index, sizeof(bool));
+    io_read(io, &col->is_auto_increment, sizeof(bool));
+
+    io_read(io, &col->has_default, sizeof(bool));
+    if (col->has_default) {
+      if (io_read(io, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+        LOG_ERROR("Failed to read default value.");
+        free(schema->columns);
+        free(schema);
+        return false;
+      }
+    }
+
+    io_read(io, &col->has_check, sizeof(bool));
+    if (col->has_check) {
+      if (io_read(io, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+        LOG_ERROR("Failed to read check constraint.");
+        free(schema->columns);
+        free(schema);
+        return false;
+      }
+    }
+
+    io_read(io, &col->is_foreign_key, sizeof(bool));
+    if (col->is_foreign_key) {
+      if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN ||
+          io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+        LOG_ERROR("Failed to read foreign key details.");
+        free(schema->columns);
+        free(schema);
+        return false;
+      }
+    }
+  }
+
+  ctx->tc[idx].schema = schema;
+  LOG_INFO("Created new schema entry in the in memory catalog at %d", idx);
+  return true;
+}
+
+TableSchema* find_table_schema_tc(Context* ctx, const char* filename) {
+  if (!ctx || !filename) {
+    LOG_ERROR("Invalid context or filename provided.");
+    return NULL;
+  }
+
+  unsigned int idx = hash_table_name(filename);
+  LOG_INFO("Looking for table @ hash %d | %s == %s", idx, ctx->tc[idx].schema->table_name, filename);
+  if (ctx->tc[idx].schema && strcmp(ctx->tc[idx].schema->table_name, filename) == 0) {
+    return ctx->tc[idx].schema;
+  }
+
+  for (int i = 0; i < ctx->table_count; i++) {
+    if (ctx->tc[i].schema && strcmp(ctx->tc[i].schema->table_name, filename) == 0) {
+      return ctx->tc[i].schema;
+    }
+  }
+
+  LOG_ERROR("Schema for filename '%s' not found.", filename);
+  return NULL;
+}
+
+bool load_initial_schema(Context* ctx) {
+  if (!ctx || !ctx->tc_reader) {
+    LOG_ERROR("No database file is open.");
+    return false;
+  }
+
+  IO* io = ctx->tc_reader;
+
+  for (size_t i = 0; i < ctx->table_count; i++) {
+    const char* table_name = ctx->tc[i].name;
+    unsigned int idx = hash_table_name(table_name);
+    
+    if (ctx->tc[idx].schema) continue;
+
+    TableSchema* schema = malloc(sizeof(TableSchema));
+    if (!schema) {
+      LOG_ERROR("Memory allocation failed for schema.");
+      return false;
+    }
+
+    io_seek(io, i * sizeof(TableSchema), SEEK_SET);
+
+    uint8_t table_name_length;
+    if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+      LOG_ERROR("Failed to read table name length.");
+      free(schema);
+      return false;
+    }
+
+    if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
+      LOG_ERROR("Failed to read table name.");
+      free(schema);
+      return false;
+    }
+    schema->table_name[table_name_length] = '\0';
+
+    if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
+      LOG_ERROR("Failed to read column count.");
+      free(schema);
+      return false;
+    }
+
+    schema->columns = malloc(sizeof(ColumnDefinition) * schema->column_count);
+    if (!schema->columns) {
+      LOG_ERROR("Memory allocation failed for columns.");
+      free(schema);
+      return false;
+    }
+    
+    for (uint8_t j = 0; j < schema->column_count; j++) {
+      ColumnDefinition* col = &schema->columns[j];
+
+      uint8_t col_name_length;
+      if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+        LOG_ERROR("Failed to read column name length.");
+        free(schema->columns);
+        free(schema);
+        return false;
+      }
+
+      if (io_read(io, col->name, col_name_length) != col_name_length) {
+        LOG_ERROR("Failed to read column name.");
+        free(schema->columns);
+        free(schema);
+        return false;
+      }
+      col->name[col_name_length] = '\0';
+
+      io_read(io, &col->type, sizeof(uint32_t));
+      io_read(io, &col->type_varchar, sizeof(uint8_t));
+      io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
+      io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
+
+      io_read(io, &col->is_primary_key, sizeof(bool));
+      io_read(io, &col->is_unique, sizeof(bool));
+      io_read(io, &col->is_not_null, sizeof(bool));
+      io_read(io, &col->is_index, sizeof(bool));
+      io_read(io, &col->is_auto_increment, sizeof(bool));
+
+      io_read(io, &col->has_default, sizeof(bool));
+      if (col->has_default) {
+        if (io_read(io, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+          LOG_ERROR("Failed to read default value.");
+          free(schema->columns);
+          free(schema);
+          return false;
+        }
+      }
+
+      io_read(io, &col->has_check, sizeof(bool));
+      if (col->has_check) {
+        if (io_read(io, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+          LOG_ERROR("Failed to read check constraint.");
+          free(schema->columns);
+          free(schema);
+          return false;
+        }
+      }
+
+      io_read(io, &col->is_foreign_key, sizeof(bool));
+      if (col->is_foreign_key) {
+        if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN ||
+            io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+          LOG_ERROR("Failed to read foreign key details.");
+          free(schema->columns);
+          free(schema);
+          return false;
+        }
+      }
+    }
+
+    ctx->tc[idx].schema = schema;
+  }
+  return true;
 }

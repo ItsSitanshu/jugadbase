@@ -309,7 +309,7 @@ JQLCommand parser_parse_create_table(Parser *parser) {
   }
 
   parser_consume(parser);
-
+  
   return command;
 }
 
@@ -332,6 +332,7 @@ JQLCommand parser_parse_insert(Parser *parser) {
     return command;
   }
 
+  command.schema = malloc(sizeof(TableSchema));
   strcpy(command.schema->table_name, parser->cur->value);
   parser_consume(parser); 
 

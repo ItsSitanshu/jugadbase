@@ -75,13 +75,6 @@ typedef struct ExecutionOrder {
   struct ExecutionOrder *next;
 } ExecutionOrder;
 
-
-typedef struct {
-  uint8_t name_length;
-  char name[MAX_IDENTIFIER_LEN]; 
-  uint32_t offset; 
-} TableCatalogEntry;
-
 typedef struct {
   uint8_t column_index;
   uint8_t type; 
@@ -133,6 +126,13 @@ typedef struct {
   ColumnDefinition* columns;
   BTree** btree;
 } TableSchema;
+
+typedef struct {
+  uint8_t name_length;
+  char name[MAX_IDENTIFIER_LEN]; 
+  uint32_t offset;
+  TableSchema* schema;
+} TableCatalogEntry;
 
 typedef struct {
   JQLCommandType type;

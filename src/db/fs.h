@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+  
+#include "../utils/log.h"
 
 #if defined(_WIN32) || defined(_WIN64)
   #include <direct.h> 
@@ -18,12 +20,23 @@
   #define LOGS_VERBOSE 0
 #endif
 
-
 #define MAX_PATH_LENGTH 512
 
 #ifndef DB_ROOT_DIRECTORY
-  #define DB_ROOT_DIRECTORY "C:\\db_root_directory"  
-#endif 
+  #ifdef _WIN32
+    #ifndef DB_ROOT_DIRECTORY
+      #define DB_ROOT_DIRECTORY "C:\\db_root_directory"
+    #endif
+  #elif defined(__linux__)
+    #ifndef DB_ROOT_DIRECTORY
+      #include <stdlib.h>  
+      #define DB_ROOT_DIRECTORY_PATH getenv("HOME") ? getenv("HOME") : "/home/user" 
+      #define DB_ROOT_DIRECTORY DB_ROOT_DIRECTORY_PATH "/.jugad"  
+    #endif
+  #else
+    #error "Unsupported operating system"
+  #endif
+#endif
 
 static int create_directory(const char* path) {
   #if defined(_WIN32) || defined(_WIN64)

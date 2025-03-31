@@ -17,7 +17,7 @@ typedef struct Context {
   Parser* parser;
   char* uuid;
 
-  TableCatalogEntry table_catalog[MAX_TABLES];
+  TableCatalogEntry tc[MAX_TABLES];
   size_t table_count;
 
   FS* fs;
@@ -50,8 +50,13 @@ void ctx_free(Context* ctx);
 bool process_dot_cmd(Context* ctx, char* input);
 void process_file(char* filename);
 
-void load_table_catalog(Context* ctx);
-void load_table_schema(Context* ctx);
+void load_tc(Context* ctx);
 void switch_schema(Context* ctx, char* schema_name);
+void load_table_schema(Context* ctx);
+
+unsigned int hash_table_name(const char* table_name);
+bool load_schema_tc(Context* ctx, char* table_name);
+TableSchema* find_table_schema_tc(Context* ctx, const char* filename);
+bool load_initial_schema(Context* ctx);
 
 #endif // CONTEXT_H
