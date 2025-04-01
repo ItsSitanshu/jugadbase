@@ -22,6 +22,45 @@ struct statfs {
 #include <unistd.h>
 #endif
 
+static void clear_screen() {
+  #ifdef __unix__
+    system("clear");
+  #endif
+
+  #ifdef _WIN32
+    system("cls");
+  #endif
+}
+
+static int create_directory(const char* path) {
+  #if defined(_WIN32) || defined(_WIN64)
+    struct _stat st = {0};
+    if (_stat(path, &st) == -1) {
+      return _mkdir(path);  
+    }
+  #else
+    struct stat st = {0};
+    if (stat(path, &st) == -1) {
+      return mkdir(path, 0700); 
+    }
+  #endif
+  return 0;
+}
+
+static void create_file(const char* file_path) {
+  FILE *file = fopen(file_path, "r");
+  if (file) {
+    fclose(file);
+  } else {
+    file = fopen(file_path, "w");
+    if (file) {
+      fclose(file); 
+    } else {
+      LOG_ERROR("Failed to create file \n\t > %s\n", file_path);
+    }
+  }
+}
+
 #define MAX_TABLE_NAME 32
 #define MAX_SCHEMA 128
 #define MAX_KEYS_PER_NODE 1000
