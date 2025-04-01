@@ -43,6 +43,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   /*
   [4B]  DB_INIT_MAGIC
   [4B]  Table Count
+  [4B * 255] Table Offsets
   (every file not every entry) 
 
   For each table:
@@ -138,6 +139,8 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_seek(ctx->tc_writer, schema_offset, SEEK_SET); 
   io_write(ctx->tc_writer, &schema_length, sizeof(uint32_t)); 
 
+  int offset_index = hash_table_name(schema->table_name) * sizeof(uint32_t) + (2 * sizeof(uint32_t));
+  io_seek_write(ctx->tc_writer, offset_index, &schema_offset, sizeof(uint32_t), SEEK_SET);
   
   off_t schema_offset_before_flush = io_tell(tca_io); 
 
@@ -146,7 +149,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   char table_dir[MAX_PATH_LENGTH];
   snprintf(table_dir, sizeof(table_dir), "%s/%s", ctx->fs->tables_dir, schema->table_name);
 
-  if (mkdir(table_dir, 0777) != 0) {
+  if (create_directory(table_dir) != 0) {
     LOG_ERROR("Failed to create table directory");
 
     io_seek(tca_io, schema_offset_before_flush, SEEK_SET);
@@ -163,7 +166,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     table_count--;  
     io_seek_write(ctx->tc_writer, TABLE_COUNT_OFFSET, &table_count, sizeof(uint32_t), SEEK_SET);
 
-    return (ExecutionResult){0, "Table creation failed"};;
+    return (ExecutionResult){0, "Table creat.ion failed"};;
   }
 
   char rows_file[MAX_PATH_LENGTH];

@@ -75,6 +75,10 @@ Context* ctx_init() {
   ctx->tc_writer = NULL;
   ctx->tc_appender = NULL;
 
+  ctx->tc_reader = io_init(ctx->fs->schema_file, IO_READ, 1024);
+  ctx->tc_writer = io_init(ctx->fs->schema_file, IO_WRITE, 1024);
+  ctx->tc_appender = io_init(ctx->fs->schema_file, IO_APPEND, 1024);
+
   ctx->db_file = NULL;
 
   memset(&ctx->current_page, 0, sizeof(Page));
@@ -114,27 +118,42 @@ void ctx_free(Context* ctx) {
 }
 
 bool process_dot_cmd(Context* ctx, char* input) {
-  if (strncmp(input, ".schema", 7) == 0) {
-    char* schema_name = input + 8; 
-    while (*schema_name == ' ') schema_name++;
-
-    if (*schema_name == '\0') {
-      LOG_WARN("Usage: .schema <schemaname>");
-    } else {
-      LOG_INFO("Changing schema to: %s", schema_name);
-      switch_schema(ctx, schema_name);
-    }
+  if (strcmp(input, ".help") == 0) {
+    LOG_INFO("Available commands:\n"
+      "  .tables       - List all tables\n"
+      "  .quit         - Exit the program\n"
+      "  .help         - Show this help message\n"
+      "  .stats        - Show database statistics\n"
+      "  .dump <file>  - Export database to a file");
     return true;
-  } else if (strcmp(input, ".help") == 0) {
-    LOG_INFO("Available commands:\n  .schema <schemaname>  - Show schema of the given name\n  .quit                 - Exit the program\n  .help                 - Show this help message");
+  } else if (strcmp(input, ".tables") == 0) {
+    list_tables(ctx);
+    return true;
+  } else if (strcmp(input, ".stats") == 0) {
+    // show_db_stats(ctx); backtrack transactions?
     return true;
   } else if (strcmp(input, ".quit") == 0) {
     LOG_INFO("Exiting...");
     ctx_free(ctx);
     exit(0);
+  } else if (strcmp(input, ".clear") == 0) {
+    clear_screen();
+    return true;
   }
 
   return false;
+}
+
+void list_tables(Context* ctx) {
+  if (!ctx || ctx->table_count == 0) {
+    LOG_INFO("No tables found in the database.");
+    return;
+  }
+
+  LOG_INFO("Tables in the database:");
+  for (int i = 0; i < ctx->table_count; i++) {
+    LOG_INFO("  - %s (%zu rows)", ctx->tc[i].name, ctx->tc[i].row_count);
+  }
 }
 
 void process_file(char* filename) {
@@ -220,8 +239,8 @@ void load_tc(Context* ctx) {
   }
 
   ctx->tc_reader = io_init(ctx->fs->schema_file, IO_READ, 1024);
-  ctx->tc_writer = io_init(ctx->fs->schema_file, IO_WRITE, 1024);;
-  ctx->tc_appender = io_init(ctx->fs->schema_file, IO_APPEND, 1024);;
+  ctx->tc_writer = io_init(ctx->fs->schema_file, IO_WRITE, 1024);
+  ctx->tc_appender = io_init(ctx->fs->schema_file, IO_APPEND, 1024);
 
   struct dirent* entry;
   uint32_t tc = 0;
@@ -270,51 +289,45 @@ void load_table_schema(Context* ctx) {
     LOG_ERROR("Invalid context or missing filesystem.");
     return;
   }
-
-  char schema_path[MAX_PATH_LENGTH];
-  snprintf(schema_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "schema", ctx->fs->tables_dir);
-
-  FILE* file = fopen(schema_path, "rb");
-  if (!file) {
-    LOG_ERROR("Failed to open schema file: %s", schema_path);
-    return;
-  }
+  
+  io_seek(ctx->tc_reader, 0, SEEK_SET);
 
   uint32_t db_init;
-  if (fread(&db_init, sizeof(uint32_t), 1, file) != 1) {
+  if (io_read(ctx->tc_reader, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
     LOG_ERROR("Failed to read database initialization magic number.");
-    fclose(file);
+    io_close(ctx->tc_reader);
     return;
   }
 
   if (db_init != DB_INIT_MAGIC) {
     LOG_ERROR("Invalid database file (wrong DB INIT magic number: 0x%X).", db_init);
-    fclose(file);
+    io_close(ctx->tc_reader);
     return;
   }
 
-  if (fread(&ctx->table_count, sizeof(uint32_t), 1, file) != 1) {
+  if (io_read(ctx->tc_reader, &ctx->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
     LOG_ERROR("Failed to read table count.");
-    fclose(file);
+    io_close(ctx->tc_reader);
     return;
   }
 
   if (ctx->table_count > MAX_TABLES) {
     LOG_ERROR("Table count exceeds maximum allowed tables.");
-    fclose(file);
+    io_close(ctx->tc_reader);
     return;
   }
 
-  uint32_t tc = 0;
-  while (tc < ctx->table_count) {
+  io_seek(ctx->tc_reader, sizeof(uint32_t) * MAX_TABLES, SEEK_CUR);
+
+  for (uint32_t tc = 0; tc < ctx->table_count; tc++) {
     TableCatalogEntry* entry = &ctx->tc[tc];
 
-    if (fread(&entry->offset, sizeof(uint32_t), 1, file) != 1) {
+    if (io_read(ctx->tc_reader, &entry->offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
       LOG_ERROR("Failed to read table offset.");
       break;
     }
 
-    if (fread(&entry->name_length, sizeof(uint8_t), 1, file) != 1) {
+    if (io_read(ctx->tc_reader, &entry->name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
       LOG_ERROR("Failed to read table name length.");
       break;
     }
@@ -324,18 +337,21 @@ void load_table_schema(Context* ctx) {
       break;
     }
 
-    if (fread(entry->name, sizeof(char), entry->name_length, file) != entry->name_length) {
+    if (io_read(ctx->tc_reader, entry->name, entry->name_length) != entry->name_length) {
       LOG_ERROR("Failed to read table name.");
       break;
     }
     entry->name[entry->name_length] = '\0';
 
-    fseek(file, (entry->offset - (entry->name_length + sizeof(uint32_t) + sizeof(uint8_t))), SEEK_CUR);
+    long current_pos = io_tell(ctx->tc_reader);
+    long next_offset = entry->offset - (entry->name_length + sizeof(uint32_t) + sizeof(uint8_t));
 
-    tc++;
+    if (next_offset > 0) {
+      io_seek(ctx->tc_reader, next_offset, SEEK_CUR);
+    }
   }
 
-  fclose(file);
+  io_close(ctx->tc_reader);
 }
 
 unsigned int hash_table_name(const char* table_name) {
@@ -359,12 +375,11 @@ bool load_schema_tc(Context* ctx, char* table_name) {
     }
   }
 
-  uint32_t initial_offset = 12;
+  uint32_t initial_offset = 0;
   for (int i = 0; i < ctx->table_count; i++) {
     if (strcmp(ctx->tc[i].name, table_name) != 0) {
-      // LOG_DEBUG("> %lu\n", initial_offset);
-      // initial_offset += ctx->tc[i].offset;
-      // LOG_DEBUG(">> %lu\n", initial_offset);
+      io_seek(ctx->tc_reader, (idx * sizeof(uint32_t)) + (2 * sizeof(uint32_t)), SEEK_SET);
+      io_read(ctx->tc_reader, &initial_offset, sizeof(uint32_t));
       break;
     }
   }
