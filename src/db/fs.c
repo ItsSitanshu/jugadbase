@@ -38,9 +38,12 @@ void log_schema_file_status(const char* path) {
 
     uint32_t magic = DB_INIT_MAGIC;
     uint32_t zero = 0;
-
+    uint32_t placeholders[MAX_TABLES] = {0};
+    
     fwrite(&magic, sizeof(uint32_t), 1, file);
     fwrite(&zero, sizeof(uint32_t), 1, file);
+    fwrite(placeholders, sizeof(uint32_t), MAX_TABLES, file);
+
     fclose(file);
 
     LOG_INFO("Initialized schema file with metadata");
