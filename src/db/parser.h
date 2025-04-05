@@ -3,6 +3,7 @@
 
 #include "lexer.h"
 #include "io.h"
+#include "btree.h"
 
 #define MAX_COLUMNS 256
 #define MAX_TEXT_SIZE 256
@@ -158,6 +159,7 @@ typedef struct {
   int function_count;
 
   char transaction[MAX_IDENTIFIER_LEN];
+  bool is_invalid;
 } JQLCommand;
 
 typedef struct {

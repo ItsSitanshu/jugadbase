@@ -258,6 +258,7 @@ JQLCommand parser_parse_create_table(Parser *parser) {
   JQLCommand command;
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_CREATE;
+  command.is_invalid = true;
 
   command.schema = malloc(sizeof(TableSchema));
 
@@ -310,6 +311,7 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   parser_consume(parser);
   
+  command.is_invalid = false;
   return command;
 }
 
