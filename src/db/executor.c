@@ -15,7 +15,7 @@ ExecutionResult process(Context* ctx, char* buffer) {
 }
 
 ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
-  if (!cmd) {
+  if (cmd->is_invalid) {
     return (ExecutionResult){1, "Invalid command"};
   }
 
