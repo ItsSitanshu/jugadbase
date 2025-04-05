@@ -152,7 +152,7 @@ void list_tables(Context* ctx) {
 
   LOG_INFO("Tables in the database:");
   for (int i = 0; i < ctx->table_count; i++) {
-    LOG_INFO("  - %s (%zu rows)", ctx->tc[i].name, ctx->tc[i].row_count);
+    // LOG_INFO("  - %s (%zu rows)", ctx->tc[i].name, ctx->tc[i].row_count);
   }
 }
 
@@ -374,15 +374,11 @@ bool load_schema_tc(Context* ctx, char* table_name) {
       return true;
     }
   }
-
-  uint32_t initial_offset = 0;
-  for (int i = 0; i < ctx->table_count; i++) {
-    if (strcmp(ctx->tc[i].name, table_name) != 0) {
-      io_seek(ctx->tc_reader, (idx * sizeof(uint32_t)) + (2 * sizeof(uint32_t)), SEEK_SET);
-      io_read(ctx->tc_reader, &initial_offset, sizeof(uint32_t));
-      break;
-    }
-  }
+  
+  uint32_t initial_offset = 0; 
+  // Hash-index*4B + Magic Identifier 4B + Table Count 4B + Table Offset 4B (skipping for reading purpose) 
+  io_seek(ctx->tc_reader, (idx * sizeof(uint32_t)) + (3 * sizeof(uint32_t)), SEEK_SET);
+  io_read(ctx->tc_reader, &initial_offset, sizeof(uint32_t));
 
   IO* io = ctx->tc_reader;
   TableSchema* schema = malloc(sizeof(TableSchema));
@@ -401,7 +397,6 @@ bool load_schema_tc(Context* ctx, char* table_name) {
   }
 
   LOG_DEBUG("%u\n", table_name_length);
-
 
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
@@ -497,7 +492,7 @@ TableSchema* find_table_schema_tc(Context* ctx, const char* filename) {
   }
 
   unsigned int idx = hash_table_name(filename);
-  LOG_INFO("Looking for table @ hash %d | %s == %s", idx, ctx->tc[idx].schema->table_name, filename);
+  LOG_DEBUG("Looking for table @ hash %d | %s == %s", idx, ctx->tc[idx].schema->table_name, filename);
   if (ctx->tc[idx].schema && strcmp(ctx->tc[idx].schema->table_name, filename) == 0) {
     return ctx->tc[idx].schema;
   }
