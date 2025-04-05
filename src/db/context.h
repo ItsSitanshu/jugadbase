@@ -1,12 +1,10 @@
 #ifndef CONTEXT_H
 #define CONTEXT_H
 
-#include "parser.h"
-#include "io.h"
-#include "page.h"
 #include "fs.h"
-
-#include <sys/stat.h>
+#include "io.h"
+#include "parser.h"
+#include "page.h"
 
 #define MAX_COMMANDS 1024
 #define MAX_TABLES 256
@@ -48,6 +46,7 @@ Context* ctx_init();
 void ctx_free(Context* ctx);
 
 bool process_dot_cmd(Context* ctx, char* input);
+void list_tables(Context* ctx);
 void process_file(char* filename);
 
 void load_tc(Context* ctx);
