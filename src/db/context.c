@@ -376,8 +376,8 @@ bool load_schema_tc(Context* ctx, char* table_name) {
   }
   
   uint32_t initial_offset = 0; 
-  // Hash-index*4B + Magic Identifier 4B + Table Count 4B + Table Offset 4B (skipping for reading purpose) 
-  io_seek(ctx->tc_reader, (idx * sizeof(uint32_t)) + (3 * sizeof(uint32_t)), SEEK_SET);
+  
+  io_seek(ctx->tc_reader, (idx * sizeof(uint32_t)) + (2 * sizeof(uint32_t)), SEEK_SET);
   io_read(ctx->tc_reader, &initial_offset, sizeof(uint32_t));
 
   IO* io = ctx->tc_reader;
@@ -387,7 +387,10 @@ bool load_schema_tc(Context* ctx, char* table_name) {
     return false;
   }
 
+  initial_offset += sizeof(uint32_t);
+  // Hash-index*4B + Magic Identifier 4B +Table Count 4B  + Table Offset 4B (skipping for reading purpose) 
   io_seek(io, initial_offset, SEEK_SET);
+
 
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
