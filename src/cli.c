@@ -3,9 +3,11 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "executor.h"
 #include "utils/cli.h"
 #include "utils/log.h"
+#include "utils/jugadline.h"
+
+#include "executor.h"
 
 int main(int argc, char* argv[]) {
   for (int i = 1; i < argc; i++) {
@@ -25,25 +27,27 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  char input[1024];
+  char* input = NULL;
+
+  CommandHistory history = { .current = 1, .size = 0 };
+
+  char short_cwd[256];
+  char prompt[512];
+  get_short_cwd(short_cwd, sizeof(short_cwd));
+
   while (1) {
-    char short_cwd[256];
-    get_short_cwd(short_cwd, sizeof(short_cwd));
+    snprintf(prompt, sizeof(prompt), COLOR_RED "/%s " COLOR_MAGENTA "[jugad-cli]" COLOR_RESET "> ", short_cwd);    
+    printf("%s", prompt);
 
-    printf(COLOR_RED "/%s " COLOR_MAGENTA "[jugad-cli]" COLOR_RESET "> " , short_cwd);
-    fflush(stdout);
+    input = jugadline(&history, prompt);
 
-    if (!fgets(input, sizeof(input), stdin)) {
-      printf("\nError reading input. Exiting...\n");
-      break;
-    }
-
-    input[strcspn(input, "\n")] = 0;
+    printf("%s\n", input);
 
     if (strcmp(input, ".quit") == 0) {
       LOG_INFO("Exiting...");
       break;
     }
+
 
     if (!process_dot_cmd(ctx, input)) {
       ExecutionResult result = process(ctx, input);
@@ -52,5 +56,8 @@ int main(int argc, char* argv[]) {
   }
 
   ctx_free(ctx);
+  for (int i = 0; i < history.size; i++) {
+    free(history.history[i]);
+  }
   return 0;
 }
