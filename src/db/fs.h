@@ -57,7 +57,7 @@ typedef struct {
   char* logging_config_file;
 } FS;
 
-FS* fs_init(const char* root_directory);
+FS* fs_init(char* root_directory);
 void fs_free(FS* fs);
 
 #endif // FS_H

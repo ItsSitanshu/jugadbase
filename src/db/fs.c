@@ -8,7 +8,7 @@ int directory_exists(const char* dir_path) {
   return (stat(dir_path, &st) == 0 && S_ISDIR(st.st_mode));
 }
 
-void log_directory_status(const char* dir_path, const char* dir_name, int* any_directories_created) {
+void log_directory_status(char* dir_path, const char* dir_name, int* any_directories_created) {
   if (!directory_exists(dir_path)) {
     create_directory(dir_path);
     LOG_INFO("Created %s/", dir_name);
@@ -17,7 +17,7 @@ void log_directory_status(const char* dir_path, const char* dir_name, int* any_d
   *any_directories_created += 1; 
 }
 
-void log_schema_file_status(const char* path) {
+void log_schema_file_status(char* path) {
   FILE *file = fopen(path, "rb");
 
   long size = 0;
@@ -52,7 +52,7 @@ void log_schema_file_status(const char* path) {
   }
 }
 
-void log_file_status(const char* file_path, const char* file_name) {
+void log_file_status(char* file_path, const char* file_name) {
   FILE *file = fopen(file_path, "r");
   if (file) {
     fclose(file);
@@ -63,7 +63,7 @@ void log_file_status(const char* file_path, const char* file_name) {
   }
 }
 
-FS* fs_init(const char* root_directory) {
+FS* fs_init(char* root_directory) {
   FS* fs = malloc(sizeof(FS));
 
   fs->root_dir = strdup(root_directory);
