@@ -55,7 +55,7 @@ void process_file(char* filename);
 void load_tc(Context* ctx);
 void switch_schema(Context* ctx, char* schema_name);
 void load_table_schema(Context* ctx);
-void load_btree_cluster(Context* ctx, uint32_t idx);
+void load_btree_cluster(Context* ctx, char* table_name);
 void pop_btree_cluster(Context* ctx);
 
 bool load_schema_tc(Context* ctx, char* table_name);

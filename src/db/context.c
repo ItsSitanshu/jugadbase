@@ -262,10 +262,10 @@ void load_tc(Context* ctx) {
       }
 
       char table_path[MAX_PATH_LENGTH];
-      snprintf(table_path, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "%s", ctx->fs->tables_dir, entry->d_name);
+      snprintf(table_path, MAX_PATH_LENGTH, "%s" SEP "%s", ctx->fs->tables_dir, entry->d_name);
 
       char data_file[MAX_PATH_LENGTH];
-      snprintf(data_file, MAX_PATH_LENGTH, "%.*s" PATH_SEPARATOR "rows.db",
+      snprintf(data_file, MAX_PATH_LENGTH, "%.*s" SEP "rows.db",
         (int)(MAX_PATH_LENGTH - 10), table_path);
 
       if (access(data_file, F_OK) == 0) {
@@ -355,30 +355,23 @@ void load_table_schema(Context* ctx) {
   io_close(ctx->tc_reader);
 }
 
-void load_btree_cluster(Context* ctx, uint32_t idx) {
-  TableSchema* schema = (&ctx->tc[idx])->schema;
+void load_btree_cluster(Context* ctx, char* name) {
+  uint8_t idx = hash_fnv1a(name, MAX_TABLES);
 
-  if (ctx->tc[idx].btree != NULL) {
+  if (ctx->tc[idx].is_populated) {
     // TODO: Consider double checking for new columns after ALTER is implemented
     return;
   }
 
-  char dir_path[MAX_PATH_LENGTH];
-  snprintf(dir_path, sizeof(dir_path), "%.*s" PATH_SEPARATOR "%s", 
-            (int)(MAX_PATH_LENGTH - 10), "./tables", schema->table_name);
-  if (!directory_exists(dir_path)) {
-    LOG_FATAL("Failed to find directory for table '%s'.\n\t > run jugad-cli fix", schema->table_name);
-    return;
-  }
-  
-  char rows_db_path[MAX_PATH_LENGTH];
-  snprintf(rows_db_path, sizeof(rows_db_path), "%.*s" PATH_SEPARATOR "rows.db", 
-            (int)(MAX_PATH_LENGTH - 10), dir_path);
-  if (!file_exists(rows_db_path)) {
-    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run jugad-cli fix", dir_path);
-    return;
-  }
+  TableSchema* schema = (&ctx->tc[idx])->schema;
 
+  char rows_db_path[MAX_PATH_LENGTH];
+  snprintf(rows_db_path, sizeof(rows_db_path), "%s" SEP "%s" SEP "rows.db", 
+            ctx->fs->tables_dir, name);
+  if (!file_exists(rows_db_path)) {
+    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run jugad-cli fix", ctx->fs->tables_dir);
+    return;
+  }
   
   if (ctx->loaded_btree_clusters >= BTREE_LIFETIME_THRESHOLD) {
     pop_btree_cluster(ctx);
@@ -390,8 +383,10 @@ void load_btree_cluster(Context* ctx, uint32_t idx) {
       unsigned int file_hash = hash_fnv1a(schema->columns[i].name, MAX_COLUMNS);
       
       char btree_file_path[MAX_PATH_LENGTH];
-      snprintf(btree_file_path, sizeof(btree_file_path), "%s/%u.idx", dir_path, file_hash);
+      snprintf(btree_file_path, sizeof(btree_file_path), "%s" SEP "%s" SEP "%u.idx",
+              ctx->fs->tables_dir, name, file_hash);
       
+
       FILE* fp = fopen(btree_file_path, "rb");
       BTree* btree = NULL;
       
@@ -488,7 +483,6 @@ bool load_schema_tc(Context* ctx, char* table_name) {
   // Hash-index*4B + Magic Identifier 4B +Table Count 4B  + Table Offset 4B (skipping for reading purpose) 
   io_seek(io, initial_offset, SEEK_SET);
 
-
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
@@ -578,6 +572,10 @@ bool load_schema_tc(Context* ctx, char* table_name) {
         return false;
       }
     }
+    
+    if (col->is_primary_key) {
+      schema->prim_column_count += 1;
+    }
   }
 
   ctx->tc[idx].schema = schema;
@@ -593,6 +591,7 @@ TableSchema* find_table_schema_tc(Context* ctx, const char* filename) {
 
   unsigned int idx = hash_fnv1a(filename, MAX_TABLES);
   LOG_DEBUG("Looking for table @ hash %d | %s == %s", idx, ctx->tc[idx].schema->table_name, filename);
+  
   if (ctx->tc[idx].schema && strcmp(ctx->tc[idx].schema->table_name, filename) == 0) {
     return ctx->tc[idx].schema;
   }
@@ -726,6 +725,6 @@ bool load_initial_schema(Context* ctx) {
 
     ctx->tc[idx].schema = schema;
   }
-  
+
   return true;
 }

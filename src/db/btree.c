@@ -152,7 +152,6 @@ BTree* load_btree(FILE* file) {
   int unique_key_count;
   fread(&unique_key_count, sizeof(int), 1, file);
   tree->unique_key_types = malloc(sizeof(int) * unique_key_count);
-  fread(tree->unique_key_types, sizeof(int), unique_key_count, file);
 
   tree->root = load_tree_node(file, tree->key_type);
 
@@ -200,12 +199,12 @@ void save_btree(BTree* btree, FILE* db_file) {
   int unique_key_count = sizeof(btree->unique_key_types) / sizeof(int); 
   fwrite(&unique_key_count, sizeof(int), 1, db_file); 
 
-  fwrite(btree->unique_key_types, sizeof(int), unique_key_count, db_file);
-
   save_tree_node(btree->root, db_file, btree->key_type);
 }
 
 void save_tree_node(BTreeNode* node, FILE* db_file, int key_type) {
+  if (!node) { return; }
+  
   fwrite(&node->is_leaf, sizeof(bool), 1, db_file);
   fwrite(&node->num_keys, sizeof(int), 1, db_file);
 

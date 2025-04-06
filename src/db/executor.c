@@ -140,7 +140,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_seek(ctx->tc_writer, schema_offset, SEEK_SET); 
   io_write(ctx->tc_writer, &schema_length, sizeof(uint32_t)); 
 
-  int offset_index = hash_fnv1a(schema->table_name, MAX_TABLE_NAME) * sizeof(uint32_t) + (2 * sizeof(uint32_t));
+  int offset_index = hash_fnv1a(schema->table_name, MAX_TABLES) * sizeof(uint32_t) + (2 * sizeof(uint32_t));
   io_seek_write(ctx->tc_writer, offset_index, &schema_offset, sizeof(uint32_t), SEEK_SET);
   
   off_t schema_offset_before_flush = io_tell(tca_io); 
@@ -171,7 +171,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   }
 
   char rows_file[MAX_PATH_LENGTH];
-  int ret = snprintf(rows_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "rows.db", table_dir);
+  int ret = snprintf(rows_file, MAX_PATH_LENGTH, "%s" SEP "rows.db", table_dir);
   if (ret >= MAX_PATH_LENGTH) {
     LOG_WARN("Rows file path is too long, truncating to fit buffer size.");
     rows_file[MAX_PATH_LENGTH - 1] = '\0';
@@ -209,7 +209,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
-  load_btree_cluster(ctx, hash_fnv1a(schema->table_name, MAX_TABLES));
+  load_btree_cluster(ctx, schema->table_name);
 
   cmd->schema = schema;
   uint8_t column_count = (uint8_t)cmd->schema->column_count;
