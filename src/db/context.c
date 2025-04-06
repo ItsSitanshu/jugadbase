@@ -614,6 +614,8 @@ bool load_initial_schema(Context* ctx) {
   }
 
   IO* io = ctx->tc_reader;
+  size_t CONTENTS_OFFSET = 2 * sizeof(uint32_t) + MAX_TABLES * sizeof(uint32_t);
+  io_seek(io, CONTENTS_OFFSET, SEEK_SET);
 
   for (size_t i = 0; i < ctx->table_count; i++) {
     const char* table_name = ctx->tc[i].name;
@@ -627,7 +629,7 @@ bool load_initial_schema(Context* ctx) {
       return false;
     }
 
-    io_seek(io, i * sizeof(TableSchema), SEEK_SET);
+    io_seek(io, sizeof(uint32_t), SEEK_CUR);
 
     uint8_t table_name_length;
     if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
@@ -724,5 +726,6 @@ bool load_initial_schema(Context* ctx) {
 
     ctx->tc[idx].schema = schema;
   }
+  
   return true;
 }

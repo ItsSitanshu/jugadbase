@@ -9,7 +9,7 @@
 - ~~Design and implement a directory-based storage system for database files~~
 - ~~Create a structure to handle multiple files for tables, indexes, and metadata~~
 - ~~Implement logic for linking tables with their corresponding .idx files~~
-- FIX BUG: table names aren't extracted properly when there are [>1 table](https://github.com/ItsSitanshu/jugadbase/blob/09e26a5bdc37c8e009e4c28deef58f035df3f5d8/src/db/context.c#L462-L728)   
+- ~~FIX BUG: table names aren't extracted properly when there are [>1 table](https://github.com/ItsSitanshu/jugadbase/blob/09e26a5bdc37c8e009e4c28deef58f035df3f5d8/src/db/context.c#L462-L728)~~   
 - Implement `CREATE TABLE` with `PRIM KEY` (Primary Key) 
 - Support 
   - `INSERT`
