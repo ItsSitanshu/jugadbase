@@ -136,6 +136,7 @@ typedef struct {
   uint32_t offset;
   TableSchema* schema;
   BTree* btree[MAX_COLUMNS];
+  bool is_populated;
 } TableCatalogEntry;
 
 typedef struct {
