@@ -9,12 +9,14 @@
 - ~~Design and implement a directory-based storage system for database files~~
 - Create a structure to handle multiple files for tables, indexes, and metadata
 - Implement logic for linking tables with their corresponding .idx files
-- Implement `CREATE TABLE` with `KP` (Primary Key) and `FRN` (Foreign Key)  
+- Implement `CREATE TABLE` with `PRIM KEY` (Primary Key) 
 - Support 
   - `INSERT`
   - `SELECT`
   - `UPDATE`
-  - `DELETE`  
+  - `DELETE`
+- Implement foreign constraints
+- Design casading  
 - Add indexing for performance optimization  
 - Implement `JOIN` operations  
 - Support transactions (`BEGIN`, `COMMIT`, `ROLLBACK`)  
@@ -32,3 +34,5 @@
 - Add replication and sharding for scalability  
 - Add support for database-specific file management, including backing up and restoring individual files
 - Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
+- Improve disk I/O by updating b-trees partially
+- Implement composite primary keys
