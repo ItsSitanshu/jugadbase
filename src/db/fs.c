@@ -63,25 +63,25 @@ FS* fs_init(char* root_directory) {
 
   fs->root_dir = strdup(root_directory);
   fs->tables_dir = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->tables_dir, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "tables", root_directory);
+  snprintf(fs->tables_dir, MAX_PATH_LENGTH, "%s" SEP "tables", root_directory);
 
   fs->logs_dir = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->logs_dir, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "logs", root_directory);
+  snprintf(fs->logs_dir, MAX_PATH_LENGTH, "%s" SEP "logs", root_directory);
 
   fs->backups_dir = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->backups_dir, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "backups", root_directory);
+  snprintf(fs->backups_dir, MAX_PATH_LENGTH, "%s" SEP "backups", root_directory);
 
   fs->config_dir = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->config_dir, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "config", root_directory);
+  snprintf(fs->config_dir, MAX_PATH_LENGTH, "%s" SEP "config", root_directory);
 
   fs->global_transaction_log = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->global_transaction_log, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "logs" PATH_SEPARATOR "global_transaction_log", root_directory);
+  snprintf(fs->global_transaction_log, MAX_PATH_LENGTH, "%s" SEP "logs" SEP "global_transaction_log", root_directory);
 
   fs->db_config_file = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->db_config_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "config" PATH_SEPARATOR "db_config.json", root_directory);
+  snprintf(fs->db_config_file, MAX_PATH_LENGTH, "%s" SEP "config" SEP "db_config.json", root_directory);
 
   fs->logging_config_file = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->logging_config_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "config" PATH_SEPARATOR "logging_config.json", root_directory);
+  snprintf(fs->logging_config_file, MAX_PATH_LENGTH, "%s" SEP "config" SEP "logging_config.json", root_directory);
 
   int any_directory_created = 0;
   
@@ -92,7 +92,7 @@ FS* fs_init(char* root_directory) {
 
   char schema_dir[MAX_PATH_LENGTH];
   fs->schema_file = malloc(MAX_PATH_LENGTH);
-  snprintf(fs->schema_file, MAX_PATH_LENGTH, "%s" PATH_SEPARATOR "schema", fs->tables_dir);
+  snprintf(fs->schema_file, MAX_PATH_LENGTH, "%s" SEP "schema", fs->tables_dir);
   
   log_file_status(fs->global_transaction_log, "global_transaction_log");
   log_file_status(fs->global_transaction_log, "global_transaction_log");

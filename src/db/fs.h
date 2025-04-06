@@ -10,10 +10,10 @@
 
 #if defined(_WIN32) || defined(_WIN64)
   #include <direct.h> 
-  #define PATH_SEPARATOR "\\"
+  #define SEP "\\"
 #else
   #include <sys/stat.h>
-  #define PATH_SEPARATOR "/"
+  #define SEP "/"
 #endif
 
 #ifndef LOGS_VERBOSE
