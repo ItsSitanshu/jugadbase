@@ -3,11 +3,6 @@
 
 #include "../utils/log.h"
 
-int directory_exists(const char* dir_path) {
-  struct stat st = {0};
-  return (stat(dir_path, &st) == 0 && S_ISDIR(st.st_mode));
-}
-
 void log_directory_status(char* dir_path, const char* dir_name, int* any_directories_created) {
   if (!directory_exists(dir_path)) {
     create_directory(dir_path);

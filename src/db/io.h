@@ -64,6 +64,16 @@ static void create_file(char* file_path) {
   }
 }
 
+static bool directory_exists(const char* path) {
+  struct stat stat_buf;
+  return (stat(path, &stat_buf) == 0 && S_ISDIR(stat_buf.st_mode));
+}
+
+static bool file_exists(const char* path) {
+  struct stat stat_buf;
+  return (stat(path, &stat_buf) == 0 && S_ISREG(stat_buf.st_mode));
+}
+
 #define MAX_TABLE_NAME 32
 #define MAX_SCHEMA 128
 
