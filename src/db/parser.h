@@ -123,9 +123,11 @@ typedef struct {
 
 typedef struct {
   char table_name[MAX_IDENTIFIER_LEN]; 
+  
   uint8_t column_count;
+  uint8_t prim_column_count;
+  
   ColumnDefinition* columns;
-  BTree** btree;
 } TableSchema;
 
 typedef struct {
@@ -133,6 +135,7 @@ typedef struct {
   char name[MAX_IDENTIFIER_LEN]; 
   uint32_t offset;
   TableSchema* schema;
+  BTree* btree[MAX_COLUMNS];
 } TableCatalogEntry;
 
 typedef struct {

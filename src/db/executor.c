@@ -1,6 +1,7 @@
 #include "executor.h"
 
 #include "../utils/log.h"
+#include "../utils/security.h"
 
 ExecutionResult process(Context* ctx, char* buffer) {
   if (!ctx || !ctx->lexer || !ctx->parser) {
@@ -139,7 +140,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   io_seek(ctx->tc_writer, schema_offset, SEEK_SET); 
   io_write(ctx->tc_writer, &schema_length, sizeof(uint32_t)); 
 
-  int offset_index = hash_table_name(schema->table_name) * sizeof(uint32_t) + (2 * sizeof(uint32_t));
+  int offset_index = hash_fnv1a(schema->table_name, MAX_TABLE_NAME) * sizeof(uint32_t) + (2 * sizeof(uint32_t));
   io_seek_write(ctx->tc_writer, offset_index, &schema_offset, sizeof(uint32_t), SEEK_SET);
   
   off_t schema_offset_before_flush = io_tell(tca_io); 
@@ -195,7 +196,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
 
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   switch_schema(ctx, cmd->schema->table_name);
-
+  
   if (!ctx || !cmd || !ctx->tc_appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   } 
@@ -203,37 +204,54 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   IO* io_A = ctx->tc_appender;
 
   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
-  
+
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
+  load_btree_cluster(ctx, hash_fnv1a(schema->table_name, MAX_TABLES));
+
   cmd->schema = schema;
   uint8_t column_count = (uint8_t)cmd->schema->column_count;
 
-  ColumnDefinition* primary_key_col = NULL;
-  ColumnValue* primary_key_val = NULL;
-
+  ColumnDefinition* primary_key_cols[MAX_COLUMNS] = {NULL};
+  ColumnValue* primary_key_vals[MAX_COLUMNS] = {NULL};
+  uint8_t primary_key_count = 0;
+  
   for (uint8_t i = 0; i < column_count; i++) {
     if (cmd->schema->columns[i].is_primary_key) {
-      primary_key_col = &cmd->schema->columns[i];
-      primary_key_val = &cmd->values[i];
-      break;
+      primary_key_cols[primary_key_count] = &cmd->schema->columns[i];
+      primary_key_vals[primary_key_count] = &cmd->values[i];
+      primary_key_count++;
     }
   }
 
-  if (primary_key_col) {  
-    // if (btree_search(ctx->btree, primary_key_val) != -1) {
-    //   return (ExecutionResult){1, "Primary Key already exists"};
-    // }
+  for (uint8_t i = 0; i < primary_key_count; i++) {
+    if (primary_key_cols[i]) {
+      uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
+      if (btree_search(ctx->tc->btree[idx], primary_key_vals[i]) != -1) {
+        return (ExecutionResult){1, "Primary Key already exists"};
+      }
+    }
   }
-
+  
+  // bool is_unique = true;
+  // for (uint8_t i = 0; i < primary_key_count; i++) {
+  //   if (!check_unique_combination(primary_key_cols, primary_key_vals, primary_key_count)) {
+  //     is_unique = false;
+  //     break;
+  //   }
+  // }
+  
+  // if (!is_unique) {
+  //   LOG_ERROR("Error: Duplicate primary key value.\n");
+  //   return;
+  // }
+    
   long row_start = io_tell(io_A);
   uint16_t row_length = 0;
 
   uint32_t row_id = ctx->schema.next_row_id++;
-
-  // btree_insert(ctx->btree, primary_key_val, row_start);
 
   io_write(io_A, &row_length, sizeof(uint16_t));  
   io_write(io_A, &row_id, sizeof(uint32_t));

@@ -3,6 +3,7 @@
 #include "uuid.h"
 
 #include "../utils/log.h"
+#include "../utils/security.h"
 
 Context* ctx_init() {
   Context* ctx = (Context*)malloc(sizeof(Context));
@@ -354,12 +355,108 @@ void load_table_schema(Context* ctx) {
   io_close(ctx->tc_reader);
 }
 
-unsigned int hash_table_name(const char* table_name) {
-  unsigned int hash = 0;
-  while (*table_name) {
-    hash = (hash << 5) + hash + *table_name++;
+void load_btree_cluster(Context* ctx, uint32_t idx) {
+  TableSchema* schema = (&ctx->tc[idx])->schema;
+
+  if (ctx->tc[idx].btree != NULL) {
+    // TODO: Consider double checking for new columns after ALTER is implemented
+    return;
   }
-  return hash % MAX_TABLES;
+
+  char dir_path[MAX_PATH_LENGTH];
+  snprintf(dir_path, sizeof(dir_path), "%.*s" PATH_SEPARATOR "%s", 
+            (int)(MAX_PATH_LENGTH - 10), "./tables", schema->table_name);
+  if (!directory_exists(dir_path)) {
+    LOG_FATAL("Failed to find directory for table '%s'.\n\t > run jugad-cli fix", schema->table_name);
+    return;
+  }
+  
+  char rows_db_path[MAX_PATH_LENGTH];
+  snprintf(rows_db_path, sizeof(rows_db_path), "%.*s" PATH_SEPARATOR "rows.db", 
+            (int)(MAX_PATH_LENGTH - 10), dir_path);
+  if (!file_exists(rows_db_path)) {
+    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run jugad-cli fix", dir_path);
+    return;
+  }
+
+  
+  if (ctx->loaded_btree_clusters >= BTREE_LIFETIME_THRESHOLD) {
+    pop_btree_cluster(ctx);
+  }
+
+  uint8_t found_prims = 0;
+  for (uint8_t i = 0; i < schema->column_count; i++) {
+    if (schema->columns[i].is_primary_key) {
+      unsigned int file_hash = hash_fnv1a(schema->columns[i].name, MAX_COLUMNS);
+      
+      char btree_file_path[MAX_PATH_LENGTH];
+      snprintf(btree_file_path, sizeof(btree_file_path), "%s/%u.idx", dir_path, file_hash);
+      
+      FILE* fp = fopen(btree_file_path, "rb");
+      BTree* btree = NULL;
+      
+      if (fp == NULL) {
+        fp = fopen(btree_file_path, "wb+");
+        if (!fp) {
+          LOG_FATAL("Failed to create B-tree file: %s", btree_file_path);
+          return;
+        }
+        btree = btree_create(schema->columns[i].type);  
+        btree->id = file_hash;
+        
+        save_btree(btree, fp);
+      } else {
+        btree = load_btree(fp);
+      }
+      
+      fclose(fp);
+      
+      (&ctx->tc[idx])->btree[file_hash] = btree;
+      found_prims++;
+      
+      if (found_prims == schema->prim_column_count) {
+        break;
+      }
+    }
+  }
+  
+  if (found_prims != schema->prim_column_count) {
+    LOG_FATAL("Mismatch: Loaded %u primary key B-trees, expected %u.", 
+              found_prims, schema->prim_column_count);
+    return;
+  }
+  
+  ctx->loaded_btree_clusters++;
+  ctx->btree_idx_stack[ctx->loaded_btree_clusters - 1] = idx;
+  
+  return;
+}
+
+void pop_btree_cluster(Context* ctx) {
+  if (ctx->loaded_btree_clusters == 0) {
+    LOG_WARN("No B-tree clusters to unload.");
+    return;
+  }
+
+  uint32_t idx_to_unload = ctx->btree_idx_stack[ctx->loaded_btree_clusters - 1];
+  
+  TableCatalogEntry* tc = &ctx->tc[idx_to_unload];
+  
+  char dir_path[MAX_PATH_LENGTH];
+  snprintf(dir_path, sizeof(dir_path), "./tables/%s", tc->name);
+
+  for (uint8_t i = 0; i < tc->schema->prim_column_count; i++) {
+    if (tc->btree[i] != NULL) {
+      unsigned int file_hash = hash_fnv1a(tc->schema->columns[i].name, MAX_COLUMNS);
+      
+      char btree_file_path[MAX_PATH_LENGTH];
+      snprintf(btree_file_path, sizeof(btree_file_path), "%s/%u.idx", dir_path, file_hash);
+    
+      unload_btree(tc->btree[i], btree_file_path);
+    }
+  }
+
+  ctx->loaded_btree_clusters--;
 }
 
 bool load_schema_tc(Context* ctx, char* table_name) {
@@ -368,7 +465,7 @@ bool load_schema_tc(Context* ctx, char* table_name) {
     return false;
   }
 
-  unsigned int idx = hash_table_name(table_name);
+  unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
   if (ctx->tc[idx].schema) {
     if (strcmp(ctx->tc[idx].schema->table_name, table_name) == 0) {
       return true;
@@ -494,7 +591,7 @@ TableSchema* find_table_schema_tc(Context* ctx, const char* filename) {
     return NULL;
   }
 
-  unsigned int idx = hash_table_name(filename);
+  unsigned int idx = hash_fnv1a(filename, MAX_TABLES);
   LOG_DEBUG("Looking for table @ hash %d | %s == %s", idx, ctx->tc[idx].schema->table_name, filename);
   if (ctx->tc[idx].schema && strcmp(ctx->tc[idx].schema->table_name, filename) == 0) {
     return ctx->tc[idx].schema;
@@ -520,7 +617,7 @@ bool load_initial_schema(Context* ctx) {
 
   for (size_t i = 0; i < ctx->table_count; i++) {
     const char* table_name = ctx->tc[i].name;
-    unsigned int idx = hash_table_name(table_name);
+    unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
     
     if (ctx->tc[idx].schema) continue;
 
@@ -582,8 +679,8 @@ bool load_initial_schema(Context* ctx) {
       io_read(io, &col->type_varchar, sizeof(uint8_t));
       io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
       io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
-
       io_read(io, &col->is_primary_key, sizeof(bool));
+
       io_read(io, &col->is_unique, sizeof(bool));
       io_read(io, &col->is_not_null, sizeof(bool));
       io_read(io, &col->is_index, sizeof(bool));
@@ -618,6 +715,10 @@ bool load_initial_schema(Context* ctx) {
           free(schema);
           return false;
         }
+      }
+
+      if (col->is_primary_key) {
+        schema->prim_column_count += 1;
       }
     }
 
