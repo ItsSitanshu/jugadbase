@@ -316,9 +316,11 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 }
 
 JQLCommand parser_parse_insert(Parser *parser) {
-  JQLCommand command;
+  JQLCommand command;  
+
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_INSERT;
+  command.is_invalid = true;
 
   parser_consume(parser); 
 
@@ -409,6 +411,7 @@ JQLCommand parser_parse_insert(Parser *parser) {
 
   parser_consume(parser);
 
+  command.is_invalid = false;
   return command;
 }
 
