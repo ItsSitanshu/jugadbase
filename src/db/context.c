@@ -427,7 +427,7 @@ void load_btree_cluster(Context* ctx, char* name) {
         }
         btree = btree_create(schema->columns[i].type);  
         btree->id = file_hash;
-        
+      
         save_btree(btree, fp);
       } else {
         btree = load_btree(fp);
@@ -436,6 +436,7 @@ void load_btree_cluster(Context* ctx, char* name) {
       fclose(fp);
       
       ctx->tc[idx].btree[file_hash] = btree;
+      ctx->tc[idx].is_populated = true;
       found_prims++;
       
       if (found_prims == schema->prim_column_count) {

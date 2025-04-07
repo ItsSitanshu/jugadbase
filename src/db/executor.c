@@ -234,7 +234,8 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
-      if (btree_search(ctx->tc[schema_idx].btree[idx], primary_key_vals[i]) != -1) {
+      void* key = get_column_value_as_pointer(primary_key_vals[i]);  
+      if (btree_search(ctx->tc[schema_idx].btree[idx], key) != -1) {
         return (ExecutionResult){1, "Primary Key already exists"};
       }
     }
@@ -243,11 +244,14 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   IO* io_A = ctx->schema.appender;
   IO* io_W = ctx->schema.writer;
   
-  uint64_t row_start = io_tell(io_A);
   uint16_t row_length = 0;
   uint32_t row_id = ctx->schema.next_row_id++;
 
   io_write(io_A, &row_length, sizeof(uint16_t));
+  io_flush(io_A);
+
+  uint64_t row_start = io_tell(io_A) - sizeof(uint16_t);
+
   io_write(io_A, &row_id, sizeof(uint64_t));
 
   uint8_t null_bitmap_size = (column_count + 7) / 8;
@@ -389,15 +393,26 @@ void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def)
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {
   switch (col_val->type) {
-    case TOK_T_INT:
+    case TOK_NL:
+      col_val->is_null = true;
+      break;
+    case TOK_L_I8:
+    case TOK_L_I16:
+    case TOK_L_I32:
+    case TOK_L_I64:
+    case TOK_L_U8:
+    case TOK_L_U16:
+    case TOK_L_U32:
+    case TOK_L_U64:
       return &(col_val->int_value);
-    case TOK_T_FLOAT:
+    case TOK_L_FLOAT:
       return &(col_val->float_value);
     case TOK_T_DOUBLE:
       return &(col_val->double_value);
     case TOK_T_BOOL:
       return &(col_val->bool_value);
     case TOK_T_CHAR:
+      return &(col_val->str_value[0]);
     case TOK_T_TEXT:
       return &(col_val->str_value);
     case TOK_T_BLOB:

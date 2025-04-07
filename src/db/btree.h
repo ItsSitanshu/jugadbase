@@ -3,13 +3,15 @@
 
 
 #include "io.h"
+#include "token.h"
+
 #include <stdint.h>
  
 #define MAX_KEYS_PER_NODE 1000
 #define BTREE_LIFETIME_THRESHOLD 10 
 #define TABLE_COUNT_OFFSET 4UL
 
-typedef struct BTreeNode {
+typedef struct __attribute__((aligned(32))) BTreeNode {
   bool is_leaf;
   int num_keys;
   void** keys;  
@@ -22,10 +24,10 @@ typedef struct {
 
   BTreeNode* root;
   long btree_order;
-  int key_type;
+  uint8_t key_type;
 } BTree;
 
-BTree* btree_create();
+BTree* btree_create(uint8_t key_type);
 
 BTreeNode* btree_create_node(bool is_leaf, size_t btree_order);
 uint64_t btree_search(BTree* tree, void* key);
@@ -36,15 +38,15 @@ void btree_free_node(BTreeNode* node);
 void btree_destroy(BTree* tree);
 
 BTree* load_btree(FILE* file);
-BTreeNode* load_tree_node(FILE* db_file, int key_type);
+BTreeNode* load_tree_node(FILE* db_file, uint8_t key_type);
 void save_btree(BTree* btree, FILE* db_file);
-void save_tree_node(BTreeNode* node, FILE* db_file, int key_type);
+void save_tree_node(BTreeNode* node, FILE* db_file, uint8_t key_type);
 void unload_btree(BTree* btree, char* file_path);
 
-int key_compare(void* key1, void* key2, u_int8_t type);
-size_t sizeof_key(u_int32_t type);
-void copy_key(void* dest, void* src, u_int32_t type);
-int key_size_for_type(int key_type);
+int key_compare(void* key1, void* key2, uint8_t type);
+size_t sizeof_key(uint32_t type);
+void copy_key(void* dest, void* src, uint32_t type);
+int key_size_for_type(uint8_t key_type);
 
 long calculate_btree_order();
 

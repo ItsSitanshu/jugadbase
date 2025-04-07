@@ -1,9 +1,10 @@
 #include "btree.h"
 
-BTree* btree_create() {
+BTree* btree_create(uint8_t key_type) {
   BTree* tree = (BTree*)malloc(sizeof(BTree));
 
   tree->btree_order = calculate_btree_order();
+  tree->key_type = key_type;
 
   tree->root = NULL;
   return tree;
@@ -34,12 +35,16 @@ uint64_t btree_search(BTree* tree, void* key) {
   while (node) {
     int i = 0;
 
-    while (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) > 0) {
+    while (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) != 0) {
       i++;
     }
 
     if (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) == 0) {
       return node->row_pointers[i]; 
+    }
+
+    if (node->is_leaf) {
+      break;
     }
 
     node = node->children[i]; 
@@ -87,7 +92,7 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, uint64_t row_
   int i = node->num_keys - 1;
 
   if (node->is_leaf) {
-    while (i >= 0 && key_compare(key, node->keys[i], tree->key_type) < 0) {
+    while (i >= 0 && key_compare(key, node->keys[i], tree->key_type) != 0) {
       node->keys[i + 1] = node->keys[i];
       node->row_pointers[i + 1] = node->row_pointers[i];
       i--;
@@ -122,10 +127,13 @@ bool btree_insert(BTree* tree, void* key, uint64_t row_offset) {
     LOG_ERROR("B-tree couldn't be updated properly.\n\t > run jugad-cli fix");
     return false; 
   }
+
+  LOG_DEBUG("Calling btree_insert(tree: %p, key: %p, off: %lu)", tree, key, row_offset);
   
   if (!tree->root) {
     tree->root = btree_create_node(true, tree->btree_order); // initialze as leaf
   }
+
 
   BTreeNode* root = tree->root;
   if (root->num_keys == tree->btree_order - 1) {
@@ -176,7 +184,7 @@ BTree* load_btree(FILE* file) {
   return tree;
 }
 
-BTreeNode* load_tree_node(FILE* db_file, int key_type) {
+BTreeNode* load_tree_node(FILE* db_file, uint8_t key_type) {
   BTreeNode* node = malloc(sizeof(BTreeNode));
   bool is_invalid = false;
 
@@ -221,11 +229,17 @@ void save_btree(BTree* btree, FILE* db_file) {
   save_tree_node(btree->root, db_file, btree->key_type);
 }
 
-void save_tree_node(BTreeNode* node, FILE* db_file, int key_type) {
+void save_tree_node(BTreeNode* node, FILE* db_file, uint8_t key_type) {
+  /*
+  [1B] Flag (is leaf)
+  [4B] Num Keys
+  [<type>B] Actual Key Value
+  [<num keys>*8B] Row Pointers
+  */
   if (!node) { return; }
   
   fwrite(&node->is_leaf, sizeof(bool), 1, db_file);
-  fwrite(&node->num_keys, sizeof(int), 1, db_file);
+  fwrite(&node->num_keys, sizeof(uint32_t), 1, db_file);
 
   int ksize = key_size_for_type(key_type);
   for (int i = 0; i < node->num_keys; i++) {
@@ -233,6 +247,10 @@ void save_tree_node(BTreeNode* node, FILE* db_file, int key_type) {
   }
 
   fwrite(node->row_pointers, sizeof(uint64_t), node->num_keys, db_file);
+
+  for (int i = 0; i < node->num_keys; i++) {
+    LOG_DEBUG("  Row pointer[%d]: %lu", i, node->row_pointers[i]);
+  }
 
   if (!node->is_leaf) {
     for (int i = 0; i <= node->num_keys; i++) {
@@ -258,26 +276,103 @@ void unload_btree(BTree* btree, char* file_path) {
   }
 }
 
-int key_compare(void* key1, void* key2, u_int8_t type) {
-  return strcmp((char*)key1, (char*)key2);
+int key_compare(void* key1, void* key2, uint8_t type) {
+  LOG_DEBUG("!! %d ", type);
+  switch (type) {
+    case TOK_T_INT:  
+      return (*(int*)key1 - *(int*)key2); 
+
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR:
+    case TOK_T_TEXT: 
+      return strcmp((char*)key1, (char*)key2);
+
+    case TOK_T_BOOL: 
+      return (*(bool*)key1 - *(bool*)key2);
+
+    case TOK_T_FLOAT:
+      if (*(float*)key1 < *(float*)key2) return -1;
+      if (*(float*)key1 > *(float*)key2) return 1;
+      return 0;
+
+    case TOK_T_DOUBLE: 
+      if (*(double*)key1 < *(double*)key2) return -1;
+      if (*(double*)key1 > *(double*)key2) return 1;
+      return 0; 
+
+    case TOK_T_DECIMAL: 
+      if (*(double*)key1 < *(double*)key2) return -1;
+      if (*(double*)key1 > *(double*)key2) return 1;
+      return 0; 
+
+    case TOK_T_DATE:
+    case TOK_T_TIME:
+    case TOK_T_DATETIME:
+    case TOK_T_TIMESTAMP: 
+      return strcmp((char*)key1, (char*)key2); 
+
+    case TOK_T_BLOB:  // BLOB comparison (byte-by-byte comparison)
+      return memcmp(key1, key2, *(size_t*)key1); 
+      // TODO: BLOB REFERENCES
+
+    case TOK_T_JSON:  // JSON comparison
+      return strcmp((char*)key1, (char*)key2); 
+
+    case TOK_T_UUID:  // UUID comparison (byte-by-byte comparison)
+      return memcmp(key1, key2, 16);
+
+    case TOK_T_SERIAL:  // SERIAL treated as INTEGER
+      LOG_DEBUG("%d %d", *(int*)key1, *(int*)key2);
+      return (*(int*)key1 - *(int*)key2); 
+
+    default:
+      return 0;
+  }
 }
 
-size_t sizeof_key(u_int32_t type) {
+size_t sizeof_key(uint32_t type) {
   return 0;
 }
 
-void copy_key(void* dest, void* src, u_int32_t type) {
+void copy_key(void* dest, void* src, uint32_t type) {
   
 }
 
-int key_size_for_type(int key_type) {
+int key_size_for_type(uint8_t key_type) {
   switch (key_type) {
-    case 0: return sizeof(int);    
-    case 1: return sizeof(double); 
-    case 2: return 32;                
-    default: return sizeof(int);
+    case TOK_T_INT:
+    case TOK_T_BOOL:
+    case TOK_T_SERIAL:
+      return sizeof(int);
+
+    case TOK_T_FLOAT:
+      return sizeof(float);
+
+    case TOK_T_DOUBLE:
+    case TOK_T_DECIMAL:
+      return sizeof(double);
+
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR:
+    case TOK_T_TEXT:
+    case TOK_T_DATE:
+    case TOK_T_TIME:
+    case TOK_T_DATETIME:
+    case TOK_T_TIMESTAMP:
+    case TOK_T_JSON:
+      return 256;
+
+    case TOK_T_BLOB:
+      return 512; 
+
+    case TOK_T_UUID:
+      return 16; 
+
+    default:
+      return sizeof(int); // fallback
   }
 }
+
 
 
 long calculate_btree_order() {
