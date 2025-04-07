@@ -476,6 +476,9 @@ bool parse_value(Parser* parser, ColumnValue* col_val) {
   memset(col_val, 0, sizeof(ColumnValue));  // Ensure clean struct
 
   switch (parser->cur->type) {
+    case TOK_NL:
+      col_val->is_null = true;
+      break;
     case TOK_L_I8:
     case TOK_L_I16:
     case TOK_L_I32:

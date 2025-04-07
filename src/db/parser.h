@@ -79,6 +79,8 @@ typedef struct ExecutionOrder {
 typedef struct {
   uint8_t column_index;
   uint8_t type; 
+
+  bool is_null;
   
   union {  
     int int_value;
