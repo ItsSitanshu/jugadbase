@@ -9,16 +9,25 @@ BTree* btree_create() {
   return tree;
 }
 
-BTreeNode* btree_create_node(bool is_leaf) {
+BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
   BTreeNode* node = (BTreeNode*)malloc(sizeof(BTreeNode));
+
   node->is_leaf = is_leaf;
   node->num_keys = 0;
-  memset(node->keys, 0, sizeof(node->keys));
-  memset(node->children, 0, sizeof(node->children));
+
+  node->keys = (void**)malloc(sizeof(void*) * (btree_order - 1));  
+  node->row_pointers = (uint64_t*)malloc(sizeof(uint64_t) * (btree_order - 1));  
+  node->children = (BTreeNode**)malloc(sizeof(BTreeNode*) * btree_order);  
+
+  memset(node->keys, 0, sizeof(void*) * (btree_order - 1));
+  memset(node->row_pointers, 0, sizeof(uint64_t) * (btree_order - 1));
+  memset(node->children, 0, sizeof(BTreeNode*) * btree_order);
+
   return node;
 }
 
-long btree_search(BTree* tree, void* key) {
+
+uint64_t btree_search(BTree* tree, void* key) {
   if (!tree || !tree->root) return -1;
 
   BTreeNode* node = tree->root;
@@ -42,7 +51,7 @@ long btree_search(BTree* tree, void* key) {
 
 void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t btree_order) {
   int mid = btree_order / 2;
-  BTreeNode* new_node = btree_create_node(child->is_leaf);
+  BTreeNode* new_node = btree_create_node(child->is_leaf, btree_order);
 
   new_node->num_keys = mid - 1;
 
@@ -74,7 +83,7 @@ void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t bt
   parent->num_keys++;
 }
 
-void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, long row_offset) {
+void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, uint64_t row_offset) {
   int i = node->num_keys - 1;
 
   if (node->is_leaf) {
@@ -108,14 +117,19 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, long row_offs
 }
 
 
-void btree_insert(BTree* tree, void* key, long row_offset) {
+bool btree_insert(BTree* tree, void* key, uint64_t row_offset) {
+  if (!tree) {
+    LOG_ERROR("B-tree couldn't be updated properly.\n\t > run jugad-cli fix");
+    return false; 
+  }
+  
   if (!tree->root) {
-    tree->root = btree_create_node(true);
+    tree->root = btree_create_node(true, tree->btree_order); // initialze as leaf
   }
 
   BTreeNode* root = tree->root;
   if (root->num_keys == tree->btree_order - 1) {
-    BTreeNode* new_root = btree_create_node(false);
+    BTreeNode* new_root = btree_create_node(false, tree->btree_order);
     new_root->children[0] = root;
     btree_split_child(new_root, 0, root, tree->btree_order);
     tree->root = new_root;
@@ -123,6 +137,8 @@ void btree_insert(BTree* tree, void* key, long row_offset) {
   } else {
     btree_insert_nonfull(tree, root, key, row_offset);
   }
+
+  return true; 
 }
 
 void btree_free_node(BTreeNode* node) {
@@ -144,26 +160,32 @@ void btree_destroy(BTree* tree) {
 }
 
 BTree* load_btree(FILE* file) {
+  /*
+  [4B] - Unique Tree Identifier
+  [8B] - B-Tree Order
+  [4B] - Key Type
+  */
+
   BTree* tree = malloc(sizeof(BTree));
   fread(&tree->id, sizeof(uint32_t), 1, file);
   fread(&tree->btree_order, sizeof(long), 1, file);
   fread(&tree->key_type, sizeof(int), 1, file);
 
-  int unique_key_count;
-  fread(&unique_key_count, sizeof(int), 1, file);
-  tree->unique_key_types = malloc(sizeof(int) * unique_key_count);
-
   tree->root = load_tree_node(file, tree->key_type);
-
-  fclose(file);
-
+  
   return tree;
 }
 
 BTreeNode* load_tree_node(FILE* db_file, int key_type) {
   BTreeNode* node = malloc(sizeof(BTreeNode));
+  bool is_invalid = false;
 
-  fread(&node->is_leaf, sizeof(bool), 1, db_file);
+  eof_fread(&node->is_leaf, sizeof(bool), 1, db_file, &is_invalid);
+  
+  if (is_invalid) {
+    return NULL;
+  }
+
   fread(&node->num_keys, sizeof(int), 1, db_file);
 
   int ksize = key_size_for_type(key_type);
@@ -174,8 +196,8 @@ BTreeNode* load_tree_node(FILE* db_file, int key_type) {
     fread(node->keys[i], ksize, 1, db_file);
   }
 
-  node->row_pointers = malloc(sizeof(long) * node->num_keys);
-  fread(node->row_pointers, sizeof(long), node->num_keys, db_file);
+  node->row_pointers = malloc(sizeof(uint64_t) * node->num_keys);
+  fread(node->row_pointers, sizeof(uint64_t), node->num_keys, db_file);
 
   if (!node->is_leaf) {
     node->children = malloc(sizeof(BTreeNode*) * (node->num_keys + 1));
@@ -196,9 +218,6 @@ void save_btree(BTree* btree, FILE* db_file) {
 
   fwrite(&btree->key_type, sizeof(int), 1, db_file);  
 
-  int unique_key_count = sizeof(btree->unique_key_types) / sizeof(int); 
-  fwrite(&unique_key_count, sizeof(int), 1, db_file); 
-
   save_tree_node(btree->root, db_file, btree->key_type);
 }
 
@@ -213,7 +232,7 @@ void save_tree_node(BTreeNode* node, FILE* db_file, int key_type) {
     fwrite(node->keys[i], ksize, 1, db_file);
   }
 
-  fwrite(node->row_pointers, sizeof(long), node->num_keys, db_file);
+  fwrite(node->row_pointers, sizeof(uint64_t), node->num_keys, db_file);
 
   if (!node->is_leaf) {
     for (int i = 0; i <= node->num_keys; i++) {
@@ -228,6 +247,7 @@ void unload_btree(BTree* btree, char* file_path) {
     LOG_FATAL("Failed to open B-tree file '%s' for writing, indexes will not match.\n\t > Run jugad-cli fix", file_path);
     return;
   }
+
 
   save_btree(btree, fp);
   btree_destroy(btree);

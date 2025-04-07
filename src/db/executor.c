@@ -195,13 +195,17 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
 }
 
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
+  /*
+  [2B] - Row Length
+  [8B] - Row ID
+  [<(column_count + 7) / 8>B] - Null Bitmap
+  [<sizoef(VAR type) * column_count>B] - Actual Values
+  */
   switch_schema(ctx, cmd->schema->table_name);
   
   if (!ctx || !cmd || !ctx->tc_appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   } 
-
-  IO* io_A = ctx->tc_appender;
 
   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
 
@@ -210,9 +214,10 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   }
 
   load_btree_cluster(ctx, schema->table_name);
-
+  
   cmd->schema = schema;
   uint8_t column_count = (uint8_t)cmd->schema->column_count;
+  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES); 
 
   ColumnDefinition* primary_key_cols[MAX_COLUMNS] = {NULL};
   ColumnValue* primary_key_vals[MAX_COLUMNS] = {NULL};
@@ -229,46 +234,58 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
-      if (btree_search(ctx->tc->btree[idx], primary_key_vals[i]) != -1) {
+      if (btree_search(ctx->tc[schema_idx].btree[idx], primary_key_vals[i]) != -1) {
         return (ExecutionResult){1, "Primary Key already exists"};
       }
     }
   }
-  
-  // bool is_unique = true;
-  // for (uint8_t i = 0; i < primary_key_count; i++) {
-  //   if (!check_unique_combination(primary_key_cols, primary_key_vals, primary_key_count)) {
-  //     is_unique = false;
-  //     break;
-  //   }
-  // }
-  
-  // if (!is_unique) {
-  //   LOG_ERROR("Error: Duplicate primary key value.\n");
-  //   return;
-  // }
-    
-  long row_start = io_tell(io_A);
-  uint16_t row_length = 0;
 
+  IO* io_A = ctx->schema.appender;
+  IO* io_W = ctx->schema.writer;
+  
+  uint64_t row_start = io_tell(io_A);
+  uint16_t row_length = 0;
   uint32_t row_id = ctx->schema.next_row_id++;
 
-  io_write(io_A, &row_length, sizeof(uint16_t));  
-  io_write(io_A, &row_id, sizeof(uint32_t));
-  io_write(io_A, &column_count, sizeof(uint8_t));
+  io_write(io_A, &row_length, sizeof(uint16_t));
+  io_write(io_A, &row_id, sizeof(uint64_t));
+
+  uint8_t null_bitmap_size = (column_count + 7) / 8;
+  uint8_t null_bitmap[null_bitmap_size];
+  memset(null_bitmap, 0, null_bitmap_size);
+
+  for (uint8_t i = 0; i < column_count; i++) {
+    if (cmd->values[i].is_null) {
+      null_bitmap[i / 8] |= (1 << (i % 8));
+    }
+  }
+
+  io_write(io_A, null_bitmap, null_bitmap_size);
 
   for (uint8_t i = 0; i < column_count; i++) {
     ColumnValue* col_val = &cmd->values[i];
     ColumnDefinition* col_def = &cmd->schema->columns[i];
-
-    io_write(io_A, &col_val->column_index, sizeof(uint8_t));
-    write_column_value(io_A, col_val, col_def);
+    if (!col_val->is_null) {
+      write_column_value(io_A, col_val, col_def);
+    }
   }
+
+
+  for (uint8_t i = 0; i < primary_key_count; i++) {
+    if (primary_key_cols[i]) {
+      uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
+      void* key = get_column_value_as_pointer(primary_key_vals[i]);  
+      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_start)) {
+        io_clear_buffer(io_A);
+        return (ExecutionResult){1, "Failed to insert record into B-tree."};
+      }
+    }
+  }  
 
   io_flush(io_A);
 
   row_length = (uint16_t)(io_tell(io_A) - row_start);
-  io_seek_write(ctx->tc_writer, row_start, &row_length, sizeof(uint16_t), SEEK_SET);
+  io_seek_write(io_W, row_start, &row_length, sizeof(uint16_t), SEEK_SET);
 
   io_seek(io_A, row_start + row_length, SEEK_SET);
   io_flush(io_A);
@@ -369,6 +386,38 @@ void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def)
   }
 }
 
+
+void* get_column_value_as_pointer(ColumnValue* col_val) {
+  switch (col_val->type) {
+    case TOK_T_INT:
+      return &(col_val->int_value);
+    case TOK_T_FLOAT:
+      return &(col_val->float_value);
+    case TOK_T_DOUBLE:
+      return &(col_val->double_value);
+    case TOK_T_BOOL:
+      return &(col_val->bool_value);
+    case TOK_T_CHAR:
+    case TOK_T_TEXT:
+      return &(col_val->str_value);
+    case TOK_T_BLOB:
+      return &(col_val->blob_value);
+    case TOK_T_JSON:
+      return &(col_val->json_value);
+    case TOK_T_DECIMAL:
+      return &(col_val->decimal.decimal_value);
+    case TOK_T_DATE:
+      return &(col_val->date);
+    case TOK_T_TIME:
+      return &(col_val->time);
+    case TOK_T_DATETIME:
+      return &(col_val->datetime);
+    case TOK_T_TIMESTAMP:
+      return &(col_val->timestamp);
+    default:
+      return NULL;
+  }
+}
 
 uint32_t get_table_offset(Context* ctx, const char* table_name) {
   for (int i = 0; i < ctx->table_count; i++) {

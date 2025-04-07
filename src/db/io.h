@@ -74,6 +74,15 @@ static bool file_exists(const char* path) {
   return (stat(path, &stat_buf) == 0 && S_ISREG(stat_buf.st_mode));
 }
 
+static size_t eof_fread(void *ptr, size_t size, size_t count, FILE *file, bool *is_invalid) {
+  size_t result = fread(ptr, size, count, file);
+  if (result < count) {
+    *is_invalid = true;
+  }
+  return result;
+}
+
+
 #define MAX_TABLE_NAME 32
 #define MAX_SCHEMA 128
 
