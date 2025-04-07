@@ -105,7 +105,7 @@ void ctx_free(Context* ctx) {
     }
     
     char dir_path[MAX_PATH_LENGTH];
-    snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", ctx->fs->tables_dir, tc->name);
+    snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", ctx->fs->tables_dir, tc->schema->table_name);
 
     for (uint8_t j = 0; j < tc->schema->prim_column_count; j++) {
       unsigned int file_hash = hash_fnv1a(tc->schema->columns[j].name, MAX_COLUMNS);
@@ -113,7 +113,7 @@ void ctx_free(Context* ctx) {
       if (tc->btree[file_hash] != NULL) {
         
         char btree_file_path[MAX_PATH_LENGTH];
-        snprintf(btree_file_path, sizeof(btree_file_path), "%s/%u.idx", dir_path, file_hash);
+        snprintf(btree_file_path, sizeof(btree_file_path), "%s" SEP "%u.idx", dir_path, file_hash);
     
         unload_btree(tc->btree[file_hash], btree_file_path);
       }
