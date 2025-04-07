@@ -96,6 +96,30 @@ Context* ctx_init() {
 void ctx_free(Context* ctx) {
   if (!ctx) return;
 
+  for (int i = 0; i < BTREE_LIFETIME_THRESHOLD; i++) {
+    uint32_t idx = ctx->btree_idx_stack[i];
+    TableCatalogEntry* tc = &ctx->tc[idx];
+
+    if (!tc || !tc->schema) {
+      break;
+    }
+    
+    char dir_path[MAX_PATH_LENGTH];
+    snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", ctx->fs->tables_dir, tc->name);
+
+    for (uint8_t j = 0; j < tc->schema->prim_column_count; j++) {
+      unsigned int file_hash = hash_fnv1a(tc->schema->columns[j].name, MAX_COLUMNS);
+
+      if (tc->btree[file_hash] != NULL) {
+        
+        char btree_file_path[MAX_PATH_LENGTH];
+        snprintf(btree_file_path, sizeof(btree_file_path), "%s/%u.idx", dir_path, file_hash);
+    
+        unload_btree(tc->btree[file_hash], btree_file_path);
+      }
+    }
+}
+
   parser_free(ctx->parser);
   fs_free(ctx->fs);
   free(ctx->uuid);
@@ -152,8 +176,13 @@ void list_tables(Context* ctx) {
   }
 
   LOG_INFO("Tables in the database:");
-  for (int i = 0; i < ctx->table_count; i++) {
-    // LOG_INFO("  - %s (%zu rows)", ctx->tc[i].name, ctx->tc[i].row_count);
+  for (int i = 0; i < MAX_TABLES; i++) {
+    if (ctx->tc[i].schema) {
+      printf("\\ %s (%u cols)\n", ctx->tc[i].schema->table_name, ctx->tc[i].schema->column_count);
+      for (int j = 0; j < ctx->tc[i].schema->column_count; j++) {
+        printf("|- %s (%s)\n", ctx->tc[i].schema->columns[j].name, get_token_type(ctx->tc[i].schema->columns[j].type));
+      }
+    }
   }
 }
 
@@ -406,7 +435,7 @@ void load_btree_cluster(Context* ctx, char* name) {
       
       fclose(fp);
       
-      (&ctx->tc[idx])->btree[file_hash] = btree;
+      ctx->tc[idx].btree[file_hash] = btree;
       found_prims++;
       
       if (found_prims == schema->prim_column_count) {
@@ -419,11 +448,12 @@ void load_btree_cluster(Context* ctx, char* name) {
     LOG_FATAL("Mismatch: Loaded %u primary key B-trees, expected %u.", 
               found_prims, schema->prim_column_count);
     return;
-  }
-  
+  } 
+
   ctx->loaded_btree_clusters++;
   ctx->btree_idx_stack[ctx->loaded_btree_clusters - 1] = idx;
-  
+
+
   return;
 }
 
@@ -438,7 +468,7 @@ void pop_btree_cluster(Context* ctx) {
   TableCatalogEntry* tc = &ctx->tc[idx_to_unload];
   
   char dir_path[MAX_PATH_LENGTH];
-  snprintf(dir_path, sizeof(dir_path), "./tables/%s", tc->name);
+  snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", ctx->fs->tables_dir, tc->name);
 
   for (uint8_t i = 0; i < tc->schema->prim_column_count; i++) {
     if (tc->btree[i] != NULL) {

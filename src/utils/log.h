@@ -88,6 +88,33 @@ static void log_transaction(const char* filename, const char* fmt, ...) {
   fclose(log_file);
 }
 
+static const char* token_type_strings[] = {
+  "INTEGER", 
+  "VARCHAR", 
+  "CHAR", 
+  "TEXT", 
+  "BOOLEAN", 
+  "FLOAT", 
+  "DOUBLE", 
+  "DECIMAL", 
+  "DATE", 
+  "TIME", 
+  "DATETIME", 
+  "TIMESTAMP", 
+  "BLOB", 
+  "JSON", 
+  "UUID", 
+  "SERIAL"
+};
+
+static const char* get_token_type(int type) {
+  if (type >= 0 && type < 16) {
+    return token_type_strings[type];
+  } else {
+    return "UNKNOWN";
+  }
+}
+
 #define LOG_MESSAGE(level, color, level_threshold, fmt, ...) \
   do { \
     if (get_verbosity() >= level_threshold) { \
