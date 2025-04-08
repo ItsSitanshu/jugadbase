@@ -32,7 +32,7 @@ typedef struct Context {
     IO* reader;
     IO* writer;
     IO* appender;
-    uint32_t next_row_id; 
+    uint64_t next_row_id; 
     char* name;
   } schema;
 

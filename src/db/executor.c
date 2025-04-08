@@ -177,12 +177,15 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     rows_file[MAX_PATH_LENGTH - 1] = '\0';
   }
 
-  FILE* rows_fp = fopen(rows_file, "w");
+  FILE* rows_fp = fopen(rows_file, "wb");
   if (!rows_fp) {
     LOG_ERROR("Failed to create rows file: %s", rows_file);
     rmdir(table_dir);
     return (ExecutionResult){0, "Failed to create rows file"};
   }
+
+  uint64_t row_id = 0;
+  fwrite(&row_id, sizeof(uint64_t), 1, rows_fp);
 
   fclose(rows_fp);
 
@@ -297,9 +300,90 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   return (ExecutionResult){0, "Record inserted successfully"};
 }
 
+// ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
+//   switch_schema(ctx, cmd->schema->table_name);
+
+//   if (!ctx || !cmd || !ctx->tc_appender) {
+//     return (ExecutionResult){1, "Invalid execution context or command"};
+//   }
+
+//   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+
+//   if (!schema) {
+//     return (ExecutionResult){1, "Error: Invalid schema"};
+//   }
+
+//   load_btree_cluster(ctx, schema->table_name);
+
+//   cmd->schema = schema;
+//   uint8_t column_count = schema->column_count;
+//   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+
+//   int64_t row_start = -1;
+
+//   if (cmd->select.where_column && cmd->select.where_value) {
+//     for (uint8_t i = 0; i < column_count; i++) {
+//       if (strcmp(schema->columns[i].name, cmd->select.where_column) == 0 && schema->columns[i].is_primary_key) {
+//         uint8_t idx = hash_fnv1a(schema->columns[i].name, MAX_COLUMNS);
+//         void* key = get_column_value_as_pointer(cmd->select.where_value);
+//         row_start = btree_search(ctx->tc[schema_idx].btree[idx], key);
+//         break;
+//       }
+//     }
+//     if (row_start == -1) {
+//       return (ExecutionResult){1, "No record found"};
+//     }
+//   }
+
+//   IO* io_R = ctx->schema.reader;
+//   uint64_t file_pos = sizeof(uint64_t);
+//   while (1) {
+//     if (row_start != -1) {
+//       io_seek(io_R, row_start, SEEK_SET);
+//     } else {
+//       if (io_seek(io_R, file_pos, SEEK_SET) == -1) break;
+//     }
+
+//     uint16_t row_length;
+//     if (io_read(io_R, &row_length, sizeof(uint16_t)) != sizeof(uint16_t)) break;
+
+//     uint64_t row_id;
+//     if (io_read(io_R, &row_id, sizeof(uint64_t)) != sizeof(uint64_t)) break;
+
+//     uint8_t null_bitmap_size = (column_count + 7) / 8;
+//     uint8_t null_bitmap[null_bitmap_size];
+//     if (io_read(io_R, null_bitmap, null_bitmap_size) != null_bitmap_size) break;
+
+//     printf("Row ID: %llu\n", row_id);
+
+//     for (uint8_t i = 0; i < column_count; i++) {
+//       if ((cmd->select.column_count == 1 && strcmp(cmd->select.columns[0], "*") == 0) ||
+//           column_name_in_list(schema->columns[i].name, cmd->select.columns, cmd->select.column_count)) {
+//         if (null_bitmap[i / 8] & (1 << (i % 8))) {
+//           printf("%s: NULL\n", schema->columns[i].name);
+//         } else {
+//           read_and_print_column_value(io_R, &schema->columns[i]);
+//         }
+//       } else {
+//         skip_column_value(io_R, &schema->columns[i]);
+//       }
+//     }
+
+//     printf("\n");
+
+//     if (row_start != -1) break;
+//     file_pos += row_length;
+//   }
+
+//   return (ExecutionResult){0, "Select executed successfully"};
+// }
+
 
 void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def) {
   uint16_t text_len, str_len, max_len;
+
+  if (col_val->is_null) {
+  }
 
   switch (col_def->type) {
     case TOK_T_INT:

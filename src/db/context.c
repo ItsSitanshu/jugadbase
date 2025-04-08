@@ -223,16 +223,15 @@ void switch_schema(Context* ctx, char* schema_name) {
   int file_exists = (stat(schema_path, &buffer) == 0);
 
   if (!file_exists) {
-    FILE* file = fopen(schema_path, "w");
+    FILE* file = fopen(schema_path, "wb");
     if (!file) {
       LOG_ERROR("Failed to create database file %s", schema_path);
       return;
     }
 
-    uint32_t db_init = DB_INIT_MAGIC;
-    uint32_t table_count = 0;
-    fwrite(&db_init, sizeof(uint32_t), 1, file);
-    fwrite(&table_count, sizeof(uint32_t), 1, file);
+    uint64_t row_id = 0;
+    fwrite(&row_id, sizeof(uint64_t), 1, file);
+  
     fclose(file);
   }
 

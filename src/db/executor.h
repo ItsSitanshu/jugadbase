@@ -13,6 +13,7 @@ ExecutionResult process(Context* ctx, char* buffer);
 ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd);
+ExecutionResult execute_select(Context* ctx, JQLCommand* cmd);
 
 void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def);
 
