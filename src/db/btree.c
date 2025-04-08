@@ -17,19 +17,18 @@ BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
   node->num_keys = 0;
 
   node->keys = (void**)malloc(sizeof(void*) * (btree_order - 1));  
-  node->row_pointers = (uint64_t*)malloc(sizeof(uint64_t) * (btree_order - 1));  
+  node->row_pointers = (RowID*)malloc(sizeof(RowID) * (btree_order - 1));  
   node->children = (BTreeNode**)malloc(sizeof(BTreeNode*) * btree_order);  
 
   memset(node->keys, 0, sizeof(void*) * (btree_order - 1));
-  memset(node->row_pointers, 0, sizeof(uint64_t) * (btree_order - 1));
+  memset(node->row_pointers, 0, sizeof(RowID) * (btree_order - 1));
   memset(node->children, 0, sizeof(BTreeNode*) * btree_order);
 
   return node;
 }
 
-
-uint64_t btree_search(BTree* tree, void* key) {
-  if (!tree || !tree->root) return -1;
+RowID btree_search(BTree* tree, void* key) {
+  if (!tree || !tree->root) return (RowID){0};
 
   BTreeNode* node = tree->root;
   while (node) {
@@ -50,9 +49,8 @@ uint64_t btree_search(BTree* tree, void* key) {
     node = node->children[i]; 
   }
   
-  return -1;
+  return (RowID){0};
 }
-
 
 void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t btree_order) {
   int mid = btree_order / 2;
@@ -88,7 +86,7 @@ void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t bt
   parent->num_keys++;
 }
 
-void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, uint64_t row_offset) {
+void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_offset) {
   int i = node->num_keys - 1;
 
   if (node->is_leaf) {
@@ -121,19 +119,17 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, uint64_t row_
   }
 }
 
-
-bool btree_insert(BTree* tree, void* key, uint64_t row_offset) {
+bool btree_insert(BTree* tree, void* key, RowID row_offset) {
   if (!tree) {
     LOG_ERROR("B-tree couldn't be updated properly.\n\t > run jugad-cli fix");
     return false; 
   }
 
-  LOG_DEBUG("Calling btree_insert(tree: %p, key: %p, off: %lu)", tree, key, row_offset);
+  LOG_DEBUG("Calling btree_insert(tree: %p, key: %p, off: {%u, %u})", tree, key, row_offset.page_id, row_offset.row_id);
   
   if (!tree->root) {
     tree->root = btree_create_node(true, tree->btree_order); // initialze as leaf
   }
-
 
   BTreeNode* root = tree->root;
   if (root->num_keys == tree->btree_order - 1) {
@@ -204,8 +200,8 @@ BTreeNode* load_tree_node(FILE* db_file, uint8_t key_type) {
     fread(node->keys[i], ksize, 1, db_file);
   }
 
-  node->row_pointers = malloc(sizeof(uint64_t) * node->num_keys);
-  fread(node->row_pointers, sizeof(uint64_t), node->num_keys, db_file);
+  node->row_pointers = malloc(sizeof(RowID) * node->num_keys);
+  fread(node->row_pointers, sizeof(RowID), node->num_keys, db_file);
 
   if (!node->is_leaf) {
     node->children = malloc(sizeof(BTreeNode*) * (node->num_keys + 1));
@@ -246,10 +242,11 @@ void save_tree_node(BTreeNode* node, FILE* db_file, uint8_t key_type) {
     fwrite(node->keys[i], ksize, 1, db_file);
   }
 
-  fwrite(node->row_pointers, sizeof(uint64_t), node->num_keys, db_file);
+  fwrite(node->row_pointers, sizeof(RowID), node->num_keys, db_file);
 
   for (int i = 0; i < node->num_keys; i++) {
-    LOG_DEBUG("  Row pointer[%d]: %lu", i, node->row_pointers[i]);
+    LOG_DEBUG("Row pointer[%d]: {page: %u, slot: %u}", i, 
+              node->row_pointers[i].page_id, node->row_pointers[i].row_id);
   }
 
   if (!node->is_leaf) {
@@ -266,7 +263,6 @@ void unload_btree(BTree* btree, char* file_path) {
     return;
   }
 
-
   save_btree(btree, fp);
   btree_destroy(btree);
 
@@ -277,7 +273,6 @@ void unload_btree(BTree* btree, char* file_path) {
 }
 
 int key_compare(void* key1, void* key2, uint8_t type) {
-  LOG_DEBUG("!! %d ", type);
   switch (type) {
     case TOK_T_INT:  
       return (*(int*)key1 - *(int*)key2); 
@@ -322,7 +317,6 @@ int key_compare(void* key1, void* key2, uint8_t type) {
       return memcmp(key1, key2, 16);
 
     case TOK_T_SERIAL:  // SERIAL treated as INTEGER
-      LOG_DEBUG("%d %d", *(int*)key1, *(int*)key2);
       return (*(int*)key1 - *(int*)key2); 
 
     default:
@@ -373,11 +367,9 @@ int key_size_for_type(uint8_t key_type) {
   }
 }
 
-
-
 long calculate_btree_order() {
   size_t key_size = sizeof(int);               
-  size_t row_pointer_size = sizeof(long);     
+  size_t row_pointer_size = sizeof(RowID);     
   size_t child_pointer_size = sizeof(BTreeNode*); 
   
   struct statfs fs_info;

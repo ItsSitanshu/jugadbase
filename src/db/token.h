@@ -12,6 +12,8 @@
 #define MAX_DOUBLE_LIT_DIGITS 15
 #define WRITE_ERRORS_TO 0
 
+typedef struct RowID { uint32_t page_id; uint16_t row_id;} RowID;
+
 typedef struct Token {
   unsigned int line, col;
   char *value;

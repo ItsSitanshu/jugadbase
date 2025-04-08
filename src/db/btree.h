@@ -1,38 +1,35 @@
 #ifndef BTREE_H
 #define BTREE_H
 
-
 #include "io.h"
 #include "token.h"
 
 #include <stdint.h>
- 
+
 #define MAX_KEYS_PER_NODE 1000
-#define BTREE_LIFETIME_THRESHOLD 10 
+#define BTREE_LIFETIME_THRESHOLD 10
 #define TABLE_COUNT_OFFSET 4UL
 
 typedef struct __attribute__((aligned(32))) BTreeNode {
   bool is_leaf;
   int num_keys;
   void** keys;  
-  uint64_t* row_pointers;
+  RowID* row_pointers;
   struct BTreeNode** children; 
 } BTreeNode;
 
 typedef struct {
-  uint32_t id;
-
+  uint32_t id; 
   BTreeNode* root;
   long btree_order;
   uint8_t key_type;
 } BTree;
 
 BTree* btree_create(uint8_t key_type);
-
 BTreeNode* btree_create_node(bool is_leaf, size_t btree_order);
-uint64_t btree_search(BTree* tree, void* key);
-bool btree_insert(BTree* tree, void* key, uint64_t row_offset);
-void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, uint64_t row_offset);
+RowID btree_search(BTree* tree, void* key);
+bool btree_insert(BTree* tree, void* key, RowID row_offset);
+void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_offset);
 void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t btree_order);
 void btree_free_node(BTreeNode* node);
 void btree_destroy(BTree* tree);
