@@ -144,9 +144,11 @@ typedef struct {
 typedef struct {
   JQLCommandType type;
   TableSchema* schema;
+  char* schema_name;
 
   int value_count;
   ColumnValue* values;
+  char** columns;
 
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
   char order_by[MAX_IDENTIFIER_LEN];  // ORDER BY clause
@@ -183,12 +185,13 @@ void jql_command_free(JQLCommand* cmd);
 
 JQLCommand parser_parse(Parser* parser);
 
-JQLCommand parser_parse_create_table(Parser *parser);
-JQLCommand parser_parse_insert(Parser *parser);
+JQLCommand parser_parse_create_table(Parser* parser);
+JQLCommand parser_parse_insert(Parser* parser);
+JQLCommand parser_parse_select(Parser* parser);
 
 void parser_consume(Parser* parser);
 
-bool is_valid_data_type(Parser *parser);
+bool is_valid_data_type(Parser* parser);
 bool is_valid_default(Parser* parser, int column_type, int literal_type);
 bool parse_value(Parser* parser, ColumnValue* col_val);
 ASTNode* parse_expression(Parser* parser);

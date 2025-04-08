@@ -74,6 +74,8 @@ JQLCommand parser_parse(Parser* parser) {
       return parser_parse_create_table(parser);
     case TOK_INS:
       return parser_parse_insert(parser);
+    case TOK_SEL: 
+      return parser_parse_select(parser);
     default:
       REPORT_ERROR(parser->lexer, "SYE_UNSUPPORTED");
       return command;
@@ -410,6 +412,82 @@ JQLCommand parser_parse_insert(Parser *parser) {
   }
 
   parser_consume(parser);
+
+  command.is_invalid = false;
+  return command;
+}
+
+JQLCommand parser_parse_select(Parser* parser) {
+  JQLCommand command;
+  memset(&command, 0, sizeof(JQLCommand));
+  command.type = CMD_SELECT;
+  command.is_invalid = true;
+
+  parser_consume(parser); 
+
+  command.value_count = 0;
+  command.columns = calloc(MAX_COLUMNS, sizeof(char*));
+
+  if (parser->cur->type == TOK_MUL) {
+    command.columns[command.value_count] = strdup("*");
+    command.value_count++;
+    parser_consume(parser);
+  } else {
+    while (parser->cur->type == TOK_ID) {
+      command.columns[command.value_count] = strdup(parser->cur->value);
+
+      parser_consume(parser);
+      command.value_count++;
+
+      if (parser->cur->type == TOK_COM) {
+        parser_consume(parser);
+      } else {
+        break;
+      }
+    }
+  }
+
+  if (parser->cur->type != TOK_FRM) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_FROM");
+    return command;
+  }
+
+  parser_consume(parser); 
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
+    return command;
+  }
+
+  command.schema = malloc(sizeof(TableSchema));
+  strcpy(command.schema->table_name, parser->cur->value);
+  parser_consume(parser); 
+
+  // if (parser->cur->type == TOK_WR) {
+  //   parser_consume(parser);
+
+  //   if (parser->cur->type != TOK_ID) {
+  //     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_WHERE_COLUMN");
+  //     return command;
+  //   }
+
+  //   command.select.where_column = strdup(parser->cur->value);
+  //   parser_consume(parser);
+
+  //   if (parser->cur->type != TOK_EQ) {
+  //     REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_EQUAL");
+  //     return command;
+  //   }
+
+  //   parser_consume(parser);
+
+  //   ColumnValue* where_value = malloc(sizeof(ColumnValue));
+  //   if (!parse_value(parser, where_value)) {
+  //     return command;
+  //   }
+
+  //   command.select.where_value = where_value;
+  // }
 
   command.is_invalid = false;
   return command;
