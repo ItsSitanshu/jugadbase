@@ -608,3 +608,22 @@ bool parse_value(Parser* parser, ColumnValue* col_val) {
   parser_consume(parser);
   return true;
 }
+
+bool parse_uuid_string(const char* uuid_str, uint8_t* output) {
+  if (strlen(uuid_str) != 36) return false; 
+
+  static const char hex_map[] = "0123456789abcdef";
+  size_t j = 0;
+
+  for (size_t i = 0; i < 36; i++) {
+    if (uuid_str[i] == '-') continue;
+
+    const char* p = strchr(hex_map, tolower(uuid_str[i]));
+    if (!p) return false;
+
+    output[j / 2] = (output[j / 2] << 4) | (p - hex_map);
+    j++;
+  }
+
+  return j == 32;
+}
