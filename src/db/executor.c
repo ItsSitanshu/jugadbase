@@ -25,6 +25,7 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
   switch (cmd->type) {
     case CMD_CREATE:
       result = execute_create_table(ctx, cmd);
+      switch_schema(ctx, cmd->schema->table_name);
       break;
     case CMD_INSERT:
       result = execute_insert(ctx, cmd);
@@ -74,7 +75,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  FILE* tca_io = ctx->tc_appender;
+  IO* tca_io = ctx->tc_appender;
   TableSchema* schema = cmd->schema;
   
   uint32_t table_count;
@@ -154,6 +155,13 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
 
     io_seek(tca_io, schema_offset_before_flush, SEEK_SET);
 
+    io_clear_buffer(tca_io); 
+    io_clear_buffer(ctx->tc_writer); 
+
+    if (tca_io->buf_size != 0 || ctx->tc_writer->buf_size != 0) {
+      LOG_FATAL("Failed to clear schema buffer after mkdir failure.\n\t > run jugad-cli fix");
+    }
+
     rmdir(table_dir);
 
     table_count--;  
@@ -190,27 +198,37 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
 }
 
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
-  if (!ctx || !cmd || !cmd->schema) {
+  /*
+  [2B] - Row Length
+  [8B] - Row ID
+  [<(column_count + 7) / 8>B] - Null Bitmap
+  [<sizoef(VAR type) * column_count>B] - Actual Values
+  */
+  switch_schema(ctx, cmd->schema->table_name);
+  
+  if (!ctx || !cmd || !ctx->tc_appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
-  }
+  } 
 
   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
   load_btree_cluster(ctx, schema->table_name);
-
-  uint8_t column_count = schema->column_count;
-  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+  
+  cmd->schema = schema;
+  uint8_t column_count = (uint8_t)cmd->schema->column_count;
+  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES); 
 
   ColumnDefinition* primary_key_cols[MAX_COLUMNS] = {NULL};
   ColumnValue* primary_key_vals[MAX_COLUMNS] = {NULL};
   uint8_t primary_key_count = 0;
-
+  
   for (uint8_t i = 0; i < column_count; i++) {
-    if (schema->columns[i].is_primary_key) {
-      primary_key_cols[primary_key_count] = &schema->columns[i];
+    if (cmd->schema->columns[i].is_primary_key) {
+      primary_key_cols[primary_key_count] = &cmd->schema->columns[i];
       primary_key_vals[primary_key_count] = &cmd->values[i];
       primary_key_count++;
     }
@@ -219,32 +237,28 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
-      void* key = get_column_value_as_pointer(primary_key_vals[i]);
+      void* key = get_column_value_as_pointer(primary_key_vals[i]);  
       if (btree_search(ctx->tc[schema_idx].btree[idx], key) != -1) {
         return (ExecutionResult){1, "Primary Key already exists"};
       }
     }
   }
 
-  BufferPool* pool = &(ctx->lake[schema_idx]);
-  char row_file[MAX_PATH_LENGTH];
-  snprintf(row_file, sizeof(row_file), "%s" SEP "%s" SEP "rows.db",
-        ctx->fs->tables_dir, schema->table_name);
+  IO* io_A = ctx->schema.appender;
+  IO* io_W = ctx->schema.writer;
+  
+  uint16_t row_length = 0;
+  uint32_t row_id = ctx->schema.next_row_id++;
 
-  if (is_struct_zeroed(pool, sizeof(BufferPool))) {
-    initialize_buffer_pool(pool, schema_idx, row_file);
-    LOG_INFO("%d %p", pool->idx, pool->pages);
-  }
+  io_write(io_A, &row_length, sizeof(uint16_t));
+  io_flush(io_A);
 
-  Row row = {0};
-  row.row_id = 0; 
-  row.page_id = 0; 
+  uint64_t row_start = io_tell(io_A) - sizeof(uint16_t);
+
+  io_write(io_A, &row_id, sizeof(uint64_t));
 
   uint8_t null_bitmap_size = (column_count + 7) / 8;
-  uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
-  if (!null_bitmap) {
-    return (ExecutionResult){1, "Memory allocation failed for null bitmap"};
-  }
+  uint8_t null_bitmap[null_bitmap_size];
   memset(null_bitmap, 0, null_bitmap_size);
 
   for (uint8_t i = 0; i < column_count; i++) {
@@ -253,38 +267,38 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
     }
   }
 
-  row.null_bitmap_size = null_bitmap_size;
-  row.null_bitmap = null_bitmap;
-  row.row_length = sizeof(row.page_id) + sizeof(row.row_id) + null_bitmap_size;
-
-  row.column_data = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
-  if (!row.column_data) {
-    free(null_bitmap);
-    return (ExecutionResult){1, "Memory allocation failed for column data"};
-  }
+  io_write(io_A, null_bitmap, null_bitmap_size);
 
   for (uint8_t i = 0; i < column_count; i++) {
-    row.column_data[i] = cmd->values[i];
-    row.row_length += size_from_type(schema->columns[i].type); 
+    ColumnValue* col_val = &cmd->values[i];
+    ColumnDefinition* col_def = &cmd->schema->columns[i];
+    if (!col_val->is_null) {
+      write_column_value(io_A, col_val, col_def);
+    }
   }
 
-  serialize_insert(pool, row);
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
-      void* key = get_column_value_as_pointer(primary_key_vals[i]);
-      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row.page_id)) {
-        free(row.column_data);
-        free(row.null_bitmap);
-        return (ExecutionResult){1, "Failed to insert record into B-tree"};
+      void* key = get_column_value_as_pointer(primary_key_vals[i]);  
+      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_start)) {
+        io_clear_buffer(io_A);
+        return (ExecutionResult){1, "Failed to insert record into B-tree."};
       }
     }
-  }
+  }  
+
+  io_flush(io_A);
+
+  row_length = (uint16_t)(io_tell(io_A) - row_start);
+  io_seek_write(io_W, row_start, &row_length, sizeof(uint16_t), SEEK_SET);
+
+  io_seek(io_A, row_start + row_length, SEEK_SET);
+  io_flush(io_A);
 
   return (ExecutionResult){0, "Record inserted successfully"};
 }
-
 
 // ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
 //   switch_schema(ctx, cmd->schema->table_name);
@@ -321,7 +335,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 //     }
 //   }
 
-//   FILE* io_R = ctx->schema.reader;
+//   IO* io_R = ctx->schema.reader;
 //   uint64_t file_pos = sizeof(uint64_t);
 //   while (1) {
 //     if (row_start != -1) {
@@ -363,6 +377,102 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 
 //   return (ExecutionResult){0, "Select executed successfully"};
 // }
+
+
+void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def) {
+  uint16_t text_len, str_len, max_len;
+
+  if (col_val->is_null) {
+  }
+
+  switch (col_def->type) {
+    case TOK_T_INT:
+    case TOK_T_SERIAL:
+      io_write(io, &col_val->int_value, sizeof(int));
+      break;
+
+    case TOK_T_BOOL:
+      uint8_t bool_value = col_val->bool_value ? 1 : 0;
+      io_write(io, &bool_value, sizeof(uint8_t));
+      break;
+
+    case TOK_T_FLOAT:
+      io_write(io, &col_val->float_value, sizeof(float));
+      break;
+
+    case TOK_T_DOUBLE:
+      io_write(io, &col_val->double_value, sizeof(double));
+      break;
+
+    case TOK_T_DECIMAL:
+      io_write(io, &col_val->decimal.precision, sizeof(int));
+      io_write(io, &col_val->decimal.scale, sizeof(int));
+      io_write(io, col_val->decimal.decimal_value, MAX_DECIMAL_LEN);
+      break;
+
+    case TOK_T_UUID: 
+      size_t uuid_len = strlen(col_val->str_value);
+      
+      if (uuid_len == 36) {  
+        uint8_t binary_uuid[16];
+        if (!parse_uuid_string(col_val->str_value, binary_uuid)) {
+          fprintf(stderr, "Error: Invalid UUID format.\n");
+          return;
+        }
+        io_write(io, binary_uuid, 16);
+      } else if (uuid_len == 16) {
+          io_write(io, col_val->str_value, 16);
+      } else {
+          fprintf(stderr, "Error: Invalid UUID length.\n");
+          return;
+      }
+      break;
+
+    case TOK_T_TIMESTAMP:
+    case TOK_T_DATETIME:
+    case TOK_T_TIME:
+    case TOK_T_DATE:
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR: 
+      str_len = (uint16_t)strlen(col_val->str_value);
+      max_len = col_def->type_varchar == 0 ? 255 : col_def->type_varchar;
+
+      if (str_len > max_len) {
+        str_len = max_len;
+      }
+
+      io_write(io, &str_len, sizeof(uint8_t));
+      io_write(io, col_val->str_value, str_len);
+      break;
+
+    case TOK_T_TEXT:
+    case TOK_T_JSON:
+      text_len = (uint16_t)strlen(col_val->str_value);
+      max_len = (col_def->type == TOK_T_JSON) ? MAX_JSON_SIZE : MAX_TEXT_SIZE;
+
+      if (text_len > max_len) {
+          text_len = max_len;
+      }
+      io_write(io, &text_len, sizeof(uint16_t));
+      io_write(io, col_val->str_value, text_len);
+      break;
+
+    // case TOK_T_BLOB: // TODO: SUPPORT BLOBs
+    //   uint16_t blob_size = col_val->blob_value.size;
+    //   if (blob_size > MAX_BLOB_SIZE) {
+    //       fprintf(stderr, "Error: Blob size exceeds limit.\n");
+    //       return;
+    //   }
+    //   io_write(io, &blob_size, sizeof(uint16_t));
+    //   io_write(io, col_val->blob_value.data, blob_size);
+    //   break;
+    // 
+
+    default:
+      fprintf(stderr, "Error: Unsupported data type.\n");
+      break;
+  }
+}
 
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {
@@ -408,53 +518,6 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
   }
 }
 
-size_t size_from_type(uint8_t column_type) {
-  size_t size = 0;
-
-  switch (column_type) {
-    case TOK_T_INT:
-    case TOK_T_SERIAL:
-      size = sizeof(int);
-      break;
-    case TOK_T_BOOL:
-      size = sizeof(uint8_t);
-      break;
-    case TOK_T_FLOAT:
-      size = sizeof(float);
-      break;
-    case TOK_T_DOUBLE:
-      size = sizeof(double);
-      break;
-    case TOK_T_DECIMAL:
-      size = sizeof(int) * 2 + MAX_DECIMAL_LEN; 
-      break;
-    case TOK_T_UUID:
-      size = 16; 
-      break;
-    case TOK_T_TIMESTAMP:
-    case TOK_T_DATETIME:
-    case TOK_T_TIME:
-    case TOK_T_DATE:
-      size = sizeof(int);  
-      break;
-    case TOK_T_VARCHAR:
-      size = MAX_VARCHAR_SIZE;
-      break;
-    case TOK_T_CHAR:
-      size = sizeof(uint8_t);
-      break;
-    case TOK_T_TEXT:
-    case TOK_T_JSON:
-      size = MAX_JSON_SIZE;
-      break;
-    default:
-      size = 0;  
-      break;
-  }
-
-  return size;
-}
-
 uint32_t get_table_offset(Context* ctx, const char* table_name) {
   for (int i = 0; i < ctx->table_count; i++) {
     if (strcmp(ctx->tc[i].name, table_name) == 0) {
@@ -463,6 +526,27 @@ uint32_t get_table_offset(Context* ctx, const char* table_name) {
   }
   return 0;  
 }
+
+
+bool parse_uuid_string(const char* uuid_str, uint8_t* output) {
+  if (strlen(uuid_str) != 36) return false; 
+
+  static const char hex_map[] = "0123456789abcdef";
+  size_t j = 0;
+
+  for (size_t i = 0; i < 36; i++) {
+      if (uuid_str[i] == '-') continue;
+
+      const char* p = strchr(hex_map, tolower(uuid_str[i]));
+      if (!p) return false;
+
+      output[j / 2] = (output[j / 2] << 4) | (p - hex_map);
+      j++;
+  }
+
+  return j == 32;
+}
+
 
 // ExecutionOrder* generate_execution_plan(JQLCommand* command) {
 //   ExecutionOrder* order = malloc(sizeof(ExecutionOrder));
@@ -475,7 +559,7 @@ uint32_t get_table_offset(Context* ctx, const char* table_name) {
 //     return NULL;
 //   }
 
-//   order->steps[0].type = EXECUTFILEN_CREATE_TABLE;  
+//   order->steps[0].type = EXECUTION_CREATE_TABLE;  
 //   order->steps[0].command = *command;  
 
 //   return order;

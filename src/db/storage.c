@@ -1,215 +1,215 @@
-#include "storage.h"
+// #include "storage.h"
 
-void initialize_buffer_pool(BufferPool* pool, uint8_t idx, char* filename) {
-  for (int i = 0; i < POOL_SIZE; i++) {
-    pool->pages[i] = NULL;
-    pool->page_numbers[i] = 0;
-  }
+// void read_page_from_disk(uint64_t page_number, Page* page) {
+//   FILE* file = fopen("database.dat", "rb");
+//   if (!file) {
+//     fprintf(stderr, "Error opening file for reading.\n");
+//     return;
+//   }
+//   fseek(file, page_number * PAGE_SIZE, SEEK_SET);
+//   fread(page, PAGE_SIZE, 1, file);
+//   fclose(file);
+// }
 
-  pool->next_pg_no = 0;
-  pool->idx = idx;
+// void write_page_to_disk(FILE* file, uint64_t page_number, Page* page) {
+//   fseek(file, page_number * PAGE_SIZE, SEEK_SET);
 
-  memcpy(pool->file, filename, MAX_PATH_LENGTH - 1);
-  pool->file[MAX_PATH_LENGTH - 1] = '\0';
-} 
+//   fwrite(&page->page_id, sizeof(page->page_id), 1, file);
+//   fwrite(&page->num_rows, sizeof(page->num_rows), 1, file);
+//   fwrite(&page->free_space, sizeof(page->free_space), 1, file);
 
+//   for (int i = 0; i < page->num_rows; i++) {
+//     Row* row = &page->rows[i];
 
-void read_page(FILE* file, uint64_t page_number, Page* page) {
-  fseek(file, page_number * PAGE_SIZE, SEEK_SET);
+//     fwrite(&row->page_id, sizeof(row->page_id), 1, file);
+//     fwrite(&row->row_id, sizeof(row->row_id), 1, file);
+//     fwrite(&row->row_length, sizeof(row->row_length), 1, file);
 
-  fread(&page->page_id, sizeof(page->page_id), 1, file);
-  fread(&page->num_rows, sizeof(page->num_rows), 1, file);
-  fread(&page->free_space, sizeof(page->free_space), 1, file);
+//     fwrite(&row->null_bitmap_size, sizeof(row->null_bitmap_size), 1, file);
+//     if (row->null_bitmap != NULL) {
+//       fwrite(row->null_bitmap, row->null_bitmap_size, 1, file);
+//     }
 
-  for (int i = 0; i < page->num_rows; i++) {
-    Row* row = &page->rows[i];
+//     for (int j = 0; j < MAX_COLUMNS; j++) {
+//       if (row->column_data[j].type == TOK_T_INT) {
+//         fwrite(&row->column_data[j].int_value, sizeof(int), 1, file);
+//       }
+//     }
+//   }
+// }
 
-    fread(&row->page_id, sizeof(row->page_id), 1, file);
-    fread(&row->row_id, sizeof(row->row_id), 1, file);
-    fread(&row->row_length, sizeof(row->row_length), 1, file);
+// Page* get_page_from_buffer_pool(uint64_t page_number) {
+//   for (int i = 0; i < POOL_SIZE; i++) {
+//     if (buffer_pool.page_numbers[i] == page_number) {
+//       return buffer_pool.pages[i];
+//     }
+//   }
+//   Page* page = malloc(sizeof(Page));
+//   read_page_from_disk(page_number, page);
+//   for (int i = 0; i < POOL_SIZE; i++) {
+//     if (buffer_pool.pages[i] == NULL) {
+//       buffer_pool.pages[i] = page;
+//       buffer_pool.page_numbers[i] = page_number;
+//       return page;
+//     }
+//   }
+//   evict_page_from_pool(buffer_pool.page_numbers[0]);
+//   buffer_pool.pages[0] = page;
+//   buffer_pool.page_numbers[0] = page_number;
+//   return page;
+// }
 
-    fread(&row->null_bitmap_size, sizeof(row->null_bitmap_size), 1, file);
-    row->null_bitmap = malloc(row->null_bitmap_size); 
-    fread(row->null_bitmap, row->null_bitmap_size, 1, file);
+// void flush_page_to_disk(FILE* file, Page* page) {
+//   write_page_to_disk(file, page->page_id, page);
+// }
 
-    for (int j = 0; j < MAX_COLUMNS; j++) {
-      if (!row->column_data[j].is_null) {
-        // read_column_value(file, row->column_data, j);
-      }
-    }
-  }
-}
+// void initialize_buffer_pool() {
+//   for (int i = 0; i < POOL_SIZE; i++) {
+//     buffer_pool.pages[i] = NULL;
+//     buffer_pool.page_numbers[i] = -1;
+//   }
+//   buffer_pool.next_row_id = 0;
+// }
 
+// Page* get_free_page_from_pool() {
+//   for (int i = 0; i < POOL_SIZE; i++) {
+//     if (buffer_pool.pages[i] == NULL) {
+//       Page* new_page = malloc(sizeof(Page));
+//       new_page->page_id = buffer_pool.next_row_id++;
+//       buffer_pool.pages[i] = new_page;
+//       buffer_pool.page_numbers[i] = new_page->page_id;
+//       return new_page;
+//     }
+//   }
+//   return NULL;
+// }
 
-void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc) {
-  fseek(file, page_number * PAGE_SIZE, SEEK_SET);
+// void evict_page_from_pool(uint64_t page_number) {
+//   for (int i = 0; i < POOL_SIZE; i++) {
+//     if (buffer_pool.page_numbers[i] == page_number) {
+//       flush_page_to_disk(buffer_pool.pages[i]);
+//       buffer_pool.pages[i] = NULL;
+//       buffer_pool.page_numbers[i] = -1;
+//       break;
+//     }
+//   }
+// }
 
-  fwrite(&page->page_id, sizeof(page->page_id), 1, file);
-  fwrite(&page->num_rows, sizeof(page->num_rows), 1, file);
-  fwrite(&page->free_space, sizeof(page->free_space), 1, file);
+// void flush_all_pages() {
+//   for (int i = 0; i < POOL_SIZE; i++) {
+//     if (buffer_pool.pages[i] != NULL) {
+//       flush_page_to_disk(buffer_pool.pages[i]);
+//     }
+//   }
+// }
 
-  for (int i = 0; i < page->num_rows; i++) {
-    Row* row = &page->rows[i];
+// void insert_row(uint64_t row_id, const void* row_data) {
+//   Page* page = get_page_from_buffer_pool(row_id / PAGE_SIZE);
+//   if (page->free_space < sizeof(Row)) {
+//     flush_page_to_disk(page);
+//     page = get_page_from_buffer_pool(row_id / PAGE_SIZE);
+//   }
+//   Row* row = malloc(sizeof(Row));
+//   memcpy(row, row_data, sizeof(Row));
+//   page->rows[page->num_rows++] = *row;
+//   page->free_space -= sizeof(Row);
+// }
 
-    fwrite(&row->page_id, sizeof(row->page_id), 1, file);
-    fwrite(&row->row_id, sizeof(row->row_id), 1, file);
-    fwrite(&row->row_length, sizeof(row->row_length), 1, file);
+// Row* retrieve_row(uint64_t row_id) {
+//   Page* page = get_page_from_buffer_pool(row_id / PAGE_SIZE);
+//   for (int i = 0; i < page->num_rows; i++) {
+//     if (page->rows[i].row_id == row_id) {
+//       return &page->rows[i];
+//     }
+//   }
+//   return NULL;
+// }
 
-    fwrite(&row->null_bitmap_size, sizeof(row->null_bitmap_size), 1, file);
-    if (row->null_bitmap != NULL) {
-      fwrite(row->null_bitmap, row->null_bitmap_size, 1, file);
-    }
+// void delete_row(uint64_t row_id) {
+//   Page* page = get_page_from_buffer_pool(row_id / PAGE_SIZE);
+//   for (int i = 0; i < page->num_rows; i++) {
+//     if (page->rows[i].row_id == row_id) {
+//       page->rows[i] = page->rows[--page->num_rows];
+//       page->free_space += sizeof(Row);
+//       break;
+//     }
+//   }
+// }
 
-    for (int j = 0; j < tc.schema->column_count; j++) {
-      ColumnDefinition* col_def = &tc.schema->columns[j];
+// void initialize_null_bitmap(Row* row, uint8_t num_columns) {
+//   row->null_bitmap_size = (num_columns + 7) / 8;
+//   row->null_bitmap = malloc(row->null_bitmap_size);
+//   memset(row->null_bitmap, 0, row->null_bitmap_size);
+// }
 
-      if (!row->column_data[j].is_null && col_def) {
-        write_column_value(file, &row->column_data[j], col_def);
-      }
-    }
-  }
-}
+// void set_column_null(Row* row, uint8_t column_index, bool is_null) {
+//   uint8_t byte = column_index / 8;
+//   uint8_t bit = column_index % 8;
+//   if (is_null) {
+//     row->null_bitmap[byte] |= (1 << bit);
+//   } else {
+//     row->null_bitmap[byte] &= ~(1 << bit);
+//   }
+// }
 
-void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
-  uint16_t text_len, str_len, max_len;
+// bool get_column_null(Row* row, uint8_t column_index) {
+//   uint8_t byte = column_index / 8;
+//   uint8_t bit = column_index % 8;
+//   return (row->null_bitmap[byte] & (1 << bit)) != 0;
+// }
 
-  if (col_val == NULL || file == NULL) {
-    LOG_ERROR("Invalid column value or file pointer.\n");
-    return;
-  }
+// void write_column_data(ColumnValue* column_value, uint8_t* buffer) {
+//   switch (column_value->type) {
+//     case TOK_T_INT:
+//       memcpy(buffer, &column_value->int_value, sizeof(int));
+//       break;
+//     case TOK_T_FLOAT:
+//       memcpy(buffer, &column_value->float_value, sizeof(float));
+//       break;
+//     case TOK_T_DOUBLE:
+//       memcpy(buffer, &column_value->double_value, sizeof(double));
+//       break;
+//     case TOK_T_BOOL:
+//       memcpy(buffer, &column_value->bool_value, sizeof(bool));
+//       break;
+//     case TOK_T_VARCHAR:
+//       memcpy(buffer, column_value->str_value, strlen(column_value->str_value));
+//       break;
+//     default:
+//       fprintf(stderr, "Unknown column type\n");
+//       break;
+//   }
+// }
 
-  LOG_DEBUG("%d", col_def->type);
+// void read_column_data(ColumnValue* column_value, const uint8_t* buffer) {
+//   switch (column_value->type) {
+//     case TOK_T_INT:
+//       memcpy(&column_value->int_value, buffer, sizeof(int));
+//       break;
+//     case TOK_T_FLOAT:
+//       memcpy(&column_value->float_value, buffer, sizeof(float));
+//       break;
+//     case TOK_T_DOUBLE:
+//       memcpy(&column_value->double_value, buffer, sizeof(double));
+//       break;
+//     case TOK_T_BOOL:
+//       memcpy(&column_value->bool_value, buffer, sizeof(bool));
+//       break;
+//     case TOK_T_VARCHAR:
+//       strncpy(column_value->str_value, (char*)buffer, MAX_IDENTIFIER_LEN);
+//       break;
+//     default:
+//       fprintf(stderr, "Unknown column type\n");
+//       break;
+//   }
+// }
 
-  switch (col_def->type) {
-    case TOK_T_INT:
-    case TOK_T_SERIAL:
-      fwrite(&col_val->int_value, sizeof(int), 1, file);
-      break;
+// void allocate_row_memory(Row* row, uint8_t num_columns) {
+//   row->column_data = malloc(num_columns * sizeof(ColumnValue));
+//   row->null_bitmap = malloc((num_columns + 7) / 8);
+// }
 
-    case TOK_T_BOOL:
-      {
-        uint8_t bool_value = col_val->bool_value ? 1 : 0;
-        fwrite(&bool_value, sizeof(uint8_t), 1, file);
-      }
-      break;
-
-    case TOK_T_FLOAT:
-      fwrite(&col_val->float_value, sizeof(float), 1, file);
-      break;
-
-    case TOK_T_DOUBLE:
-      fwrite(&col_val->double_value, sizeof(double), 1, file);
-      break;
-
-    case TOK_T_DECIMAL:
-      fwrite(&col_val->decimal.precision, sizeof(int), 1, file);
-      fwrite(&col_val->decimal.scale, sizeof(int), 1, file);
-      fwrite(col_val->decimal.decimal_value, sizeof(char), MAX_DECIMAL_LEN, file);
-      break;
-
-    case TOK_T_UUID:
-      {
-        size_t uuid_len = strlen(col_val->str_value);
-        if (uuid_len == 36) {  
-          uint8_t binary_uuid[16];
-          if (!parse_uuid_string(col_val->str_value, binary_uuid)) {
-            LOG_ERROR("Error: Invalid UUID format.\n");
-            return;
-          }
-          fwrite(binary_uuid, 16, 1, file);
-        } else if (uuid_len == 16) {
-          fwrite(col_val->str_value, 16, 1, file);
-        } else {
-          LOG_ERROR("Invalid UUID length.\n");
-          return;
-        }
-      }
-      break;
-
-    case TOK_T_TIMESTAMP:
-    case TOK_T_DATETIME:
-    case TOK_T_TIME:
-    case TOK_T_DATE:
-    case TOK_T_VARCHAR:
-    case TOK_T_CHAR:
-      str_len = (uint16_t)strlen(col_val->str_value);
-      max_len = (col_def->type_varchar == 0) ? 255 : col_def->type_varchar;
-
-      if (str_len > max_len) {
-        str_len = max_len;
-      }
-
-      fwrite(&str_len, sizeof(uint8_t), 1, file);
-      LOG_DEBUG("! %s", col_val->str_value);
-      fwrite(col_val->str_value, str_len, 1, file);
-      break;
-
-    case TOK_T_TEXT:
-    case TOK_T_JSON:
-      text_len = (uint16_t)strlen(col_val->str_value);
-      max_len = (col_def->type == TOK_T_JSON) ? MAX_JSON_SIZE : MAX_TEXT_SIZE;
-
-      if (text_len > max_len) {
-        text_len = max_len;
-      }
-
-      fwrite(&text_len, sizeof(uint16_t), 1, file);
-      fwrite(col_val->str_value, sizeof(char), text_len, file);
-      break;
-
-    default:
-      LOG_ERROR("Error: Unsupported data type.\n");
-      break;
-  }
-}
-
-
-void serialize_insert(BufferPool* pool, Row row) {
-  Page* page = NULL;
-
-  for (int i = 0; i < POOL_SIZE; i++) {
-    if (pool->pages[i] != NULL) {
-      page = pool->pages[i];
-      if (page->free_space >= row.row_length) {
-        break; 
-      }
-    }
-  }
-
-  if (page == NULL) {
-    for (int i = 0; i < POOL_SIZE; i++) {
-      if (pool->pages[i] == NULL) {
-        page = (Page*)malloc(sizeof(Page));
-        
-        page->page_id = pool->next_pg_no;  
-        page->num_rows = 0;                    
-        page->free_space = PAGE_SIZE;
-        
-        page->is_dirty = false;
-        page->is_full = false;
-
-        pool->pages[i] = page;
-        pool->next_pg_no++;
-        break;
-      }
-    }
-  }
-
-  if (page == NULL) {
-    // pop_lru_page()
-    return;
-  }
-
-  row.row_id = page->num_rows;
-  row.page_id = page->page_id;
-
-  page->rows[page->num_rows] = row;
-
-  page->num_rows++;
-  page->free_space -= row.row_length;
-  page->is_dirty = true;
-
-  if (page->free_space == 0) {
-    page->is_full = true;
-  }  
-}
+// void free_row_memory(Row* row) {
+//   free(row->column_data);
+//   free(row->null_bitmap);
+// }
