@@ -220,7 +220,8 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
       void* key = get_column_value_as_pointer(primary_key_vals[i]);
-      if (btree_search(ctx->tc[schema_idx].btree[idx], key) != -1) {
+      RowID res = btree_search(ctx->tc[schema_idx].btree[idx], key);
+      if (!is_struct_zeroed(&res, sizeof(RowID))) {
         return (ExecutionResult){1, "Primary Key already exists"};
       }
     }
@@ -237,8 +238,8 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   }
 
   Row row = {0};
-  row.row_id = 0; 
-  row.page_id = 0; 
+  row.id.row_id = 0; 
+  row.id.page_id = 0; 
 
   uint8_t null_bitmap_size = (column_count + 7) / 8;
   uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
@@ -255,7 +256,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 
   row.null_bitmap_size = null_bitmap_size;
   row.null_bitmap = null_bitmap;
-  row.row_length = sizeof(row.page_id) + sizeof(row.row_id) + null_bitmap_size;
+  row.row_length = sizeof(row.id) + null_bitmap_size;
 
   row.column_data = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
   if (!row.column_data) {
@@ -274,13 +275,17 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
       void* key = get_column_value_as_pointer(primary_key_vals[i]);
-      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row.page_id)) {
+  
+      RowID row_id = {row.id.page_id, row.id.row_id}; 
+  
+      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_id)) {
         free(row.column_data);
         free(row.null_bitmap);
         return (ExecutionResult){1, "Failed to insert record into B-tree"};
       }
     }
   }
+  
 
   return (ExecutionResult){0, "Record inserted successfully"};
 }

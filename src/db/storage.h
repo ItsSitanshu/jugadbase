@@ -9,8 +9,7 @@
 #define POOL_SIZE 64
 
 typedef struct Row {
-  uint32_t page_id; 
-  uint16_t row_id; 
+  RowID id;
   uint16_t row_length; 
 
   uint8_t null_bitmap_size; 
@@ -38,8 +37,10 @@ typedef struct BufferPool {
 } BufferPool;
 
 void initialize_buffer_pool(BufferPool* pool, uint8_t idx, char* filename);
+Page* page_init(uint32_t pg_n);
 
-void read_page(FILE* file, uint64_t page_number, Page* page);
+void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc);
+void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc);
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 
