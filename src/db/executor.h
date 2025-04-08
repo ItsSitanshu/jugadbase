@@ -15,9 +15,10 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_select(Context* ctx, JQLCommand* cmd);
 
-void write_column_value(IO* io, ColumnValue* col_val, ColumnDefinition* col_def);
+void write_column_value(FILE* io, ColumnValue* col_val, ColumnDefinition* col_def);
 
 void* get_column_value_as_pointer(ColumnValue* col_val);
+size_t size_from_type(uint8_t column_type);
 uint32_t get_table_offset(Context* ctx, const char* table_name);
 bool parse_uuid_string(const char* uuid_str, uint8_t* output);
 

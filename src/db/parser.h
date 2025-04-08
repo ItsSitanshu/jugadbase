@@ -194,6 +194,8 @@ void parser_consume(Parser* parser);
 bool is_valid_data_type(Parser* parser);
 bool is_valid_default(Parser* parser, int column_type, int literal_type);
 bool parse_value(Parser* parser, ColumnValue* col_val);
+bool parse_uuid_string(const char* uuid_str, uint8_t* output);
+
 ASTNode* parse_expression(Parser* parser);
 
 

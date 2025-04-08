@@ -1,5 +1,5 @@
-#ifndef IO_H
-#define IO_H
+#ifndef FILE_H
+#define FILE_H
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -82,38 +82,30 @@ static size_t eof_fread(void *ptr, size_t size, size_t count, FILE *file, bool *
   return result;
 }
 
+static bool is_struct_zeroed(const void* ptr, size_t size) {
+  void* zeroed_struct = malloc(size);
+  memset(zeroed_struct, 0, size);
+
+  int result = memcmp(ptr, zeroed_struct, size);
+  
+  free(zeroed_struct); 
+  return result == 0;
+}
+
+
 
 #define MAX_TABLE_NAME 32
 #define MAX_SCHEMA 128
 
-typedef enum { IO_READ, IO_WRITE, IO_APPEND } IOMode;
+typedef enum { FILE_READ, FILE_WRITE, FILE_APPEND } FILEMode;
 
-typedef struct IO {
-  FILE* file;
-  char* buffer;
-  size_t buf_size;
-  size_t buf_capacity;
-} IO;
+FILE* io_init(const char* filename, FILEMode mode, size_t buffer_capacity);
+void io_close(FILE* file);
+void io_flush(FILE* file);
+void io_write(FILE* file, const void* data, size_t size);
+size_t io_read(FILE* file, void* buffer, size_t size);
+void io_seek(FILE* file, long offset, int whence);
+void io_seek_write(FILE* file, long offset, const void* data, size_t size, int whence);
+long io_tell(FILE* file);
 
-typedef struct {
-  char table_name[MAX_TABLE_NAME];
-  char schema[MAX_SCHEMA];
-  long root_offset;  
-} TableMetadata;
-
-IO* io_init(const char* filename, IOMode mode, size_t buffer_capacity);
-void io_close(IO* io);
-void io_flush(IO* io);
-void io_write(IO* io, const void* data, size_t size);
-size_t io_read(IO* io, void* buffer, size_t size);
-void io_seek(IO* io, long offset, int whence);
-void io_seek_write(IO* io, long offset, const void* data, size_t size, int whence);
-long io_tell(IO* io);
-void io_clear_buffer(IO* io);
-
-TableMetadata* io_read_metadata(IO* io, const char* table_name);
-
-int io_write_record(IO* io, int key, void* record, size_t record_size);
-int io_read_record(IO* io, int key, void* buffer, size_t record_size);
-
-#endif // IO_H
+#endif // FILE_H

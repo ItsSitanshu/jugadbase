@@ -48,41 +48,13 @@ Context* ctx_init() {
     return NULL;
   }
 
-  ctx->schema.name = (char*)malloc(MAX_IDENTIFIER_LEN);
-  if (!ctx->schema.name) {
-    LOG_FATAL("Failed to allocate memory for schema name.");
-    fs_free(ctx->fs);
-    free(ctx->uuid);
-    parser_free(ctx->parser);
-    lexer_free(ctx->lexer);
-    free(ctx);
-    return NULL;
-  }
-  memset(ctx->schema.name, 0, MAX_IDENTIFIER_LEN);
-
-  ctx->schema.next_row_id = 0;
-  ctx->schema.reader = NULL;
-  ctx->schema.writer = NULL;
-  ctx->schema.appender = NULL;
-
-  ctx->idx.reader = NULL;
-  ctx->idx.writer = NULL;
-  ctx->idx.appender = NULL;
-
   ctx->table_count = 0;
   memset(ctx->tc, 0, sizeof(ctx->tc));
+  memset(ctx->tc, 0, sizeof(ctx->lake));
 
-  ctx->tc_reader = NULL;
-  ctx->tc_writer = NULL;
-  ctx->tc_appender = NULL;
-
-  ctx->tc_reader = io_init(ctx->fs->schema_file, IO_READ, 1024);
-  ctx->tc_writer = io_init(ctx->fs->schema_file, IO_WRITE, 1024);
-  ctx->tc_appender = io_init(ctx->fs->schema_file, IO_APPEND, 1024);
-
-  ctx->db_file = NULL;
-
-  memset(&ctx->current_page, 0, sizeof(Page));
+  ctx->tc_reader = io_init(ctx->fs->schema_file, FILE_READ, 1024);
+  ctx->tc_writer = io_init(ctx->fs->schema_file, FILE_WRITE, 1024);
+  ctx->tc_appender = io_init(ctx->fs->schema_file, FILE_APPEND, 1024);
 
   load_tc(ctx);
   if (!load_initial_schema(ctx)) {
@@ -95,6 +67,8 @@ Context* ctx_init() {
 
 void ctx_free(Context* ctx) {
   if (!ctx) return;
+
+  flush_lake(ctx);
 
   for (int i = 0; i < BTREE_LIFETIME_THRESHOLD; i++) {
     uint32_t idx = ctx->btree_idx_stack[i];
@@ -118,26 +92,15 @@ void ctx_free(Context* ctx) {
         unload_btree(tc->btree[file_hash], btree_file_path);
       }
     }
-}
+  }
 
   parser_free(ctx->parser);
   fs_free(ctx->fs);
   free(ctx->uuid);
 
-  if (ctx->schema.reader) io_close(ctx->schema.reader);
-  if (ctx->schema.writer) io_close(ctx->schema.writer);
-  if (ctx->schema.appender) io_close(ctx->schema.appender);
-  free(ctx->schema.name);
-
-  if (ctx->idx.reader) io_close(ctx->idx.reader);
-  if (ctx->idx.writer) io_close(ctx->idx.writer);
-  if (ctx->idx.appender) io_close(ctx->idx.appender);
-
   if (ctx->tc_reader) io_close(ctx->tc_reader);
   if (ctx->tc_writer) io_close(ctx->tc_writer);
   if (ctx->tc_appender) io_close(ctx->tc_appender);
-
-  if (ctx->db_file) fclose(ctx->db_file);
 
   free(ctx);
 }
@@ -190,72 +153,6 @@ void process_file(char* filename) {
   // TODO: Implement function
 }
 
-void switch_schema(Context* ctx, char* schema_name) {
-  if (!ctx) return;
-
-  if (strcmp(ctx->schema.name, schema_name) == 0) {
-    LOG_DEBUG("Schema %s is already loaded.", schema_name);
-    return;
-  }
-
-  load_tc(ctx);
-
-  bool schema_found = false;
-  TableCatalogEntry* schema_entry = NULL;
-
-  for (size_t i = 0; i < ctx->table_count; i++) {
-    if (strcmp(ctx->tc[i].name, schema_name) == 0) {
-      schema_entry = &ctx->tc[i];
-      schema_found = true;
-      break;
-    }
-  }
-
-  if (!schema_found) {
-    LOG_ERROR("Schema %s not found in the table catalog.", schema_name);
-    return;
-  }
-
-  char schema_path[MAX_PATH_LENGTH];
-  snprintf(schema_path, sizeof(schema_path), "%s/%s/rows.db", ctx->fs->tables_dir, schema_name);
-
-  struct stat buffer;
-  int file_exists = (stat(schema_path, &buffer) == 0);
-
-  if (!file_exists) {
-    FILE* file = fopen(schema_path, "wb");
-    if (!file) {
-      LOG_ERROR("Failed to create database file %s", schema_path);
-      return;
-    }
-
-    uint64_t row_id = 0;
-    fwrite(&row_id, sizeof(uint64_t), 1, file);
-  
-    fclose(file);
-  }
-
-  if (ctx->schema.reader) io_close(ctx->schema.reader);
-  if (ctx->schema.writer) io_close(ctx->schema.writer);
-  if (ctx->schema.appender) io_close(ctx->schema.appender);
-
-  IO* reader = io_init(schema_path, IO_READ, 1024);
-  IO* writer = io_init(schema_path, IO_WRITE, 1024);
-  IO* appender = io_init(schema_path, IO_APPEND, 1024);
-
-  if (!reader || !writer || !appender) {
-    LOG_ERROR("Failed to initialize I/O for schema %s", schema_name);
-    return;
-  }
-
-  ctx->schema.name = strdup(schema_name);
-  ctx->schema.reader = reader;
-  ctx->schema.writer = writer;
-  ctx->schema.appender = appender;
-
-  LOG_INFO("Successfully loaded schema %s and initialized I/O.", schema_name);
-}
-
 void load_tc(Context* ctx) {
   if (!ctx || !ctx->fs) return;
 
@@ -266,10 +163,6 @@ void load_tc(Context* ctx) {
     LOG_ERROR("Failed to open schema directory: %s", ctx->fs->tables_dir);
     return;
   }
-
-  ctx->tc_reader = io_init(ctx->fs->schema_file, IO_READ, 1024);
-  ctx->tc_writer = io_init(ctx->fs->schema_file, IO_WRITE, 1024);
-  ctx->tc_appender = io_init(ctx->fs->schema_file, IO_APPEND, 1024);
 
   struct dirent* entry;
   uint32_t tc = 0;
@@ -379,8 +272,6 @@ void load_table_schema(Context* ctx) {
       io_seek(ctx->tc_reader, next_offset, SEEK_CUR);
     }
   }
-
-  io_close(ctx->tc_reader);
 }
 
 void load_btree_cluster(Context* ctx, char* name) {
@@ -502,7 +393,7 @@ bool load_schema_tc(Context* ctx, char* table_name) {
   io_seek(ctx->tc_reader, (idx * sizeof(uint32_t)) + (2 * sizeof(uint32_t)), SEEK_SET);
   io_read(ctx->tc_reader, &initial_offset, sizeof(uint32_t));
 
-  IO* io = ctx->tc_reader;
+  FILE* io = ctx->tc_reader;
   TableSchema* schema = malloc(sizeof(TableSchema));
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
@@ -642,7 +533,7 @@ bool load_initial_schema(Context* ctx) {
     return false;
   }
 
-  IO* io = ctx->tc_reader;
+  FILE* io = ctx->tc_reader;
   size_t CONTENTS_OFFSET = 2 * sizeof(uint32_t) + MAX_TABLES * sizeof(uint32_t);
   io_seek(io, CONTENTS_OFFSET, SEEK_SET);
 
@@ -757,4 +648,31 @@ bool load_initial_schema(Context* ctx) {
   }
 
   return true;
+}
+
+void flush_lake(Context* ctx) {
+  FILE* file = NULL;
+
+  for (int i = 0; i < MAX_COLUMNS; i++) {
+    if (ctx->lake[i].file[0] != 0) {  
+
+      file = fopen(ctx->lake[i].file, "wb");
+      
+      for (int j = 0; j < POOL_SIZE; j++) {
+        uint32_t pg_n = ctx->lake[i].page_numbers[j];
+        uint32_t idx = ctx->lake[i].idx;
+        
+        if (ctx->lake[i].pages[pg_n]->is_dirty
+          && (!(is_struct_zeroed(ctx->lake[i].pages[pg_n], sizeof(Page))))
+        ) {
+          write_page(file, pg_n, ctx->lake[i].pages[pg_n], ctx->tc[idx]);
+          ctx->lake[i].pages[pg_n]->is_dirty = false;
+          LOG_DEBUG("Looking at pool %d, NPN: %u, File: %s, I: %u", 
+            i, ctx->lake[i].next_pg_no, ctx->lake[i].file, ctx->lake[i].idx);      
+        }
+      }
+      
+      fclose(file);
+    }
+  }
 }
