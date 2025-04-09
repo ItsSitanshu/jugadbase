@@ -1,5 +1,6 @@
 ![Jugadbase](/.github/banner.png)
 
+A database built for JugadInnovations. Why go for complex systems when a little clever "jugad" can get the job done faster and smarter? It's simple, efficient, and just works — because sometimes, the best solutions are the ones that skip the fluff.
 
 ## To-do List
 
@@ -12,10 +13,12 @@
 - ~~FIX BUG: table names aren't extracted properly when there are [>1 table](https://github.com/ItsSitanshu/jugadbase/blob/09e26a5bdc37c8e009e4c28deef58f035df3f5d8/src/db/context.c#L462-L728)~~   
 - ~~Implement `CREATE TABLE` with `PRIM KEY` (Primary Key)~~
 - ~~Implement a `BufferPool` system~~ 
-- Implement file command execution and polish CLI
+- ~~Implement file command execution and polish CLI~~
 - Support 
-  - `INSERT`
-  - `SELECT`
+  - ~~`INSERT`~~
+  - ~~`SELECT`~~
+    - ~~`*`~~ 
+    - `WHERE`
   - `UPDATE`
   - `DELETE`
 - Implement foreign constraints
