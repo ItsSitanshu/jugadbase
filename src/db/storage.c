@@ -254,8 +254,7 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
   }
 }
 
-
-void serialize_insert(BufferPool* pool, Row row) {
+RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   Page* page = NULL;
 
   for (int i = 0; i < POOL_SIZE; i++) {
@@ -273,16 +272,18 @@ void serialize_insert(BufferPool* pool, Row row) {
         page = page_init(0);
         pool->pages[i] = page;
         pool->next_pg_no++;
+        pool->num_pages++;
         break;
       }
     }
   }
 
   if (page == NULL) {
-    // pop_lru_page()
-    return;
+    pop_lru_page(pool, tc);
+    return serialize_insert(pool, row, tc);
   }
 
+  LOG_DEBUG("%u'", page->num_rows);
   row.id.row_id = page->num_rows;
   row.id.page_id = page->page_id;
 
@@ -295,4 +296,26 @@ void serialize_insert(BufferPool* pool, Row row) {
   if (page->free_space == 0) {
     page->is_full = true;
   }  
+
+  return (RowID){ row.id.page_id, row.id.row_id };
+}
+
+void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
+  if (pool->num_pages == 0) return;
+
+  Page* lru_page = pool->pages[0];
+  FILE* file = fopen(pool->file, "wb");
+
+  if (lru_page->is_dirty) {
+    write_page(file, lru_page->page_id, lru_page, tc); 
+  }
+
+  fclose(file);
+  free(lru_page);
+
+  for (int i = 1; i < pool->num_pages; i++) {
+    pool->pages[i - 1] = pool->pages[i];
+  }
+
+  pool->num_pages--;
 }

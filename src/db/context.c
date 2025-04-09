@@ -700,7 +700,7 @@ void flush_lake(Context* ctx) {
 
       file = fopen(ctx->lake[i].file, "wb");
       
-      for (int j = 0; j < POOL_SIZE; j++) {
+      for (int j = 0; j < ctx->lake[i].num_pages; j++) {
         uint32_t pg_n = ctx->lake[i].page_numbers[j];
         uint32_t idx = ctx->lake[i].idx;
         

@@ -269,15 +269,13 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
     row.row_length += size_from_type(schema->columns[i].type); 
   }
 
-  serialize_insert(pool, row);
+  RowID row_id = serialize_insert(pool, row, ctx->tc[schema_idx]);
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
       void* key = get_column_value_as_pointer(primary_key_vals[i]);
-  
-      RowID row_id = {row.id.page_id, row.id.row_id}; 
-  
+    
       if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_id)) {
         free(row.column_data);
         free(row.null_bitmap);

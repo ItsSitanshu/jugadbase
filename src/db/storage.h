@@ -34,6 +34,7 @@ typedef struct BufferPool {
   uint32_t next_pg_no;
   char file[MAX_PATH_LENGTH];
   uint8_t idx;
+  uint8_t num_pages;
 } BufferPool;
 
 void initialize_buffer_pool(BufferPool* pool, uint8_t idx, char* filename);
@@ -44,6 +45,8 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
 void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc);
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 
-void serialize_insert(BufferPool* pool, Row row);
+RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc);
+
+void pop_lru_page(BufferPool* pool, TableCatalogEntry tc);
 
 #endif // STORAGE_H
