@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
 
     if (!process_dot_cmd(ctx, input)) {
       ExecutionResult result = process(ctx, input);
-      printf("Result: %s sc: %d\n", result.message, result.status_code);
+      printf("Result: %s sc: %d\n", result.message, result.code);
     }
   }
 

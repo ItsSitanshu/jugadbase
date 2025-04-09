@@ -4,8 +4,11 @@
 #include "context.h"
 
 typedef struct {
-  int status_code;
-  char *message;
+  int code;
+  const char* message;
+  Row* rows;
+  uint32_t row_count;
+  uint8_t owns_rows;
 } ExecutionResult;
 
 ExecutionResult process(Context* ctx, char* buffer);
@@ -20,7 +23,7 @@ void write_column_value(FILE* io, ColumnValue* col_val, ColumnDefinition* col_de
 void* get_column_value_as_pointer(ColumnValue* col_val);
 size_t size_from_type(uint8_t column_type);
 uint32_t get_table_offset(Context* ctx, const char* table_name);
-bool parse_uuid_string(const char* uuid_str, uint8_t* output);
+bool column_name_in_list(const char* name, char** list, uint8_t list_len);
 
 ExecutionOrder* generate_execution_plan(JQLCommand* command);
 

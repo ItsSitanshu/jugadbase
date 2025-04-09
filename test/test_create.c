@@ -17,13 +17,13 @@ START_TEST(test_read_table_schema) {
                        "role_id INT FRNKEY REF roles(id)"
                        ");";
   ExecutionResult res = process(ctx, create_query);
-  ck_assert_int_eq(res.status_code, 0);
+  ck_assert_int_eq(res.code, 0);
 
   char* create_query2 = "CREATE TABLE user ("
                         "role_id INT FRNKEY REF roles(id)"
                         ");";
   ExecutionResult res2 = process(ctx, create_query2);
-  ck_assert_int_eq(res2.status_code, 0);
+  ck_assert_int_eq(res2.code, 0);
 
   TableSchema* schema = find_table_schema_tc(ctx, "users");
   TableSchema* schema2 = find_table_schema_tc(ctx, "user");

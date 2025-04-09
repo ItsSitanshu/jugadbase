@@ -666,15 +666,18 @@ void load_lake(Context* ctx) {
       long file_size = ftell(file);
       fseek(file, 0, SEEK_SET);
 
-      uint32_t num_pages = (file_size + PAGE_SIZE - 1) / PAGE_SIZE; // Round up division
+      uint32_t num_pages = (file_size + PAGE_SIZE - 1) / PAGE_SIZE;
+      if (num_pages == 0) num_pages = 1;
+
       uint32_t idx = hash_fnv1a(ctx->tc[i].schema->table_name, MAX_TABLES);
 
-      for (int j = 0; j < MAX_TABLES; j++) {
+      for (int j = 0; j < num_pages; j++) {
         uint32_t pg_n = j;
         
         if (!ctx->lake[idx].pages[pg_n]) {
           ctx->lake[idx].pages[pg_n] = page_init(pg_n);
           read_page(file, pg_n, ctx->lake[idx].pages[pg_n], ctx->tc[idx]);
+          ctx->lake[idx].num_pages += 1;
         }
 
         if ((j + 1) == num_pages) {
