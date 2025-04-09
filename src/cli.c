@@ -41,14 +41,6 @@ int main(int argc, char* argv[]) {
 
     input = jugadline(&history, prompt);
 
-    printf("%s\n", input);
-
-    if (strcmp(input, ".quit") == 0) {
-      LOG_INFO("Exiting...");
-      break;
-    }
-
-
     if (!process_dot_cmd(ctx, input)) {
       ExecutionResult result = process(ctx, input);
       printf("Result: %s sc: %d\n", result.message, result.code);
