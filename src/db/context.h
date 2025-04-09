@@ -46,6 +46,7 @@ bool load_schema_tc(Context* ctx, char* table_name);
 TableSchema* find_table_schema_tc(Context* ctx, const char* filename);
 bool load_initial_schema(Context* ctx);
 
+void load_lake(Context* ctx);
 void flush_lake(Context* ctx);
 
 #endif // CONTEXT_H

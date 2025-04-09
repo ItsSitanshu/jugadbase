@@ -60,6 +60,7 @@ Context* ctx_init() {
   if (!load_initial_schema(ctx)) {
     LOG_FATAL("Failed to read schema");
   }
+  load_lake(ctx);
   LOG_INFO("Successfully loaded %lu table(s) from catalog", ctx->table_count);
 
   return ctx;
@@ -411,8 +412,6 @@ bool load_schema_tc(Context* ctx, char* table_name) {
     return false;
   }
 
-  LOG_DEBUG("%u\n", table_name_length);
-
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
     free(schema);
@@ -511,7 +510,6 @@ TableSchema* find_table_schema_tc(Context* ctx, const char* filename) {
   }
 
   unsigned int idx = hash_fnv1a(filename, MAX_TABLES);
-  LOG_DEBUG("Looking for table @ hash %d | %s == %s", idx, ctx->tc[idx].schema->table_name, filename);
   
   if (ctx->tc[idx].schema && strcmp(ctx->tc[idx].schema->table_name, filename) == 0) {
     return ctx->tc[idx].schema;
@@ -650,6 +648,53 @@ bool load_initial_schema(Context* ctx) {
   return true;
 }
 
+
+void load_lake(Context* ctx) {
+  FILE* file = NULL;
+  char file_path[MAX_PATH_LENGTH];
+
+  for (int i = 0; i < MAX_TABLES; i++) {
+    if (ctx->tc[i].schema && ctx->tc[i].schema->table_name) {
+      sprintf(file_path, "%s" SEP "%s" SEP "rows.db", ctx->fs->tables_dir, ctx->tc[i].schema->table_name);
+      file = fopen(file_path, "rb");
+      if (!file) {
+        LOG_WARN("Could not open file for reading: %s", file_path);
+        continue;
+      }
+
+      fseek(file, 0, SEEK_END);
+      long file_size = ftell(file);
+      fseek(file, 0, SEEK_SET);
+
+      uint32_t num_pages = (file_size + PAGE_SIZE - 1) / PAGE_SIZE;
+      if (num_pages == 0) num_pages = 1;
+
+      uint32_t idx = hash_fnv1a(ctx->tc[i].schema->table_name, MAX_TABLES);
+
+      for (int j = 0; j < num_pages; j++) {
+        uint32_t pg_n = j;
+        
+        if (!ctx->lake[idx].pages[pg_n]) {
+          ctx->lake[idx].pages[pg_n] = page_init(pg_n);
+          read_page(file, pg_n, ctx->lake[idx].pages[pg_n], ctx->tc[idx]);
+          ctx->lake[idx].num_pages += 1;
+        }
+
+        if ((j + 1) == num_pages) {
+          break;
+        }
+      }
+
+      fclose(file);
+
+      memcpy(ctx->lake[idx].file, file_path, MAX_PATH_LENGTH - 1);
+      ctx->lake[idx].file[MAX_PATH_LENGTH] = '\0';
+      ctx->lake[idx].idx = idx; 
+    }
+  }
+
+}
+
 void flush_lake(Context* ctx) {
   FILE* file = NULL;
 
@@ -658,7 +703,7 @@ void flush_lake(Context* ctx) {
 
       file = fopen(ctx->lake[i].file, "wb");
       
-      for (int j = 0; j < POOL_SIZE; j++) {
+      for (int j = 0; j < ctx->lake[i].num_pages; j++) {
         uint32_t pg_n = ctx->lake[i].page_numbers[j];
         uint32_t idx = ctx->lake[i].idx;
         
@@ -667,7 +712,7 @@ void flush_lake(Context* ctx) {
         ) {
           write_page(file, pg_n, ctx->lake[i].pages[pg_n], ctx->tc[idx]);
           ctx->lake[i].pages[pg_n]->is_dirty = false;
-          LOG_DEBUG("Looking at pool %d, NPN: %u, File: %s, I: %u", 
+          LOG_DEBUG("Updating pool %d, NPN: %u, File: %s, I: %u", 
             i, ctx->lake[i].next_pg_no, ctx->lake[i].file, ctx->lake[i].idx);      
         }
       }

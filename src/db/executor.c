@@ -30,7 +30,8 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
       result = execute_insert(ctx, cmd);
       break;
     case CMD_SELECT:
-      result = (ExecutionResult){1, "SELECT not implemented yet"};
+      result = execute_select(ctx, cmd);
+      break;
       break;
     default:
       result = (ExecutionResult){1, "Unknown command type"};
@@ -220,7 +221,8 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
       void* key = get_column_value_as_pointer(primary_key_vals[i]);
-      if (btree_search(ctx->tc[schema_idx].btree[idx], key) != -1) {
+      RowID res = btree_search(ctx->tc[schema_idx].btree[idx], key);
+      if (!is_struct_zeroed(&res, sizeof(RowID))) {
         return (ExecutionResult){1, "Primary Key already exists"};
       }
     }
@@ -237,8 +239,8 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   }
 
   Row row = {0};
-  row.row_id = 0; 
-  row.page_id = 0; 
+  row.id.row_id = 0; 
+  row.id.page_id = 0; 
 
   uint8_t null_bitmap_size = (column_count + 7) / 8;
   uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
@@ -255,7 +257,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 
   row.null_bitmap_size = null_bitmap_size;
   row.null_bitmap = null_bitmap;
-  row.row_length = sizeof(row.page_id) + sizeof(row.row_id) + null_bitmap_size;
+  row.row_length = sizeof(row.id) + null_bitmap_size;
 
   row.column_data = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
   if (!row.column_data) {
@@ -268,13 +270,14 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
     row.row_length += size_from_type(schema->columns[i].type); 
   }
 
-  serialize_insert(pool, row);
+  RowID row_id = serialize_insert(pool, row, ctx->tc[schema_idx]);
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
       void* key = get_column_value_as_pointer(primary_key_vals[i]);
-      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row.page_id)) {
+    
+      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_id)) {
         free(row.column_data);
         free(row.null_bitmap);
         return (ExecutionResult){1, "Failed to insert record into B-tree"};
@@ -285,85 +288,82 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   return (ExecutionResult){0, "Record inserted successfully"};
 }
 
+ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
+  if (!ctx || !cmd || !cmd->schema) {
+    return (ExecutionResult){1, "Invalid execution context or command"};
+  }
 
-// ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
-//   switch_schema(ctx, cmd->schema->table_name);
+  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
-//   if (!ctx || !cmd || !ctx->tc_appender) {
-//     return (ExecutionResult){1, "Invalid execution context or command"};
-//   }
+  load_btree_cluster(ctx, schema->table_name);
 
-//   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  cmd->schema = schema;
+  uint8_t column_count = schema->column_count;
+  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+  BufferPool* pool = &ctx->lake[schema_idx];
 
-//   if (!schema) {
-//     return (ExecutionResult){1, "Error: Invalid schema"};
-//   }
+  RowID row_start = {0};  
 
-//   load_btree_cluster(ctx, schema->table_name);
+  // if (cmd->select.where_column && cmd->select.where_value) {
+  //   for (uint8_t i = 0; i < column_count; i++) {
+  //     if (strcmp(schema->columns[i].name, cmd->select.where_column) == 0 &&
+  //         schema->columns[i].is_primary_key) {
+  //       uint8_t idx = hash_fnv1a(schema->columns[i].name, MAX_COLUMNS);
+  //       void* key = get_column_value_as_pointer(cmd->select.where_value);
+  //       row_start = btree_search(ctx->tc[schema_idx].btree[idx], key);
+  //       break;
+  //     }
+  //   }
+  //   if (is_struct_zeroed(&row_start, sizeof(RowID))) {
+  //     return (ExecutionResult){1, "No record found"};
+  //   }
+  // }
 
-//   cmd->schema = schema;
-//   uint8_t column_count = schema->column_count;
-//   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
-
-//   int64_t row_start = -1;
-
-//   if (cmd->select.where_column && cmd->select.where_value) {
-//     for (uint8_t i = 0; i < column_count; i++) {
-//       if (strcmp(schema->columns[i].name, cmd->select.where_column) == 0 && schema->columns[i].is_primary_key) {
-//         uint8_t idx = hash_fnv1a(schema->columns[i].name, MAX_COLUMNS);
-//         void* key = get_column_value_as_pointer(cmd->select.where_value);
-//         row_start = btree_search(ctx->tc[schema_idx].btree[idx], key);
-//         break;
-//       }
-//     }
-//     if (row_start == -1) {
-//       return (ExecutionResult){1, "No record found"};
-//     }
-//   }
-
-//   FILE* io_R = ctx->schema.reader;
-//   uint64_t file_pos = sizeof(uint64_t);
-//   while (1) {
-//     if (row_start != -1) {
-//       io_seek(io_R, row_start, SEEK_SET);
-//     } else {
-//       if (io_seek(io_R, file_pos, SEEK_SET) == -1) break;
-//     }
-
-//     uint16_t row_length;
-//     if (io_read(io_R, &row_length, sizeof(uint16_t)) != sizeof(uint16_t)) break;
-
-//     uint64_t row_id;
-//     if (io_read(io_R, &row_id, sizeof(uint64_t)) != sizeof(uint64_t)) break;
-
-//     uint8_t null_bitmap_size = (column_count + 7) / 8;
-//     uint8_t null_bitmap[null_bitmap_size];
-//     if (io_read(io_R, null_bitmap, null_bitmap_size) != null_bitmap_size) break;
-
-//     printf("Row ID: %llu\n", row_id);
-
-//     for (uint8_t i = 0; i < column_count; i++) {
-//       if ((cmd->select.column_count == 1 && strcmp(cmd->select.columns[0], "*") == 0) ||
-//           column_name_in_list(schema->columns[i].name, cmd->select.columns, cmd->select.column_count)) {
-//         if (null_bitmap[i / 8] & (1 << (i % 8))) {
-//           printf("%s: NULL\n", schema->columns[i].name);
-//         } else {
-//           read_and_print_column_value(io_R, &schema->columns[i]);
-//         }
-//       } else {
-//         skip_column_value(io_R, &schema->columns[i]);
-//       }
-//     }
-
-//     printf("\n");
-
-//     if (row_start != -1) break;
-//     file_pos += row_length;
-//   }
-
-//   return (ExecutionResult){0, "Select executed successfully"};
-// }
-
+  Row* collected_rows = malloc(sizeof(Row) * (PAGE_SIZE / 10));
+  if (!collected_rows) {
+    return (ExecutionResult){1, "Memory allocation failed for result rows"};
+  }
+  
+  uint32_t total_found = 0;
+  
+  for (uint16_t i = 0; i < pool->num_pages; i++) {
+    Page* page = pool->pages[i];
+    if (!page || page->num_rows == 0) continue;
+  
+    for (uint16_t j = 0; j < page->num_rows; j++) {
+      Row row = page->rows[j];
+  
+      if (!is_struct_zeroed(&row_start, sizeof(RowID))) {
+        if (row.id.page_id != row_start.page_id || row.id.row_id != row_start.row_id) continue;
+      }
+  
+      collected_rows[total_found++] = row;
+  
+      if (!is_struct_zeroed(&row_start, sizeof(RowID))) {
+        break;
+      }
+    }
+  
+    if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0) break;
+  }
+  
+  Row* result_rows = malloc(sizeof(Row) * total_found);
+  if (!result_rows) {
+    free(collected_rows);
+    return (ExecutionResult){1, "Memory allocation failed for final result copy"};
+  }
+  memcpy(result_rows, collected_rows, sizeof(Row) * total_found);
+  free(collected_rows);
+  
+  return (ExecutionResult){
+    .code = 0,
+    .message = "Select executed successfully",
+    .rows = result_rows,
+    .row_count = total_found,
+    .owns_rows = 1
+  };  
+}
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {
   switch (col_val->type) {
@@ -462,6 +462,13 @@ uint32_t get_table_offset(Context* ctx, const char* table_name) {
     }
   }
   return 0;  
+}
+
+bool column_name_in_list(const char* name, char** list, uint8_t list_len) {
+  for (uint8_t i = 0; i < list_len; i++) {
+    if (strcmp(name, list[i]) == 0) return true;
+  }
+  return false;
 }
 
 // ExecutionOrder* generate_execution_plan(JQLCommand* command) {
