@@ -32,7 +32,6 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
     case CMD_SELECT:
       result = execute_select(ctx, cmd);
       break;
-      break;
     default:
       result = (ExecutionResult){1, "Unknown command type"};
   }

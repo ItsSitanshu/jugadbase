@@ -35,7 +35,7 @@ void ctx_free(Context* ctx);
 
 bool process_dot_cmd(Context* ctx, char* input);
 void list_tables(Context* ctx);
-void process_file(char* filename);
+void process_file(Context* ctx, char* filename);
 
 void load_tc(Context* ctx);
 void load_table_schema(Context* ctx);

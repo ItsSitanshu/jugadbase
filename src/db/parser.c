@@ -65,9 +65,12 @@ void jql_command_free(JQLCommand* cmd) {
 }
 
 JQLCommand parser_parse(Parser* parser) {
-  JQLCommand command;
-  command.type = CMD_UNKNOWN;
+  JQLCommand command = {0};
   memset(&command, 0, sizeof(JQLCommand));
+
+  while (parser->cur->type == TOK_SC) {
+    parser_consume(parser);
+  }
 
   switch (parser->cur->type) {
     case TOK_CRT:
@@ -76,6 +79,8 @@ JQLCommand parser_parse(Parser* parser) {
       return parser_parse_insert(parser);
     case TOK_SEL: 
       return parser_parse_select(parser);
+    case TOK_EOF:
+      return command;
     default:
       REPORT_ERROR(parser->lexer, "SYE_UNSUPPORTED");
       return command;
@@ -412,6 +417,8 @@ JQLCommand parser_parse_insert(Parser *parser) {
   }
 
   parser_consume(parser);
+
+  if(parser->cur->type == TOK_SC) parser_consume(parser); 
 
   command.is_invalid = false;
   return command;

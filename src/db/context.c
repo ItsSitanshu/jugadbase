@@ -107,26 +107,46 @@ void ctx_free(Context* ctx) {
 }
 
 bool process_dot_cmd(Context* ctx, char* input) {
-  if (strcmp(input, ".help") == 0) {
+  if (strcmp(input, ".help") == 0 || tolower(input[0]) == 'h') {
     LOG_INFO("Available commands:\n"
-      "  .tables       - List all tables\n"
-      "  .quit         - Exit the program\n"
-      "  .help         - Show this help message\n"
-      "  .stats        - Show database statistics\n"
-      "  .dump <file>  - Export database to a file");
+      "  tables       - List all tables\n"
+      "  quit/Q         - Exit the program\n"
+      "  help/H         - Show this help message\n"
+      "  stats        - Show database statistics\n"
+      "  dump <file>  - Export database to a file"
+      "  exec/E <file>   - Run a script file"
+    );
     return true;
-  } else if (strcmp(input, ".tables") == 0) {
+  } else if (strcmp(input, "tables") == 0) {
     list_tables(ctx);
     return true;
-  } else if (strcmp(input, ".stats") == 0) {
+  } else if (strcmp(input, "stats") == 0) {
     // show_db_stats(ctx); backtrack transactions?
     return true;
-  } else if (strcmp(input, ".quit") == 0) {
+  } else if (strcmp(input, ".quit") == 0 || tolower(input[0]) == 'q') {
     LOG_INFO("Exiting...");
     ctx_free(ctx);
     exit(0);
-  } else if (strcmp(input, ".clear") == 0) {
+  } else if (strcmp(input, "clear") == 0) {
     clear_screen();
+    return true;
+  } else if (strncmp(input, "exec", 4) == 0) {
+    char* filename = input + 5;
+    if (!input[4] || input[4] != ' ') {
+      LOG_INFO("Expected a JQL/JCL file name after exec command");
+      return true;
+    }
+
+    process_file(ctx, filename);
+    return true;
+  } else if (tolower(input[0]) == 'e') {
+    char* filename = input + 2;
+    if (!input[1] || input[1] != ' ') {
+      LOG_INFO("Expected a JQL/JCL file name after exec command");
+      return true;
+    }
+
+    process_file(ctx, filename);
     return true;
   }
 
@@ -150,8 +170,67 @@ void list_tables(Context* ctx) {
   }
 }
 
-void process_file(char* filename) {
-  // TODO: Implement function
+void process_file(Context* ctx, char* filename) {
+  FILE* file = fopen(filename, "r");
+  if (!file) {
+    LOG_ERROR("Error opening file: %s", filename);
+    return;
+  }
+
+  fseek(file, 0, SEEK_END); 
+  long file_size = ftell(file);
+  fseek(file, 0, SEEK_SET);
+
+  if (file_size == -1) {
+    LOG_ERROR("Error determining file size for %s", filename);
+    fclose(file);
+    return;
+  }
+
+  char* buffer = malloc(file_size + 1);
+  if (!buffer) {
+    LOG_ERROR("Memory allocation failed for buffer");
+    fclose(file);
+    return;
+  }
+
+  size_t bytes_read = fread(buffer, 1, file_size, file);
+  if (bytes_read != file_size) {
+    LOG_ERROR("Error reading file: expected %ld bytes but read %zu bytes", file_size, bytes_read);
+    free(buffer);
+    fclose(file);
+    return;
+  }
+
+  buffer[bytes_read] = '\0';
+
+  LOG_INFO("Processing file: %s", filename);
+  ExecutionResult* res_list = malloc(sizeof(ExecutionResult) * 5);
+  size_t res_n = 0;
+  size_t res_capacity = 5; 
+  
+  lexer_set_buffer(ctx->lexer, buffer);
+  parser_reset(ctx->parser);
+  
+  JQLCommand cmd = parser_parse(ctx->parser);
+  while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
+    res_list[res_n] = execute_cmd(ctx, &cmd);
+  
+    if (res_n + 1 > res_capacity) {
+      res_capacity *= 2; 
+      res_list = realloc(res_list, sizeof(ExecutionResult) * res_capacity);
+      if (!res_list) {
+        LOG_ERROR("Memory allocation failed during reallocation");
+        return;
+      }
+    }
+  
+    res_n++;
+    cmd = parser_parse(ctx->parser); 
+  }
+
+  free(buffer);
+  fclose(file);
 }
 
 void load_tc(Context* ctx) {
