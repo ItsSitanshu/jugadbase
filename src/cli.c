@@ -37,8 +37,7 @@ int main(int argc, char* argv[]) {
 
   while (1) {
     snprintf(prompt, sizeof(prompt), COLOR_RED "/%s " COLOR_MAGENTA "[jugad-cli]" COLOR_RESET "> ", short_cwd);    
-    printf("%s", prompt);
-
+    
     input = jugadline(&history, prompt);
 
     if (!process_dot_cmd(ctx, input)) {
