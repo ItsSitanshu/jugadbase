@@ -85,6 +85,7 @@ FS* fs_init(char* root_directory) {
 
   int any_directory_created = 0;
   
+  log_directory_status(fs->root_dir, "<root>", &any_directory_created);
   log_directory_status(fs->tables_dir, "tables", &any_directory_created);
   log_directory_status(fs->logs_dir, "logs", &any_directory_created);
   log_directory_status(fs->backups_dir, "backups", &any_directory_created);
