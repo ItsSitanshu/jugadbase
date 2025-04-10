@@ -29,7 +29,22 @@ pkg_check_modules(CHECK REQUIRED check)
 include_directories(${CHECK_INCLUDE_DIRS})
 file(GLOB TEST_SOURCES test/*.c)
 
-add_executable(tests ${TEST_SOURCES})
-target_link_libraries(tests PRIVATE jugadbase ${CHECK_LIBRARIES} rt m pthread)
+set(TEST_UNIT_SOURCES
+  test/unit/test_create_table.c
+  test/unit/test_insert_select.c
+)
 
-add_test(NAME tests COMMAND tests)
+foreach(test_src IN LISTS TEST_UNIT_SOURCES)
+  get_filename_component(test_name ${test_src} NAME_WE)
+  add_executable(${test_name} ${test_src})
+  target_link_libraries(${test_name} PRIVATE jugadbase ${CHECK_LIBRARIES} rt m pthread)
+  add_test(NAME ${test_name} COMMAND test_runner)
+endforeach()
+
+add_executable(test_runner
+  test/test_runner.c
+)
+
+target_link_libraries(test_runner PRIVATE jugadbase ${CHECK_LIBRARIES} rt m pthread)
+
+add_test(NAME test_runner COMMAND test_runner)

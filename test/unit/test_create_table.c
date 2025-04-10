@@ -6,7 +6,10 @@
 #include "executor.h"
 
 START_TEST(test_read_table_schema) {
-  Context* ctx = ctx_init();
+  char path[MAX_PATH_LENGTH];
+  sprintf(path, "%s" SEP "test_create_table", DB_ROOT_DIRECTORY);
+  
+  Context* ctx = ctx_init(path);
   ck_assert_ptr_nonnull(ctx);
 
   char* create_queries[] = {
@@ -38,7 +41,7 @@ START_TEST(test_read_table_schema) {
     "category_name VARCHAR(50) NOT NULL"
     ");",
 
-    "CREATE TABLE payments ("
+    "CREATE TABLE   payments ("
     "payment_id SERIAL PRIMKEY, "
     "order_id INT FRNKEY REF orders(order_id), "
     "payment_date DATE NOT NULL, "
@@ -192,24 +195,19 @@ START_TEST(test_read_table_schema) {
 END_TEST
 
 
-Suite* schema_suite(void) {
-  Suite* s = suite_create("Schema");
-  TCase* tc_core = tcase_create("Core");
+Suite* create_table_suite(void) {
+  Suite* s = suite_create("Create");
+  TCase* tc = tcase_create("CreateTests");
 
-  tcase_add_test(tc_core, test_read_table_schema);
-  suite_add_tcase(s, tc_core);
-
+  tcase_add_test(tc, test_read_table_schema);
+  suite_add_tcase(s, tc);
   return s;
 }
 
 int main(void) {
-  int no_failed;
-  Suite* s = schema_suite();
-  SRunner* sr = srunner_create(s);
-
+  SRunner* sr = srunner_create(create_table_suite());
   srunner_run_all(sr, CK_NORMAL);
-  no_failed = srunner_ntests_failed(sr);
+  int failures = srunner_ntests_failed(sr);
   srunner_free(sr);
-
-  return (no_failed == 0) ? EXIT_SUCCESS : EXIT_FAILURE;
+  return (failures == 0) ? 0 : 1;
 }
