@@ -41,8 +41,7 @@ void save_tree_node(BTreeNode* node, FILE* db_file, uint8_t key_type);
 void unload_btree(BTree* btree, char* file_path);
 
 int key_compare(void* key1, void* key2, uint8_t type);
-size_t sizeof_key(uint32_t type);
-void copy_key(void* dest, void* src, uint32_t type);
+void copy_key(void* dest, void* src, uint8_t type);
 int key_size_for_type(uint8_t key_type);
 
 long calculate_btree_order();

@@ -29,6 +29,7 @@ BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
 
 RowID btree_search(BTree* tree, void* key) {
   if (!tree || !tree->root) return (RowID){0};
+  LOG_DEBUG("Calling btree_search(tree: %p, key: %p", tree, key);
 
   BTreeNode* node = tree->root;
   while (node) {
@@ -90,14 +91,14 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_off
   int i = node->num_keys - 1;
 
   if (node->is_leaf) {
-    while (i >= 0 && key_compare(key, node->keys[i], tree->key_type) != 0) {
+    while (i >= 0 && key_compare(key, node->keys[i], tree->key_type) < 0) {
       node->keys[i + 1] = node->keys[i];
       node->row_pointers[i + 1] = node->row_pointers[i];
       i--;
     }
 
-    void* new_key = malloc(sizeof_key(tree->key_type));
-    copy_key(new_key, key, tree->key_type);  
+    void* new_key = malloc(key_size_for_type(tree->key_type));
+    copy_key(new_key, key, tree->key_type);
 
     node->keys[i + 1] = new_key;
     node->row_pointers[i + 1] = row_offset;
@@ -107,17 +108,20 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_off
       i--;
     }
 
-    if (node->children[i + 1]->num_keys == tree->btree_order - 1) {
-      btree_split_child(node, i + 1, node->children[i + 1], tree->btree_order);
+    i++; 
 
-      if (key_compare(key, node->keys[i + 1], tree->key_type) > 0) {
+    if (node->children[i]->num_keys == tree->btree_order - 1) {
+      btree_split_child(node, i, node->children[i], tree->btree_order);
+
+      if (key_compare(key, node->keys[i], tree->key_type) > 0) {
         i++;
       }
     }
 
-    btree_insert_nonfull(tree, node->children[i + 1], key, row_offset);
+    btree_insert_nonfull(tree, node->children[i], key, row_offset);
   }
 }
+
 
 bool btree_insert(BTree* tree, void* key, RowID row_offset) {
   if (!tree) {
@@ -274,62 +278,90 @@ void unload_btree(BTree* btree, char* file_path) {
 
 int key_compare(void* key1, void* key2, uint8_t type) {
   switch (type) {
-    case TOK_T_INT:  
-      return (*(int*)key1 - *(int*)key2); 
+    case TOK_T_INT:
+    case TOK_T_SERIAL: {
+      int a = *(int*)key1;
+      int b = *(int*)key2;
+      if (a < b) return -1;
+      if (a > b) return 1;
+      return 0;
+    }
 
     case TOK_T_VARCHAR:
     case TOK_T_CHAR:
-    case TOK_T_TEXT: 
-      return strcmp((char*)key1, (char*)key2);
-
-    case TOK_T_BOOL: 
-      return (*(bool*)key1 - *(bool*)key2);
-
-    case TOK_T_FLOAT:
-      if (*(float*)key1 < *(float*)key2) return -1;
-      if (*(float*)key1 > *(float*)key2) return 1;
-      return 0;
-
-    case TOK_T_DOUBLE: 
-      if (*(double*)key1 < *(double*)key2) return -1;
-      if (*(double*)key1 > *(double*)key2) return 1;
-      return 0; 
-
-    case TOK_T_DECIMAL: 
-      if (*(double*)key1 < *(double*)key2) return -1;
-      if (*(double*)key1 > *(double*)key2) return 1;
-      return 0; 
-
+    case TOK_T_TEXT:
     case TOK_T_DATE:
     case TOK_T_TIME:
     case TOK_T_DATETIME:
-    case TOK_T_TIMESTAMP: 
-      return strcmp((char*)key1, (char*)key2); 
+    case TOK_T_TIMESTAMP:
+    case TOK_T_JSON: {
+      int cmp = strcmp((char*)key1, (char*)key2);
+      if (cmp < 0) return -1;
+      if (cmp > 0) return 1;
+      return 0;
+    }
 
-    case TOK_T_BLOB:  // BLOB comparison (byte-by-byte comparison)
-      return memcmp(key1, key2, *(size_t*)key1); 
-      // TODO: BLOB REFERENCES
+    case TOK_T_BOOL: {
+      bool a = *(bool*)key1;
+      bool b = *(bool*)key2;
+      if (a == b) return 0;
+      return a ? 1 : -1;
+    }
 
-    case TOK_T_JSON:  // JSON comparison
-      return strcmp((char*)key1, (char*)key2); 
+    case TOK_T_FLOAT: {
+      float a = *(float*)key1;
+      float b = *(float*)key2;
+      if (a < b) return -1;
+      if (a > b) return 1;
+      return 0;
+    }
 
-    case TOK_T_UUID:  // UUID comparison (byte-by-byte comparison)
+    case TOK_T_DOUBLE:
+    case TOK_T_DECIMAL: {
+      double a = *(double*)key1;
+      double b = *(double*)key2;
+      if (a < b) return -1;
+      if (a > b) return 1;
+      return 0;
+    }
+
+    case TOK_T_BLOB: {
+      size_t len = *(size_t*)key1;
+      void* data1 = (uint8_t*)key1 + sizeof(size_t);
+      void* data2 = (uint8_t*)key2 + sizeof(size_t);
+      return memcmp(data1, data2, len);
+    }
+
+    case TOK_T_UUID: {
       return memcmp(key1, key2, 16);
-
-    case TOK_T_SERIAL:  // SERIAL treated as INTEGER
-      return (*(int*)key1 - *(int*)key2); 
+    }
 
     default:
       return 0;
   }
 }
 
-size_t sizeof_key(uint32_t type) {
-  return 0;
-}
+void copy_key(void* dest, void* src, uint8_t type) {
+  size_t size = key_size_for_type(type);
 
-void copy_key(void* dest, void* src, uint32_t type) {
-  
+  switch (type) {
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR:
+    case TOK_T_TEXT:
+    case TOK_T_UUID:
+    case TOK_T_DATE:
+    case TOK_T_TIME:
+    case TOK_T_DATETIME:
+    case TOK_T_TIMESTAMP:
+    case TOK_T_JSON:
+      strncpy((char*)dest, (char*)src, size);
+      ((char*)dest)[size - 1] = '\0';
+      break;
+
+    default:
+      memcpy(dest, src, size);
+      break;
+  }
 }
 
 int key_size_for_type(uint8_t key_type) {
