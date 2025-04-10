@@ -15,7 +15,7 @@ typedef struct Row {
   uint8_t null_bitmap_size; 
   uint8_t* null_bitmap; 
   
-  ColumnValue* column_data; 
+  ColumnValue* values; 
 } Row;
 
 typedef struct Page {

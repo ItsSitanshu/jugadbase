@@ -49,16 +49,16 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
     row->null_bitmap = malloc(row->null_bitmap_size);
     fread(row->null_bitmap, row->null_bitmap_size, 1, file);
 
-    row->column_data = malloc(sizeof(ColumnValue) * tc.schema->column_count);
+    row->values = malloc(sizeof(ColumnValue) * tc.schema->column_count);
     for (int j = 0; j < tc.schema->column_count; j++) {
-      row->column_data[j].is_null = (row->null_bitmap[j / 8] >> (j % 8)) & 1;
+      row->values[j].is_null = (row->null_bitmap[j / 8] >> (j % 8)) & 1;
     }
 
     for (int j = 0; j < tc.schema->column_count; j++) {
       ColumnDefinition* col_def = &tc.schema->columns[j];
 
-      if (!row->column_data[j].is_null && col_def) {
-        read_column_value(file, &row->column_data[j], col_def);
+      if (!row->values[j].is_null && col_def) {
+        read_column_value(file, &row->values[j], col_def);
       }
     }
   }
@@ -157,8 +157,8 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
     for (int j = 0; j < tc.schema->column_count; j++) {
       ColumnDefinition* col_def = &tc.schema->columns[j];
 
-      if (!row->column_data[j].is_null && col_def) {
-        write_column_value(file, &row->column_data[j], col_def);
+      if (!row->values[j].is_null && col_def) {
+        write_column_value(file, &row->values[j], col_def);
       }
     }
   }
@@ -204,7 +204,7 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
         size_t uuid_len = strlen(col_val->str_value);
         if (uuid_len == 36) {  
           uint8_t binary_uuid[16];
-          if (!parse_uuid_string(col_val->str_value, binary_uuid)) {
+          if (!parser_parse_uuid_string(col_val->str_value, binary_uuid)) {
             LOG_ERROR("Error: Invalid UUID format.\n");
             return;
           }
@@ -283,7 +283,6 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
     return serialize_insert(pool, row, tc);
   }
 
-  LOG_DEBUG("%u'", page->num_rows);
   row.id.row_id = page->num_rows;
   row.id.page_id = page->page_id;
 
