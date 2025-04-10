@@ -553,7 +553,7 @@ bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Cont
 
     case CONDITION_AND:
       evaluate_condition(cond->right, row, schema, ctx, schema_idx), evaluate_condition(cond->left, row, schema, ctx, schema_idx) &&
-      evaluate_condition(cond->right, row, schema, ctx, schema_idx));
+      evaluate_condition(cond->right, row, schema, ctx, schema_idx);
       return evaluate_condition(cond->left, row, schema, ctx, schema_idx) &&
              evaluate_condition(cond->right, row, schema, ctx, schema_idx);
 
