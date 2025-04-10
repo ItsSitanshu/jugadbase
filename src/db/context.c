@@ -5,7 +5,7 @@
 #include "../utils/log.h"
 #include "../utils/security.h"
 
-Context* ctx_init() {
+Context* ctx_init(char* dir) {
   Context* ctx = (Context*)malloc(sizeof(Context));
   if (!ctx) {
     LOG_FATAL("Failed to allocate memory for context.");
@@ -38,7 +38,7 @@ Context* ctx_init() {
     return NULL;
   }
 
-  ctx->fs = fs_init(DB_ROOT_DIRECTORY);
+  ctx->fs = fs_init(dir);
   if (!ctx->fs) {
     LOG_FATAL("Failed to initialize file system.");
     free(ctx->uuid);
@@ -212,11 +212,11 @@ void process_file(Context* ctx, char* filename) {
   lexer_set_buffer(ctx->lexer, buffer);
   parser_reset(ctx->parser);
   
-  JQLCommand cmd = parser_parse(ctx->parser);
+  JQLCommand cmd = parser_parse(ctx);
   while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
     res_list[res_n] = execute_cmd(ctx, &cmd);
   
-    if (res_n + 1 > res_capacity) {
+    if (res_n + 1 >= res_capacity) {
       res_capacity *= 2; 
       res_list = realloc(res_list, sizeof(ExecutionResult) * res_capacity);
       if (!res_list) {
@@ -226,7 +226,7 @@ void process_file(Context* ctx, char* filename) {
     }
   
     res_n++;
-    cmd = parser_parse(ctx->parser); 
+    cmd = parser_parse(ctx); 
   }
 
   free(buffer);

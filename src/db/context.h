@@ -30,7 +30,7 @@ typedef struct Context {
   FS* fs;
 } Context;
 
-Context* ctx_init();
+Context* ctx_init(char* dir);
 void ctx_free(Context* ctx);
 
 bool process_dot_cmd(Context* ctx, char* input);

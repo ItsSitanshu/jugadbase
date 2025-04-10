@@ -20,7 +20,7 @@ int main(int argc, char* argv[]) {
     LOG_WARN("Invalid verbosity level: %d. Defaulting to WARN.", *verbosity_level);
   }
 
-  Context* ctx = ctx_init();
+  Context* ctx = ctx_init(DB_ROOT_DIRECTORY);
 
   if (!ctx) {
     fprintf(stderr, "Failed to initialize context\n");
