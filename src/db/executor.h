@@ -22,6 +22,8 @@ void write_column_value(FILE* io, ColumnValue* col_val, ColumnDefinition* col_de
 
 void* get_column_value_as_pointer(ColumnValue* col_val);
 size_t size_from_type(uint8_t column_type);
+bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+void print_column_value(ColumnValue* val);
 uint32_t get_table_offset(Context* ctx, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);
 

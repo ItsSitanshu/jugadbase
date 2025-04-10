@@ -11,7 +11,7 @@ ExecutionResult process(Context* ctx, char* buffer) {
   lexer_set_buffer(ctx->lexer, buffer);
   parser_reset(ctx->parser);
 
-  JQLCommand cmd = parser_parse(ctx->parser);
+  JQLCommand cmd = parser_parse(ctx);
   return execute_cmd(ctx, &cmd);
 }
 
@@ -36,8 +36,32 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
       result = (ExecutionResult){1, "Unknown command type"};
   }
 
+  if (result.rows && result.row_count > 0) {
+    printf("-> Returned %u row(s):\n", result.row_count);
+
+    for (uint32_t i = 0; i < result.row_count; i++) {
+      Row* row = &result.rows[i];
+      printf("Row %u [ID: %u.%u]: ", i + 1, row->id.page_id, row->id.row_id);
+
+      for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
+        ColumnDefinition col = cmd->schema->columns[c];
+        ColumnValue val = row->values[c];
+
+        printf("%s=", col.name);
+        print_column_value(&val);
+
+        if (c < cmd->schema->column_count - 1) {
+          printf(", ");
+        }
+      }
+
+      printf("\n");
+    }
+  }
+
   return result;
 }
+
 
 ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   /*
@@ -104,7 +128,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     io_write(tca_io, &col_name_length, sizeof(uint8_t));
     io_write(tca_io, col->name, col_name_length);
 
-    io_write(tca_io, &col->type, sizeof(int));
+    io_write(tca_io, &col->type, sizeof(uint32_t));
     io_write(tca_io, &col->type_varchar, sizeof(uint8_t));
     io_write(tca_io, &col->type_decimal_precision, sizeof(uint8_t));
     io_write(tca_io, &col->type_decimal_scale, sizeof(uint8_t));
@@ -258,14 +282,14 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   row.null_bitmap = null_bitmap;
   row.row_length = sizeof(row.id) + null_bitmap_size;
 
-  row.column_data = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
-  if (!row.column_data) {
+  row.values = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
+  if (!row.values) {
     free(null_bitmap);
     return (ExecutionResult){1, "Memory allocation failed for column data"};
   }
 
   for (uint8_t i = 0; i < column_count; i++) {
-    row.column_data[i] = cmd->values[i];
+    row.values[i] = cmd->values[i];
     row.row_length += size_from_type(schema->columns[i].type); 
   }
 
@@ -277,7 +301,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
       void* key = get_column_value_as_pointer(primary_key_vals[i]);
     
       if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_id)) {
-        free(row.column_data);
+        free(row.values);
         free(row.null_bitmap);
         return (ExecutionResult){1, "Failed to insert record into B-tree"};
       }
@@ -296,73 +320,89 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
   if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
   load_btree_cluster(ctx, schema->table_name);
-
   cmd->schema = schema;
-  uint8_t column_count = schema->column_count;
+
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &ctx->lake[schema_idx];
 
-  RowID row_start = {0};  
-
-  // if (cmd->select.where_column && cmd->select.where_value) {
-  //   for (uint8_t i = 0; i < column_count; i++) {
-  //     if (strcmp(schema->columns[i].name, cmd->select.where_column) == 0 &&
-  //         schema->columns[i].is_primary_key) {
-  //       uint8_t idx = hash_fnv1a(schema->columns[i].name, MAX_COLUMNS);
-  //       void* key = get_column_value_as_pointer(cmd->select.where_value);
-  //       row_start = btree_search(ctx->tc[schema_idx].btree[idx], key);
-  //       break;
-  //     }
-  //   }
-  //   if (is_struct_zeroed(&row_start, sizeof(RowID))) {
-  //     return (ExecutionResult){1, "No record found"};
-  //   }
-  // }
-
+  RowID row_start = {0};
   Row* collected_rows = malloc(sizeof(Row) * (PAGE_SIZE / 10));
   if (!collected_rows) {
     return (ExecutionResult){1, "Memory allocation failed for result rows"};
   }
-  
+
   uint32_t total_found = 0;
-  
+
   for (uint16_t i = 0; i < pool->num_pages; i++) {
     Page* page = pool->pages[i];
     if (!page || page->num_rows == 0) continue;
-  
+
     for (uint16_t j = 0; j < page->num_rows; j++) {
-      Row row = page->rows[j];
-  
+      Row* row = &(page->rows[j]);
+
       if (!is_struct_zeroed(&row_start, sizeof(RowID))) {
-        if (row.id.page_id != row_start.page_id || row.id.row_id != row_start.row_id) continue;
+        if (row->id.page_id != row_start.page_id || row->id.row_id != row_start.row_id) continue;
       }
-  
-      collected_rows[total_found++] = row;
-  
-      if (!is_struct_zeroed(&row_start, sizeof(RowID))) {
-        break;
+
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
+        continue;
       }
+
+      collected_rows[total_found++] = *row;
+
+      if (!is_struct_zeroed(&row_start, sizeof(RowID))) break;
     }
-  
+
     if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0) break;
   }
-  
-  Row* result_rows = malloc(sizeof(Row) * total_found);
+
+  Row* result_rows = malloc(sizeof(Row) * (PAGE_SIZE / 10));
+
   if (!result_rows) {
     free(collected_rows);
     return (ExecutionResult){1, "Memory allocation failed for final result copy"};
   }
-  memcpy(result_rows, collected_rows, sizeof(Row) * total_found);
+
+  if (cmd->value_count == 1 && strcmp(cmd->columns[0], "*") == 0) {
+    memcpy(result_rows, collected_rows, sizeof(Row) * total_found);
+  } else {
+    for (uint32_t i = 0; i < total_found; i++) {
+      Row* src = &collected_rows[i];
+      Row* dst = &result_rows[i];
+      memset(dst, 0, sizeof(Row));
+      dst->id = src->id;
+
+      dst->values = calloc(schema->column_count, sizeof(ColumnValue));
+      if (!dst->values) {
+        free(collected_rows);
+        free(result_rows);
+        return (ExecutionResult){1, "Memory allocation failed for projected values"};
+      }
+
+      for (int j = 0; j < cmd->value_count; j++) {
+        char* colname = cmd->columns[j];
+
+        for (uint8_t k = 0; k < schema->column_count; k++) {
+          if (strcmp(schema->columns[k].name, colname) == 0) {
+            dst->values[k] = src->values[k];
+            break;
+          }
+        }
+      }
+    }
+  }
+
   free(collected_rows);
-  
+
   return (ExecutionResult){
     .code = 0,
     .message = "Select executed successfully",
     .rows = result_rows,
     .row_count = total_found,
     .owns_rows = 1
-  };  
+  };
 }
+
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {
   switch (col_val->type) {
@@ -380,14 +420,15 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
       return &(col_val->int_value);
     case TOK_L_FLOAT:
       return &(col_val->float_value);
-    case TOK_T_DOUBLE:
+    case TOK_L_DOUBLE:
       return &(col_val->double_value);
-    case TOK_T_BOOL:
+    case TOK_L_BOOL:
       return &(col_val->bool_value);
-    case TOK_T_CHAR:
+    case TOK_L_CHAR:
       return &(col_val->str_value[0]);
-    case TOK_T_TEXT:
-      return &(col_val->str_value);
+    case TOK_L_STRING:
+      LOG_DEBUG("%s", col_val->str_value);
+      return col_val->str_value;
     case TOK_T_BLOB:
       return &(col_val->blob_value);
     case TOK_T_JSON:
@@ -453,6 +494,120 @@ size_t size_from_type(uint8_t column_type) {
 
   return size;
 }
+
+bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+  if (!cond) return false;
+
+  switch (cond->type) {
+    case CONDITION_COMPARISON: {
+      ColumnValue left, right;
+      uint8_t column_type = 0;
+
+      if (cond->left_is_column) {
+        left = row->values[cond->left_column_index];
+        column_type = schema->columns[cond->left_column_index].type;
+      } else {
+        left = cond->left_value;
+      }
+
+      if (cond->right_is_column) {
+        right = row->values[cond->right_column_index];
+        if (!column_type) {
+          column_type = schema->columns[cond->right_column_index].type;
+        }
+      } else {
+        right = cond->right_value;
+      }
+
+      // print_column_value(&left);
+      // printf("left \n");
+      // print_column_value(&right);
+      // printf("right \n");
+
+      if (cond->op == COMP_EQ && cond->left_is_column && !cond->right_is_column &&
+          schema->columns[cond->left_column_index].is_primary_key) {
+
+        void* key = get_column_value_as_pointer(&left);
+        uint8_t btree_idx = hash_fnv1a(schema->columns[cond->left_column_index].name, MAX_COLUMNS);
+        RowID rid = btree_search(ctx->tc[schema_idx].btree[btree_idx], key);
+          
+        return !(!is_struct_zeroed(&rid, sizeof(RowID)) &&
+                row->id.page_id == rid.page_id &&
+                row->id.row_id == rid.row_id);
+      }
+
+      int cmp = key_compare(get_column_value_as_pointer(&left),
+                            get_column_value_as_pointer(&right),
+                            column_type);
+
+      switch (cond->op) {
+        case COMP_EQ:  return cmp == 0;
+        case COMP_NEQ: return cmp != 0;
+        case COMP_LT:  return cmp < 0;
+        case COMP_GT:  return cmp > 0;
+        case COMP_LTE: return cmp <= 0;
+        case COMP_GTE: return cmp >= 0;
+        default: return false;
+      }
+    }
+
+    case CONDITION_AND:
+      evaluate_condition(cond->right, row, schema, ctx, schema_idx), evaluate_condition(cond->left, row, schema, ctx, schema_idx) &&
+      evaluate_condition(cond->right, row, schema, ctx, schema_idx));
+      return evaluate_condition(cond->left, row, schema, ctx, schema_idx) &&
+             evaluate_condition(cond->right, row, schema, ctx, schema_idx);
+
+    case CONDITION_OR:
+      return evaluate_condition(cond->left, row, schema, ctx, schema_idx) ||
+             evaluate_condition(cond->right, row, schema, ctx, schema_idx);
+
+    case CONDITION_NOT:
+      return !evaluate_condition(cond->right, row, schema, ctx, schema_idx);
+
+    default:
+      return false;
+  }
+}
+
+void print_column_value(ColumnValue* val) {
+  if (val->is_null) {
+    printf("NULL");
+    return;
+  }
+
+  printf("[");
+
+  switch (val->type) {
+    case TOK_L_I8: case TOK_L_I16: case TOK_L_I32: case TOK_L_I64:
+    case TOK_L_U8: case TOK_L_U16: case TOK_L_U32: case TOK_L_U64:
+      printf("%d", val->int_value);
+      break;
+
+    case TOK_L_FLOAT:
+      printf("%f", val->float_value);
+      break;
+
+    case TOK_L_DOUBLE:
+      printf("%lf", val->double_value);
+      break;
+
+    case TOK_L_BOOL:
+      printf(val->bool_value ? "true" : "false");
+      break;
+
+    case TOK_L_STRING:
+    case TOK_L_CHAR:
+      printf("\"%s\"", val->str_value);
+      break;
+
+    default:
+      printf("unprintable type: %d", val->type);
+      break;
+  }
+
+  printf("]");
+}
+
 
 uint32_t get_table_offset(Context* ctx, const char* table_name) {
   for (int i = 0; i < ctx->table_count; i++) {
