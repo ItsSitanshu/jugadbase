@@ -26,6 +26,4 @@ jobs:
         run: cmake --build build -- -j$(nproc)
 
       - name: Run Tests
-        run: |
-          chmod +x build/tests
-          ctest --test-dir build --output-on-failure
+        run: cd build/ && ctest --test-dir . --output-on-failure
