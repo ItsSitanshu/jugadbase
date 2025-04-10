@@ -54,6 +54,7 @@ dkms.conf
 build/
 .vscode/
 data/
+examples/test/
 node_modules/
 .next/
 *.jdb
