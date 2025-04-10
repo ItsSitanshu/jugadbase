@@ -18,7 +18,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~`INSERT`~~
   - ~~`SELECT`~~
     - ~~`*`~~ 
-    - `WHERE`
+    - ~~`WHERE`~~
   - `UPDATE`
   - `DELETE`
 - Implement foreign constraints
