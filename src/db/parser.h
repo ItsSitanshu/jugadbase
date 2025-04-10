@@ -5,12 +5,17 @@
 #include "io.h"
 #include "btree.h"
 
+#include "../utils/security.h"
+
 #define MAX_COLUMNS 256
 #define MAX_TEXT_SIZE 256
 #define MAX_DECIMAL_LEN 256
 #define MAX_BLOB_SIZE 512
 #define MAX_JSON_SIZE 512
 #define MAX_VARCHAR_SIZE 255
+
+struct Context;
+typedef struct Context Context;
 
 typedef enum {
   AST_COMMAND,
@@ -98,6 +103,40 @@ typedef struct {
   };
 } ColumnValue;
 
+
+typedef enum {
+  CONDITION_COMPARISON,
+  CONDITION_AND,
+  CONDITION_OR,
+  CONDITION_NOT
+} ConditionType;
+
+typedef enum {
+  COMP_EQ,
+  COMP_NEQ,
+  COMP_LT,
+  COMP_GT,
+  COMP_LTE,
+  COMP_GTE
+} ComparisonOp;
+
+typedef struct ConditionNode {
+  ConditionType type;
+
+  struct ConditionNode* left;
+  struct ConditionNode* right;
+
+  ComparisonOp op;
+
+  bool left_is_column;
+  uint8_t left_column_index;
+  ColumnValue left_value;
+
+  bool right_is_column;
+  uint8_t right_column_index;
+  ColumnValue right_value;
+} ConditionNode;
+
 typedef struct {
   char name[MAX_IDENTIFIER_LEN];
 
@@ -150,6 +189,9 @@ typedef struct {
   ColumnValue* values;
   char** columns;
 
+  ConditionNode* where;
+  bool has_where;
+
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
   char order_by[MAX_IDENTIFIER_LEN];  // ORDER BY clause
   char group_by[MAX_IDENTIFIER_LEN];  // GROUP BY clause
@@ -183,20 +225,31 @@ void parser_reset(Parser* parser);
 void parser_free(Parser* parser);
 void jql_command_free(JQLCommand* cmd);
 
-JQLCommand parser_parse(Parser* parser);
+JQLCommand parser_parse(Context* ctx);
 
 JQLCommand parser_parse_create_table(Parser* parser);
 JQLCommand parser_parse_insert(Parser* parser);
-JQLCommand parser_parse_select(Parser* parser);
+JQLCommand parser_parse_select(Parser* parser, Context* ctx);
 
 void parser_consume(Parser* parser);
 
 bool is_valid_data_type(Parser* parser);
 bool is_valid_default(Parser* parser, int column_type, int literal_type);
-bool parse_value(Parser* parser, ColumnValue* col_val);
-bool parse_uuid_string(const char* uuid_str, uint8_t* output);
+bool parser_parse_value(Parser* parser, ColumnValue* col_val);
+bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output);
 
-ASTNode* parse_expression(Parser* parser);
+ConditionNode* parser_parse_condition(Parser* parser, TableSchema* schema);
+ConditionNode* parser_parse_logical_or(Parser* parser, TableSchema* schema);
+ConditionNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
+ConditionNode* parser_parse_logical_not(Parser* parser, TableSchema* schema);
+ConditionNode* parser_parse_comparison(Parser* parser, TableSchema* schema);
+void parser_parse_column_or_value(Parser* parser, TableSchema* schema, ConditionNode* node, bool left_side);
+ComparisonOp parser_parse_comparison_operator(Parser* parser);
+void free_condition_node(ConditionNode* node);
 
+int find_column_index(TableSchema* schema, const char* name);
+bool is_primary_key_column(TableSchema* schema, int column_index);
+
+ASTNode* parser_parse_expression(Parser* parser);
 
 #endif // JQL_COMMAND_H
