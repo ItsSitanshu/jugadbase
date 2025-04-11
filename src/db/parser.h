@@ -167,6 +167,7 @@ typedef struct {
   
   uint8_t column_count;
   uint8_t prim_column_count;
+  uint8_t not_null_count;
   
   ColumnDefinition* columns;
 } TableSchema;
@@ -185,6 +186,7 @@ typedef struct {
   TableSchema* schema;
   char* schema_name;
 
+  uint8_t* bitmap;
   int value_count;
   ColumnValue* values;
   char** columns;
@@ -230,6 +232,7 @@ JQLCommand parser_parse(Context* ctx);
 JQLCommand parser_parse_create_table(Parser* parser);
 JQLCommand parser_parse_insert(Parser* parser);
 JQLCommand parser_parse_select(Parser* parser, Context* ctx);
+JQLCommand parser_parse_update(Parser* parser, Context* ctx);
 
 void parser_consume(Parser* parser);
 

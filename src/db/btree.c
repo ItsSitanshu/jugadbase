@@ -282,6 +282,7 @@ int key_compare(void* key1, void* key2, uint8_t type) {
     case TOK_T_SERIAL: {
       int a = *(int*)key1;
       int b = *(int*)key2;
+      LOG_DEBUG("a: %d b: %d", a, b);
       if (a < b) return -1;
       if (a > b) return 1;
       return 0;

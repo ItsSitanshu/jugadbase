@@ -575,6 +575,10 @@ bool load_schema_tc(Context* ctx, char* table_name) {
     if (col->is_primary_key) {
       schema->prim_column_count += 1;
     }
+
+    if (col->is_not_null) {
+      schema->not_null_count += 1;
+    }
   }
 
   ctx->tc[idx].schema = schema;
@@ -718,6 +722,10 @@ bool load_initial_schema(Context* ctx) {
 
       if (col->is_primary_key) {
         schema->prim_column_count += 1;
+      }  
+
+      if (col->is_not_null) {
+        schema->not_null_count += 1;
       }
     }
 
@@ -771,7 +779,6 @@ void load_lake(Context* ctx) {
       ctx->lake[idx].idx = idx; 
     }
   }
-
 }
 
 void flush_lake(Context* ctx) {
@@ -780,7 +787,10 @@ void flush_lake(Context* ctx) {
   for (int i = 0; i < MAX_COLUMNS; i++) {
     if (ctx->lake[i].file[0] != 0) {  
 
-      file = fopen(ctx->lake[i].file, "wb");
+      file = fopen(ctx->lake[i].file, "r+b"); 
+      if (!file) {
+        file = fopen(ctx->lake[i].file, "w+b");
+      }
       
       for (int j = 0; j < ctx->lake[i].num_pages; j++) {
         uint32_t pg_n = ctx->lake[i].page_numbers[j];

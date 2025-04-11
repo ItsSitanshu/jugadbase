@@ -32,6 +32,9 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
     case CMD_SELECT:
       result = execute_select(ctx, cmd);
       break;
+    case CMD_UPDATE:
+      result = execute_update(ctx, cmd);
+      break;
     default:
       result = (ExecutionResult){1, "Unknown command type"};
   }
@@ -403,6 +406,54 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
   };
 }
 
+ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
+  if (!ctx || !cmd || !cmd->schema) {
+    return (ExecutionResult){1, "Invalid execution context or command"};
+  }
+
+  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
+
+  load_btree_cluster(ctx, schema->table_name);
+  cmd->schema = schema;
+
+  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+  BufferPool* pool = &ctx->lake[schema_idx];
+
+  uint32_t rows_updated = 0;
+
+  for (uint16_t i = 0; i < pool->num_pages; i++) {
+    Page* page = pool->pages[i];
+    if (!page || page->num_rows == 0) continue;
+
+    for (uint16_t j = 0; j < page->num_rows; j++) {
+      Row* row = &page->rows[j];
+
+      LOG_DEBUG("!%d", evaluate_condition(cmd->where, row, schema, ctx, schema_idx));
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
+        continue;
+      }
+
+      for (int k = 0; k < cmd->value_count; k++) {
+        char* colname = cmd->columns[k];
+        ColumnValue* new_value = &cmd->values[k];
+
+        int col_index = find_column_index(schema, colname);
+        row->values[col_index] = *new_value;
+        row->null_bitmap = cmd->bitmap;
+      }
+
+      rows_updated++;
+    }
+  }
+
+  return (ExecutionResult){
+    .code = 0,
+    .message = "Update executed successfully",
+    .row_count = rows_updated
+  };
+}
+
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {
   switch (col_val->type) {
@@ -519,10 +570,10 @@ bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Cont
         right = cond->right_value;
       }
 
-      // print_column_value(&left);
-      // printf("left \n");
-      // print_column_value(&right);
-      // printf("right \n");
+      print_column_value(&left);
+      printf("left \n");
+      print_column_value(&right);
+      printf("right \n");
 
       if (cond->op == COMP_EQ && cond->left_is_column && !cond->right_is_column &&
           schema->columns[cond->left_column_index].is_primary_key) {

@@ -80,6 +80,8 @@ JQLCommand parser_parse(Context* ctx) {
       return parser_parse_insert(ctx->parser);
     case TOK_SEL: 
       return parser_parse_select(ctx->parser, ctx);
+    case TOK_UPD:
+      return parser_parse_update(ctx->parser, ctx);
     case TOK_EOF:
       return command;
     default:
@@ -489,6 +491,119 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   command.is_invalid = false;
   return command;
 }
+
+JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
+  JQLCommand command;
+  memset(&command, 0, sizeof(JQLCommand));
+  command.type = CMD_UPDATE;
+  command.is_invalid = true;
+
+  parser_consume(parser); 
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
+    return command;
+  }
+
+  command.schema = malloc(sizeof(TableSchema));
+  strcpy(command.schema->table_name, parser->cur->value);
+  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+
+  if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
+    LOG_DEBUG("<<< %d", idx);
+    return command;
+  }
+
+  parser_consume(parser); 
+
+  if (parser->cur->type != TOK_SET) {
+    REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_SET");
+    return command;
+  }
+
+  parser_consume(parser); 
+
+  command.value_count = 0;
+  command.columns = calloc(MAX_COLUMNS, sizeof(char*));
+  command.values = calloc(MAX_COLUMNS, sizeof(ColumnValue));
+
+  uint8_t null_bitmap_size = (ctx->tc[idx].schema->column_count + 7) / 8;
+  command.bitmap = (uint8_t*)malloc(null_bitmap_size);
+  if (!command.bitmap) {
+    return command;
+  }
+  memset(command.bitmap, 0, null_bitmap_size);
+
+  while (parser->cur->type == TOK_ID) {
+    char* column_name = strdup(parser->cur->value);
+    parser_consume(parser);
+  
+    if (parser->cur->type != TOK_EQ) {
+      REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_EQUAL_IN_SET");
+      return command;
+    }
+    parser_consume(parser); 
+  
+    ColumnValue value = {0};
+    if (!parser_parse_value(parser, &value)) {
+      REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUE_IN_SET");
+      free(column_name);
+      return command;
+    }
+  
+    int col_index = find_column_index(ctx->tc[idx].schema, column_name);
+    if (col_index == -1) {
+      REPORT_ERROR(parser->lexer, "SYE_E_UNKNOWN_COLUMN_IN_SET");
+      free(column_name);
+      return command;
+    }
+  
+    command.columns[command.value_count] = column_name;
+    command.values[command.value_count] = value;
+  
+    if (value.is_null) {
+      command.bitmap[col_index / 8] |= (1 << (col_index % 8));
+    }
+
+    command.value_count++;
+  
+    if (parser->cur->type == TOK_COM) {
+      parser_consume(parser); 
+    } else {
+      break;
+    }
+  }
+
+
+  for (int i = 0; i < command.value_count; ++i) {
+    char* col_name = command.columns[i];
+    ColumnValue* val = &command.values[i];
+  
+    int col_index = find_column_index(ctx->tc[idx].schema, col_name);
+    if (col_index == -1) {
+      LOG_ERROR("Column '%s' not found in schema", col_name);
+      return command;
+    }
+  
+    if (ctx->tc[idx].schema->columns[col_index].is_not_null && val->is_null) {
+      LOG_ERROR("Column '%s' is NOT NULL but attempted to set NULL", col_name);
+      return command;
+    }
+  }  
+  
+
+  if (parser->cur->type == TOK_WR) {
+    parser_consume(parser);
+    command.has_where = true;
+
+    command.where = malloc(sizeof(ConditionNode));
+    command.where = parser_parse_condition(parser, ctx->tc[idx].schema);
+  }
+
+  command.is_invalid = false;
+  return command;
+}
+
 
 
 void parser_consume(Parser* parser) {
