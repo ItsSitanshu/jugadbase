@@ -29,29 +29,31 @@ BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
 
 RowID btree_search(BTree* tree, void* key) {
   if (!tree || !tree->root) return (RowID){0};
-  LOG_DEBUG("Calling btree_search(tree: %p, key: %p", tree, key);
+  LOG_DEBUG("Calling btree_search(tree: %p, key: %p)", tree, key);
 
   BTreeNode* node = tree->root;
+
   while (node) {
     int i = 0;
 
-    while (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) != 0) {
+    while (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) > 0) {
       i++;
     }
 
     if (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) == 0) {
-      return node->row_pointers[i]; 
+      return node->row_pointers[i];
     }
 
     if (node->is_leaf) {
       break;
     }
 
-    node = node->children[i]; 
+    node = node->children[i];
   }
-  
-  return (RowID){0};
+
+  return (RowID){0};  
 }
+
 
 void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t btree_order) {
   int mid = btree_order / 2;

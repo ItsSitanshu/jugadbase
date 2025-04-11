@@ -429,12 +429,12 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
     for (uint16_t j = 0; j < page->num_rows; j++) {
       Row* row = &page->rows[j];
 
-      LOG_DEBUG("!%d", evaluate_condition(cmd->where, row, schema, ctx, schema_idx));
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
         continue;
       }
 
       for (int k = 0; k < cmd->value_count; k++) {
+        LOG_DEBUG("%u %u", row->id.row_id, row->row_length);
         char* colname = cmd->columns[k];
         ColumnValue* new_value = &cmd->values[k];
 
@@ -578,11 +578,13 @@ bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Cont
       if (cond->op == COMP_EQ && cond->left_is_column && !cond->right_is_column &&
           schema->columns[cond->left_column_index].is_primary_key) {
 
-        void* key = get_column_value_as_pointer(&left);
+        void* key = get_column_value_as_pointer(&right);
         uint8_t btree_idx = hash_fnv1a(schema->columns[cond->left_column_index].name, MAX_COLUMNS);
         RowID rid = btree_search(ctx->tc[schema_idx].btree[btree_idx], key);
           
-        return !(!is_struct_zeroed(&rid, sizeof(RowID)) &&
+        LOG_DEBUG("%d", (is_struct_zeroed(&rid, sizeof(RowID))));
+
+        return (!is_struct_zeroed(&rid, sizeof(RowID)) &&
                 row->id.page_id == rid.page_id &&
                 row->id.row_id == rid.row_id);
       }
