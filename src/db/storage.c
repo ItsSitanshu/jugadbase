@@ -283,7 +283,7 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
     return serialize_insert(pool, row, tc);
   }
 
-  row.id.row_id = page->num_rows;
+  row.id.row_id = page->num_rows + 1;
   row.id.page_id = page->page_id;
 
   page->rows[page->num_rows] = row;
