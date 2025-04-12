@@ -36,7 +36,7 @@ static void get_current_time_with_ms(char* time_str, size_t size) {
   tm_info = localtime(&tv.tv_sec); 
 
   strftime(time_str, size, "%Y-%m-%d %H:%M:%S", tm_info);
-  snprintf(time_str + strlen(time_str), size - strlen(time_str), ".%03ld", tv.tv_usec / 1000);  // Append milliseconds
+  snprintf(time_str + strlen(time_str), size - strlen(time_str), ".%03d", tv.tv_usec / 1000);  // Append milliseconds
 }
 
 static int is_new_log_cycle(const char* current_file, const char* new_file) {

@@ -497,6 +497,8 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
     default:
       return NULL;
   }
+
+  return NULL;
 }
 
 size_t size_from_type(uint8_t column_type) {
@@ -582,8 +584,6 @@ bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Cont
         uint8_t btree_idx = hash_fnv1a(schema->columns[cond->left_column_index].name, MAX_COLUMNS);
         RowID rid = btree_search(ctx->tc[schema_idx].btree[btree_idx], key);
           
-        LOG_DEBUG("%d", (is_struct_zeroed(&rid, sizeof(RowID))));
-
         return (!is_struct_zeroed(&rid, sizeof(RowID)) &&
                 row->id.page_id == rid.page_id &&
                 row->id.row_id == rid.row_id);

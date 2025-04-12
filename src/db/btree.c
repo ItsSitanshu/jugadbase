@@ -36,11 +36,13 @@ RowID btree_search(BTree* tree, void* key) {
   while (node) {
     int i = 0;
 
-    while (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) > 0) {
+    while (i < node->num_keys && (key_compare(key, node->keys[i], tree->key_type) != 0)) {
       i++;
     }
 
     if (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) == 0) {
+      LOG_DEBUG("res: %d", key_compare(key, node->keys[i], tree->key_type));
+
       return node->row_pointers[i];
     }
 
@@ -284,7 +286,6 @@ int key_compare(void* key1, void* key2, uint8_t type) {
     case TOK_T_SERIAL: {
       int a = *(int*)key1;
       int b = *(int*)key2;
-      LOG_DEBUG("a: %d b: %d", a, b);
       if (a < b) return -1;
       if (a > b) return 1;
       return 0;

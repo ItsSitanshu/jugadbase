@@ -11,6 +11,14 @@ VERBOSE_MAKE=0
 NUM_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 CMAKE_ARGS=""
 
+if [[ "$OSTYPE" == "darwin"* ]]; then
+    LINKER_FLAGS="-L/opt/homebrew/lib"
+    echo "System detected as macOS (Darwin), setting linker flags to: $LINKER_FLAGS"
+else
+    LINKER_FLAGS="-L/usr/lib"  
+    echo "System detected as Linux or other UNIX-like, setting linker flags to: $LINKER_FLAGS"
+fi
+
 print_help() {
     echo "Enhanced Build Script"
     echo "Usage: ./build.sh [options] [commands]"
@@ -29,6 +37,7 @@ print_help() {
     echo "  -b, --build-dir DIR    Set build directory (default: build)"
     echo "  -d, --build-type TYPE  Set build type (Debug/Release)"
     echo "  -c, --cmake-args ARGS  Additional CMake arguments (in quotes)"
+    echo "  -l, --linker-flags FLAGS  Additional linker flags (in quotes)"
     echo "  --verbose-make         Enable verbose make output"
     echo ""
     echo "Examples:"
@@ -111,6 +120,15 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             ;;
+        -l|--linker-flags)
+            if [[ $# -gt 1 ]]; then
+                LINKER_FLAGS="$2"
+                shift 2
+            else
+                echo "Error: Linker flags not specified"
+                exit 1
+            fi
+            ;;
         --verbose-make)
             VERBOSE_MAKE=1
             shift
@@ -133,6 +151,7 @@ mkdir -p "$BUILD_DIR"
 
 CMAKE_CMD="cmake -B $BUILD_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_MODULE_PATH=/usr/share/doc/check/examples/cmake"
 [ -n "$CMAKE_ARGS" ] && CMAKE_CMD="$CMAKE_CMD $CMAKE_ARGS"
+[ -n "$LINKER_FLAGS" ] && CMAKE_CMD="$CMAKE_CMD -DCMAKE_EXE_LINKER_FLAGS=\"$LINKER_FLAGS\""
 
 echo "Running: $CMAKE_CMD"
 eval "$CMAKE_CMD"

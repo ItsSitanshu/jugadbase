@@ -334,7 +334,7 @@ void load_table_schema(Context* ctx) {
       break;
     }
 
-    if (entry->name_length == 0 || entry->name_length >= sizeof(entry->name)) {
+    if (entry->name_length == 0 || (size_t)entry->name_length >= sizeof(entry->name)) {
       LOG_ERROR("Invalid table name length (%u).", entry->name_length);
       break;
     }
@@ -741,7 +741,7 @@ void load_lake(Context* ctx) {
   char file_path[MAX_PATH_LENGTH];
 
   for (int i = 0; i < MAX_TABLES; i++) {
-    if (ctx->tc[i].schema && ctx->tc[i].schema->table_name) {
+    if (ctx->tc[i].schema) {
       sprintf(file_path, "%s" SEP "%s" SEP "rows.db", ctx->fs->tables_dir, ctx->tc[i].schema->table_name);
       file = fopen(file_path, "rb");
       if (!file) {
@@ -775,7 +775,7 @@ void load_lake(Context* ctx) {
       fclose(file);
 
       memcpy(ctx->lake[idx].file, file_path, MAX_PATH_LENGTH - 1);
-      ctx->lake[idx].file[MAX_PATH_LENGTH] = '\0';
+      ctx->lake[idx].file[MAX_PATH_LENGTH - 1] = '\0';
       ctx->lake[idx].idx = idx; 
     }
   }

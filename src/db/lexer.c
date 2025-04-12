@@ -625,7 +625,7 @@ Token* lexer_process_pos_singlechar(Lexer* lexer, char next_char,
 }
    
 Token* lexer_process_minus_op(Lexer* lexer, char next_char) {
-  if isdigit(next_char) {
+  if (isdigit(next_char)) {
     return lexer_handle_numeric(lexer, true);
   }
 

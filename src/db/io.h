@@ -16,12 +16,20 @@
   struct statfs {
     unsigned long long f_bsize;
   };
-#else
-  #include <sys/stat.h>
-  #include <sys/statfs.h>
+
+#elif defined(__APPLE__)
+  #include <sys/param.h>
+  #include <sys/mount.h>
   #include <sys/types.h>
   #include <unistd.h>
+
+#else  // Linux and others
+  #include <sys/types.h>
+  #include <sys/stat.h>
+  #include <sys/statfs.h>
+  #include <unistd.h>
 #endif
+
 
 #include "../utils/log.h"
 

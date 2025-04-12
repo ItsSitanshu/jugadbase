@@ -8,6 +8,11 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -Wno-format-truncation")
 add_definitions(-DDB_ROOT_DIRECTORY="${CMAKE_BINARY_DIR}")
 
+if (DEFINED CMAKE_EXE_LINKER_FLAGS)
+  message(STATUS "Custom linker flags: ${CMAKE_EXE_LINKER_FLAGS}")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
+endif()
+
 include_directories(src/db src/utils src/tests)
 
 file(GLOB DB_SOURCES src/db/*.c)
@@ -37,7 +42,7 @@ set(TEST_UNIT_SOURCES
 foreach(test_src IN LISTS TEST_UNIT_SOURCES)
   get_filename_component(test_name ${test_src} NAME_WE)
   add_executable(${test_name} ${test_src})
-  target_link_libraries(${test_name} PRIVATE jugadbase ${CHECK_LIBRARIES} rt m pthread)
+  target_link_libraries(${test_name} PRIVATE jugadbase ${CHECK_LIBRARIES} m pthread)
   add_test(NAME ${test_name} COMMAND test_runner)
 endforeach()
 
@@ -45,6 +50,6 @@ add_executable(test_runner
   test/test_runner.c
 )
 
-target_link_libraries(test_runner PRIVATE jugadbase ${CHECK_LIBRARIES} rt m pthread)
+target_link_libraries(test_runner PRIVATE jugadbase ${CHECK_LIBRARIES} m pthread)
 
 add_test(NAME test_runner COMMAND test_runner)

@@ -9,10 +9,15 @@
 #include "../utils/log.h"
 
 #if defined(_WIN32) || defined(_WIN64)
-  #include <direct.h> 
+  #include <direct.h>
   #define SEP "\\"
+#elif defined(__APPLE__)
+  #include <sys/param.h>
+  #include <sys/mount.h>
+  #define SEP "/"
 #else
   #include <sys/stat.h>
+  #include <sys/statfs.h>
   #define SEP "/"
 #endif
 
