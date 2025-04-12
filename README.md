@@ -19,26 +19,28 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~`SELECT`~~
     - ~~`*`~~ 
     - ~~`WHERE`~~
-  - `UPDATE`
+  - ~~`UPDATE`~~
   - `DELETE`
+- Data from [load_pages()](https://github.com/ItsSitanshu/jugadbase/blob/4c0066d1993d3ae9dd8b39eb77508cc41a76551c/src/db/context.c#L739-L782) isn't being loaded / read properly   
+- Support advanced queries
+  - Regex / `LIKE` and string functions
+  - Mathematical operations
+    - basic
+    - functions
+  - `IN`
+  - Limits `LIM`
+  - Ordering `ODR` (`ASRT` and `DSRT`)
 - Implement foreign constraints
 - Design casading  
 - Add indexing for performance optimization  
 - Implement `JOIN` operations  
 - Support transactions (`BEGIN`, `COMMIT`, `ROLLBACK`)  
-- Use `KP` for `PRIMARY KEY`  
-- Use `FRN` for `FOREIGN KEY`  
-- Use `LIM` for `LIMIT`  
-- Use `ODR` for `ORDER BY`  
-- Use `ASRT` and `DSRT` for sorting (`ASC` / `DESC`)  
-- Write unit tests for table creation  
-- Test `INSERT` and `SELECT` queries  
 - Optimize `JOIN` performance  
 - Benchmark query execution speed  
+- Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
 - Add support for stored procedures  
 - Implement views and triggers  
 - Add replication and sharding for scalability  
 - Add support for database-specific file management, including backing up and restoring individual files
-- Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
-- Improve disk I/O by updating b-trees partially
 - Implement composite primary keys
+- Custom importable C-written functions
