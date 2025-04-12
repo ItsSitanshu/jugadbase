@@ -58,3 +58,4 @@ examples/test/
 node_modules/
 .next/
 *.jdb
+CMakeCache.txt
