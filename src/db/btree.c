@@ -36,7 +36,7 @@ RowID btree_search(BTree* tree, void* key) {
   while (node) {
     int i = 0;
 
-    while (i < node->num_keys && (key_compare(key, node->keys[i], tree->key_type) != 0)) {
+    while (i < node->num_keys && (key_compare(key, node->keys[i], tree->key_type) > 0)) {
       i++;
     }
 
@@ -54,6 +54,83 @@ RowID btree_search(BTree* tree, void* key) {
   }
 
   return (RowID){0};  
+}
+
+bool btree_delete(BTree* tree, void* key) {
+  if (!tree || !tree->root) return false;
+
+  bool deleted = delete_from_node(tree->root, key, tree->key_type, tree->btree_order);
+  
+  if (tree->root->num_keys == 0) {
+    BTreeNode* old_root = tree->root;
+    if (!old_root->is_leaf) {
+      tree->root = old_root->children[0];
+    } else {
+      tree->root = NULL;
+    }
+    free(old_root);
+  }
+
+  return deleted;
+}
+
+bool delete_from_node(BTreeNode* node, void* key, uint8_t key_type, size_t order) {
+  int idx = 0;
+  while (idx < node->num_keys && key_compare(key, node->keys[idx], key_type) > 0) {
+    idx++;
+  }
+
+  if (idx < node->num_keys && key_compare(key, node->keys[idx], key_type) == 0) {
+    if (node->is_leaf) {
+      free(node->keys[idx]);
+      for (int i = idx; i < node->num_keys - 1; i++) {
+        node->keys[i] = node->keys[i + 1];
+        node->row_pointers[i] = node->row_pointers[i + 1];
+      }
+      node->num_keys--;
+      return true;
+    } else {
+      BTreeNode* pred = node->children[idx];
+      if (pred->num_keys >= (order + 1) / 2) {
+        void* pred_key = btree_get_predecessor(pred, key_type);
+        RowID pred_ptr = btree_get_predecessor_ptr(pred);
+        free(node->keys[idx]);
+        node->keys[idx] = malloc(key_size_for_type(key_type));
+        copy_key(node->keys[idx], pred_key, key_type);
+        node->row_pointers[idx] = pred_ptr;
+        return delete_from_node(pred, pred_key, key_type, order);
+      } else {
+        BTreeNode* succ = node->children[idx + 1];
+        if (succ->num_keys >= (order + 1) / 2) {
+          void* succ_key = btree_get_successor(succ, key_type);
+          RowID succ_ptr = btree_get_successor_ptr(succ);
+          free(node->keys[idx]);
+          node->keys[idx] = malloc(key_size_for_type(key_type));
+          copy_key(node->keys[idx], succ_key, key_type);
+          node->row_pointers[idx] = succ_ptr;
+          return delete_from_node(succ, succ_key, key_type, order);
+        } else {
+          btree_merge_children(node, idx, order, key_type);
+          return delete_from_node(pred, key, key_type, order);
+        }
+      }
+    }
+  }
+
+  if (node->is_leaf) return false;
+
+  bool last_child = (idx == node->num_keys);
+  BTreeNode* child = node->children[idx];
+
+  if (child->num_keys < (order + 1) / 2) {
+    btree_rebalance(node, idx, order, key_type);
+    if (last_child && idx > node->num_keys) {
+      idx--;
+    }
+    child = node->children[idx];
+  }
+
+  return delete_from_node(child, key, key_type, order);
 }
 
 
@@ -277,6 +354,149 @@ void unload_btree(BTree* btree, char* file_path) {
   if (fclose(fp) != 0) {
     LOG_ERROR("Failed to close B-tree file '%s'.", file_path);
     return;
+  }
+}
+
+void* btree_get_predecessor(BTreeNode* node, uint8_t type) {
+  BTreeNode* current = node;
+  while (!current->is_leaf) {
+    current = current->children[current->num_keys];
+  }
+
+  void* key_copy = malloc(key_size_for_type(type));
+  copy_key(key_copy, current->keys[current->num_keys - 1], type);
+  return key_copy;
+}
+
+RowID btree_get_predecessor_ptr(BTreeNode* node) {
+  BTreeNode* current = node;
+  while (!current->is_leaf) {
+    current = current->children[current->num_keys];
+  }
+
+  return current->row_pointers[current->num_keys - 1];
+}
+
+void* btree_get_successor(BTreeNode* node, uint8_t type) {
+  BTreeNode* current = node;
+  while (!current->is_leaf) {
+    current = current->children[0];
+  }
+
+  void* key_copy = malloc(key_size_for_type(type));
+  copy_key(key_copy, current->keys[0], type);
+  return key_copy;
+}
+
+RowID btree_get_successor_ptr(BTreeNode* node) {
+  BTreeNode* current = node;
+  while (!current->is_leaf) {
+    current = current->children[0];
+  }
+
+  return current->row_pointers[0];
+}
+
+void btree_merge_children(BTreeNode* parent, int idx, size_t order, uint8_t key_type) {
+  BTreeNode* left = parent->children[idx];
+  BTreeNode* right = parent->children[idx + 1];
+
+  left->keys[left->num_keys] = malloc(key_size_for_type(key_type));
+  copy_key(left->keys[left->num_keys], parent->keys[idx], key_type);
+  left->row_pointers[left->num_keys] = parent->row_pointers[idx];
+  left->num_keys++;
+
+  for (int i = 0; i < right->num_keys; i++) {
+    left->keys[left->num_keys] = right->keys[i];
+    left->row_pointers[left->num_keys] = right->row_pointers[i];
+    left->num_keys++;
+  }
+
+  if (!left->is_leaf) {
+    for (int i = 0; i <= right->num_keys; i++) {
+      left->children[left->num_keys - right->num_keys + i] = right->children[i];
+    }
+  }
+
+  for (int i = idx; i < parent->num_keys - 1; i++) {
+    parent->keys[i] = parent->keys[i + 1];
+    parent->row_pointers[i] = parent->row_pointers[i + 1];
+    parent->children[i + 1] = parent->children[i + 2];
+  }
+
+  parent->num_keys--;
+  free(right);
+}
+
+void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type) {
+  BTreeNode* child = parent->children[idx];
+
+  if (idx > 0 && parent->children[idx - 1]->num_keys >= (order + 1) / 2) {
+    BTreeNode* left = parent->children[idx - 1];
+
+    for (int i = child->num_keys; i > 0; i--) {
+      child->keys[i] = child->keys[i - 1];
+      child->row_pointers[i] = child->row_pointers[i - 1];
+    }
+
+    if (!child->is_leaf) {
+      for (int i = child->num_keys + 1; i > 0; i--) {
+        child->children[i] = child->children[i - 1];
+      }
+    }
+
+    child->keys[0] = malloc(key_size_for_type(key_type));
+    copy_key(child->keys[0], parent->keys[idx - 1], key_type);
+    child->row_pointers[0] = parent->row_pointers[idx - 1];
+
+    if (!child->is_leaf) {
+      child->children[0] = left->children[left->num_keys];
+    }
+
+    free(parent->keys[idx - 1]);
+    parent->keys[idx - 1] = malloc(key_size_for_type(key_type));
+    copy_key(parent->keys[idx - 1], left->keys[left->num_keys - 1], key_type);
+    parent->row_pointers[idx - 1] = left->row_pointers[left->num_keys - 1];
+
+    left->num_keys--;
+    child->num_keys++;
+
+  } else if (idx < parent->num_keys && parent->children[idx + 1]->num_keys >= (order + 1) / 2) {
+    BTreeNode* right = parent->children[idx + 1];
+
+    child->keys[child->num_keys] = malloc(key_size_for_type(key_type));
+    copy_key(child->keys[child->num_keys], parent->keys[idx], key_type);
+    child->row_pointers[child->num_keys] = parent->row_pointers[idx];
+
+    if (!child->is_leaf) {
+      child->children[child->num_keys + 1] = right->children[0];
+    }
+
+    free(parent->keys[idx]);
+    parent->keys[idx] = malloc(key_size_for_type(key_type));
+    copy_key(parent->keys[idx], right->keys[0], key_type);
+    parent->row_pointers[idx] = right->row_pointers[0];
+
+    for (int i = 0; i < right->num_keys - 1; i++) {
+      right->keys[i] = right->keys[i + 1];
+      right->row_pointers[i] = right->row_pointers[i + 1];
+    }
+
+    if (!right->is_leaf) {
+      for (int i = 0; i < right->num_keys; i++) {
+        right->children[i] = right->children[i + 1];
+      }
+    }
+
+    right->num_keys--;
+    child->num_keys++;
+
+  } else {
+    if (idx < parent->num_keys) {
+      btree_merge_children(parent, idx, order, key_type);
+    } else {
+      btree_merge_children(parent, idx - 1, order, key_type);
+    }
   }
 }
 

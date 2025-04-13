@@ -28,6 +28,8 @@ typedef struct {
 BTree* btree_create(uint8_t key_type);
 BTreeNode* btree_create_node(bool is_leaf, size_t btree_order);
 RowID btree_search(BTree* tree, void* key);
+bool btree_delete(BTree* tree, void* key);
+bool delete_from_node(BTreeNode* node, void* key, uint8_t key_type, size_t order);
 bool btree_insert(BTree* tree, void* key, RowID row_offset);
 void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_offset);
 void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t btree_order);
@@ -39,6 +41,13 @@ BTreeNode* load_tree_node(FILE* db_file, uint8_t key_type);
 void save_btree(BTree* btree, FILE* db_file);
 void save_tree_node(BTreeNode* node, FILE* db_file, uint8_t key_type);
 void unload_btree(BTree* btree, char* file_path);
+
+void* btree_get_predecessor(BTreeNode* node, uint8_t type);
+RowID btree_get_predecessor_ptr(BTreeNode* node);
+void* btree_get_successor(BTreeNode* node, uint8_t type);
+RowID btree_get_successor_ptr(BTreeNode* node);
+void btree_merge_children(BTreeNode* parent, int idx, size_t order, uint8_t key_type);
+void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type);
 
 int key_compare(void* key1, void* key2, uint8_t type);
 void copy_key(void* dest, void* src, uint8_t type);
