@@ -35,6 +35,9 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
     case CMD_UPDATE:
       result = execute_update(ctx, cmd);
       break;
+    case CMD_DELETE:
+      result = execute_delete(ctx, cmd);
+      break;
     default:
       result = (ExecutionResult){1, "Unknown command type"};
   }
@@ -44,7 +47,12 @@ ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
 
     for (uint32_t i = 0; i < result.row_count; i++) {
       Row* row = &result.rows[i];
-      printf("Row %u [ID: %u.%u]: ", i + 1, row->id.page_id, row->id.row_id);
+      if (is_struct_zeroed(row, sizeof(Row))) { 
+        printf("Slot %u is [nil]\n", i + 1);
+        continue;
+      }
+
+      printf("Row %u [%u.%u]: ", i + 1, row->id.page_id, row->id.row_id);
 
       for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
         ColumnDefinition col = cmd->schema->columns[c];
@@ -454,6 +462,60 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
   };
 }
 
+ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
+  if (!ctx || !cmd || !cmd->schema) {
+    return (ExecutionResult){1, "Invalid execution context or command"};
+  }
+
+  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  if (!schema) {
+    return (ExecutionResult){1, "Error: Invalid schema"};
+  }
+
+  load_btree_cluster(ctx, schema->table_name);
+  cmd->schema = schema;
+
+  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+  BufferPool* pool = &ctx->lake[schema_idx];
+
+  uint32_t rows_deleted = 0;
+
+  for (uint16_t i = 0; i < pool->num_pages; i++) {
+    Page* page = pool->pages[i];
+    if (!page || page->num_rows == 0) continue;
+
+    for (uint16_t j = 0; j < page->num_rows; j++) {
+      Row* row = &page->rows[j];
+
+      if (is_struct_zeroed(row, sizeof(Row))) continue;
+
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
+        continue;
+      }
+
+      for (uint8_t k = 0; k < schema->column_count; k++) {
+        if (schema->columns[k].is_primary_key) {
+          uint8_t btree_idx = hash_fnv1a(schema->columns[k].name, MAX_COLUMNS);
+          void* key = get_column_value_as_pointer(&row->values[k]);
+
+          if (!btree_delete(ctx->tc[schema_idx].btree[btree_idx], key)) {
+            LOG_WARN("Warning: failed to delete PK from B-tree");
+          }
+        }
+      }
+
+      RowID id = {i, j + 1};
+      serialize_delete(pool, id);
+      rows_deleted++;
+    }
+  }
+
+  return (ExecutionResult){
+    .code = 0,
+    .message = "Delete executed successfully",
+    .row_count = rows_deleted
+  };
+}
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {
   switch (col_val->type) {
@@ -624,7 +686,7 @@ bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Cont
 
 void print_column_value(ColumnValue* val) {
   if (val->is_null) {
-    printf("NULL");
+    printf("nil");
     return;
   }
 

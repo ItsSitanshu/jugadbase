@@ -18,6 +18,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_select(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_update(Context* ctx, JQLCommand* cmd);
+ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd);
 
 void write_column_value(FILE* io, ColumnValue* col_val, ColumnDefinition* col_def);
 
