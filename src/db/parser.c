@@ -82,6 +82,8 @@ JQLCommand parser_parse(Context* ctx) {
       return parser_parse_select(ctx->parser, ctx);
     case TOK_UPD:
       return parser_parse_update(ctx->parser, ctx);
+    case TOK_DEL:
+      return parser_parse_delete(ctx->parser, ctx);
     case TOK_EOF:
       return command;
     default:
@@ -604,7 +606,56 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
   return command;
 }
 
+JQLCommand parser_parse_delete(Parser* parser, Context* ctx) {
+  JQLCommand command;
+  memset(&command, 0, sizeof(JQLCommand));
+  command.type = CMD_DELETE;
+  command.is_invalid = true;
 
+  parser_consume(parser);  
+
+  if (parser->cur->type != TOK_FRM) {
+    REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_FROM");
+    return command;
+  }
+
+  parser_consume(parser);  
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
+    return command;
+  }
+
+  command.schema = malloc(sizeof(TableSchema));
+  if (!command.schema) {
+    REPORT_ERROR(parser->lexer, "SYE_E_ALLOC_FAILED");
+    return command;
+  }
+
+  strcpy(command.schema->table_name, parser->cur->value);
+  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+
+  if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
+    LOG_DEBUG("<<< Table not found in schema (idx=%d)", idx);
+    return command;
+  }
+
+  parser_consume(parser);
+
+  if (parser->cur->type == TOK_WR) {
+    parser_consume(parser);  
+    command.has_where = true;
+
+    command.where = parser_parse_condition(parser, ctx->tc[idx].schema);
+    if (!command.where) {
+      REPORT_ERROR(parser->lexer, "SYE_E_INVALID_WHERE_CLAUSE");
+      return command;
+    }
+  }
+
+  command.is_invalid = false;
+  return command;
+}
 
 void parser_consume(Parser* parser) {
   if (parser->cur->type == TOK_EOF) {

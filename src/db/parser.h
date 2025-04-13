@@ -233,6 +233,7 @@ JQLCommand parser_parse_create_table(Parser* parser);
 JQLCommand parser_parse_insert(Parser* parser);
 JQLCommand parser_parse_select(Parser* parser, Context* ctx);
 JQLCommand parser_parse_update(Parser* parser, Context* ctx);
+JQLCommand parser_parse_delete(Parser* parser, Context* ctx);
 
 void parser_consume(Parser* parser);
 
