@@ -32,6 +32,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - Ordering `ODR` (`ASRT` and `DSRT`)
 - Implement foreign constraints
 - Design casading  
+- Implement `DROP` to remove tables
 - Add indexing for performance optimization  
 - Implement `JOIN` operations  
 - Support transactions (`BEGIN`, `COMMIT`, `ROLLBACK`)  
