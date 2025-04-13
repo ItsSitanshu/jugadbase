@@ -119,7 +119,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
 
   if (column.type == TOK_T_VARCHAR && parser->cur->type == TOK_LP) {
     parser_consume(parser);
-    if (parser->cur->type != TOK_L_U8 || parser->cur->value[0] == '0') {
+    if (parser->cur->type != TOK_L_UINT || parser->cur->value[0] == '0') {
       REPORT_ERROR(parser->lexer, "SYE_E_VARCHAR_VALUE", parser->cur->value);
       return false;
     }
@@ -137,7 +137,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
 
   if (column.type == TOK_T_DECIMAL && parser->cur->type == TOK_LP) {
     parser_consume(parser);
-    if (parser->cur->type != TOK_L_U8 || parser->cur->value[0] == '0') {
+    if (parser->cur->type != TOK_L_UINT || parser->cur->value[0] == '0') {
       REPORT_ERROR(parser->lexer, "SYE_E_PRECISION_VALUE", parser->cur->value);
       return false;
     }
@@ -152,7 +152,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
 
     parser_consume(parser);
 
-    if (parser->cur->type != TOK_L_U8 || parser->cur->value[0] == '0') {
+    if (parser->cur->type != TOK_L_UINT || parser->cur->value[0] == '0') {
       REPORT_ERROR(parser->lexer, "SYE_E_PRECISION_VALUE", parser->cur->value);
       return false;
     }
@@ -679,10 +679,7 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type) {
   switch (column_type) {
     case TOK_T_INT:
     case TOK_T_SERIAL:
-      return (literal_type == TOK_L_I8 || literal_type == TOK_L_I16 || 
-              literal_type == TOK_L_I32 || literal_type == TOK_L_I64 || 
-              literal_type == TOK_L_U8 || literal_type == TOK_L_U16 || 
-              literal_type == TOK_L_U32 || literal_type == TOK_L_U64);
+      return (literal_type == TOK_L_INT || TOK_L_UINT);
 
     case TOK_T_FLOAT:
     case TOK_T_DOUBLE:
@@ -720,45 +717,40 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
     case TOK_NL:
       col_val->is_null = true;
       break;
-    case TOK_L_I8:
-    case TOK_L_I16:
-    case TOK_L_I32:
-    case TOK_L_I64:
-      col_val->type = parser->cur->type;
+    case TOK_T_INT:
+      col_val->type = TOK_T_INT;
       col_val->int_value = strtol(parser->cur->value, NULL, 10);
       break;
 
-    case TOK_L_U8:
-    case TOK_L_U16:
-    case TOK_L_U32:
-    case TOK_L_U64: 
-      col_val->type = parser->cur->type;
+    case TOK_T_UINT:
+      col_val->type = TOK_T_INT;
       col_val->int_value = strtoul(parser->cur->value, NULL, 10);
       break;
 
-    case TOK_L_FLOAT:
-      col_val->type = TOK_L_FLOAT;
+    case TOK_T_FLOAT:
+      col_val->type = TOK_T_FLOAT;
       col_val->float_value = strtof(parser->cur->value, NULL);
       break;
 
-    case TOK_L_DOUBLE:
-      col_val->type = TOK_L_DOUBLE;
+    case TOK_T_DOUBLE:
+      col_val->type = TOK_T_DOUBLE;
       col_val->double_value = strtod(parser->cur->value, NULL);
       break;
 
-    case TOK_L_BOOL:
-      col_val->type = TOK_L_BOOL;
+    case TOK_T_BOOL:
+      col_val->type = TOK_T_BOOL;
       col_val->bool_value = (strcmp(parser->cur->value, "true") == 0);
       break;
 
     case TOK_L_STRING:
+      // date time, uuid
       col_val->type = TOK_L_STRING;
       strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
       col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';  // Null-terminate
       break;
 
-    case TOK_L_CHAR:
-      col_val->type = TOK_L_CHAR;
+    case TOK_T_CHAR:
+      col_val->type = TOK_T_CHAR;
       col_val->str_value[0] = parser->cur->value[0];  
       col_val->str_value[1] = '\0';
       break;
@@ -922,4 +914,42 @@ int find_column_index(TableSchema* schema, const char* name) {
 bool is_primary_key_column(TableSchema* schema, int column_index) {
   if (column_index < 0 || column_index >= schema->column_count) return false;
   return schema->columns[column_index].is_primary_key;
+}
+
+void print_column_value(ColumnValue* val) {
+  if (val->is_null) {
+    printf("nil");
+    return;
+  }
+
+  printf("[");
+
+  switch (val->type) {
+    case TOK_T_INT: case TOK_T_UINT:
+      printf("%d", val->int_value);
+      break;
+
+    case TOK_T_FLOAT:
+      printf("%f", val->float_value);
+      break;
+
+    case TOK_T_DOUBLE:
+      printf("%lf", val->double_value);
+      break;
+
+    case TOK_T_BOOL:
+      printf(val->bool_value ? "true" : "false");
+      break;
+
+    case TOK_L_STRING:
+    case TOK_T_CHAR:
+      printf("\"%s\"", val->str_value);
+      break;
+
+    default:
+      printf("unprintable type: %d", val->type);
+      break;
+  }
+
+  printf("]");
 }

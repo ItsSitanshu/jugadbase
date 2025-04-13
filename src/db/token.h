@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NO_OF_KEYWORDS 62
+#define NO_OF_KEYWORDS 63
 #define KEYWORDS keywords
 
 #define MAX_KEYWORD_LEN 9
@@ -35,6 +35,7 @@ typedef struct Token {
     TOK_T_JSON,          // JSON
     TOK_T_UUID,          // UUID
     TOK_T_SERIAL,          // SERIAL
+    TOK_T_UINT,            // UINT
 
     // Special tokens
     TOK_ERR,      // Error token
@@ -118,16 +119,8 @@ typedef struct Token {
     TOK_RBK,      // ROLLBACK
 
     // Literals
-    TOK_L_I8,            // 8-bit signed integer
-    TOK_L_I16,             // 16-bit signed integer
-    TOK_L_I32,              // 32-bit signed integer
-    TOK_L_I64,             // 64-bit signed integer
-    TOK_L_I128,           // DEPRECATED
-    TOK_L_U8,           // 8-bit unsigned integer
-    TOK_L_U16,            // 16-bit unsigned integer
-    TOK_L_U32,             // 32-bit unsigned integer
-    TOK_L_U64,            // 64-bit unsigned integer
-    TOK_L_U128,           // DEPRECATED
+    TOK_L_UINT,
+    TOK_L_INT,
     TOK_L_FLOAT,            // 32-bit floating-point
     TOK_L_DOUBLE,           // 64-bit double-precision floating-point
     TOK_L_CHAR,             // 8-bit character
@@ -152,7 +145,8 @@ typedef struct Token {
   (1 << TOK_T_BLOB) |     \
   (1 << TOK_T_JSON) |     \
   (1 << TOK_T_UUID) |     \
-  (1 << TOK_T_SERIAL)       \
+  (1 << TOK_T_SERIAL) |      \
+  (1 << TOK_T_UINT)       \
 )
 
 #endif // TOKEN_H

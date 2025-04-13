@@ -253,6 +253,7 @@ void free_condition_node(ConditionNode* node);
 
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
+void print_column_value(ColumnValue* val);
 
 ASTNode* parser_parse_expression(Parser* parser);
 

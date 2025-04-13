@@ -14,7 +14,7 @@ char* keywords[NO_OF_KEYWORDS] = {
   "FRNKEY", "REF", "INDEX", "CAST", "CASE", "WHEN", "THEN", "ELSE", "END", "DEFAULT",
   "CHECK", "UNIQUE", "CONSTR", "fSUM", "INT", "VARCHAR", "CHAR", "TEXT",
   "BOOL", "FLOAT", "DOUBLE", "DECIMAL", "DATE", "TIME", "DATETIME", "TIMESTAMP", "BLOB", "JSON",
-  "UUID", "SERIAL", "true", "false"
+  "UUID", "SERIAL", "true", "false", "UINT"
 };
 
 Lexer* lexer_init() {
@@ -290,7 +290,7 @@ Token* lexer_handle_alpha(Lexer* lexer) {
     TOK_FK, TOK_REF, TOK_IDX, TOK_CST, TOK_CSE, TOK_WHEN, TOK_THEN, TOK_ELS, TOK_END, TOK_DEF,
     TOK_CHK, TOK_UNQ, TOK_CNST, TOK_FNSUM, TOK_T_INT, TOK_T_VARCHAR, TOK_T_CHAR, TOK_T_TEXT,
     TOK_T_BOOL, TOK_T_FLOAT, TOK_T_DOUBLE, TOK_T_DECIMAL, TOK_T_DATE, TOK_T_TIME, TOK_T_DATETIME,
-    TOK_T_TIMESTAMP, TOK_T_BLOB, TOK_T_JSON, TOK_T_UUID, TOK_T_SERIAL, TOK_L_BOOL, TOK_L_BOOL
+    TOK_T_TIMESTAMP, TOK_T_BLOB, TOK_T_JSON, TOK_T_UUID, TOK_T_SERIAL, TOK_L_BOOL, TOK_L_BOOL, TOK_T_UINT
   };
 
   for (uint8_t i = 0; i < NO_OF_KEYWORDS; i++) {
@@ -482,7 +482,7 @@ void lexer_process_digits(Lexer* lexer, char** buf, bool has_decimal) {
 uint8_t lexer_process_decimal_type(char* buf, uint8_t diadc) {
   /*
   Processes provided buffer and resolves type; TOK_ERR if invalid
-  return: TOK_ERR, TOK_L_FLOAT (32-bit float), or TOK_L_DOUBLE (64-bit float)
+  return: TOK_ERR, TOK_T_FLOAT (32-bit float), or TOK_T_DOUBLE (64-bit float)
   */
 
   bool has_Fpfx = false; // has float prefix
@@ -503,36 +503,18 @@ uint8_t lexer_process_decimal_type(char* buf, uint8_t diadc) {
   }
 
   if (has_Fpfx) {
-      return TOK_L_FLOAT;
+    return TOK_L_FLOAT;
   } else if (has_Dpfx) {
-      return TOK_L_DOUBLE;
+    return TOK_L_DOUBLE;
   }
 
   if (diadc <= MAX_FLOAT_LIT_DIGITS) {
-      return TOK_L_FLOAT;
+    return TOK_L_FLOAT;
   } else if (diadc <= MAX_DOUBLE_LIT_DIGITS) {
-      return TOK_L_DOUBLE;
+    return TOK_L_DOUBLE;
   }
 
   return TOK_ERR;
-}
-
-
-int is_within_int_range(int128_t val, int128_t min, int128_t max) {
-  if (val.high > max.high || (val.high == max.high && val.low > max.low)) {
-    return 0;
-  }
-  if (val.high < min.high || (val.high == min.high && val.low < min.low)) {
-    return 0;
-  }
-  return 1;
-}
-
-int is_within_uint_range(uint128_t val, uint128_t max) {
-  if (val.high > max.high || (val.high == max.high && val.low > max.low)) {
-    return 0;
-  }
-  return 1;
 }
 
 uint8_t lexer_process_int_type(char* buf) {
@@ -542,72 +524,11 @@ uint8_t lexer_process_int_type(char* buf) {
 
   buf[strlen(buf)] = '\0';
 
-  if (*buf == '-') {
-    int128_t lsigned_val;
-    strtoint128(buf, lsigned_val);
-
-    int128_t int128_max = { .high = 0x7FFFFFFFFFFFFFFF, .low = 0xFFFFFFFFFFFFFFFF };
-    int128_t int128_min = { .high = 0x8000000000000000, .low = 0 };
-
-    signed_val = strtoll(buf, &endptr, 10) - 1;
-
-    if (endptr == buf || *endptr != '\0') {
-      return TOK_ERR;
-    }
-
-    if (is_within_int_range(lsigned_val, int128_min, int128_max)) {
-      if (lsigned_val.high <= 0) {
-        if (signed_val >= INT8_MIN && signed_val <= INT8_MAX) {
-          return TOK_L_I8;
-        } else if (signed_val >= INT16_MIN && signed_val <= INT16_MAX) {
-          return TOK_L_I16;
-        } else if (signed_val >= INT32_MIN && signed_val <= INT32_MAX) {
-          return TOK_L_I32;
-        } else if (signed_val >= INT64_MIN && signed_val <= INT64_MAX) {
-          return TOK_L_I64;
-        }
-      } else if (lsigned_val.high > 0) {
-        return TOK_L_I128;
-      }
-    }        
-    return TOK_ERR;
+  if (*buf == '-') {        
+    return TOK_L_INT;
   } else {
-    uint128_t unsigned_val;
-    strtouint128(buf, unsigned_val);
-
-    usigned_val = strtoull(buf, &endptr, 10);
-    signed_val = strtoll(buf, &endptr, 10);
-
-    if (endptr == buf || *endptr != '\0') {
-        return TOK_ERR;
-    }
-
-    uint128_t uint128_max = { .high = 0xFFFFFFFFFFFFFFFF, .low = 0xFFFFFFFFFFFFFFFF };
-
-    if (is_within_uint_range(unsigned_val, uint128_max)) {
-      if (unsigned_val.low > 0) {
-        return TOK_L_U128;
-      } else if (usigned_val >= 0 && usigned_val <= UINT8_MAX) {
-        return TOK_L_U8;
-      } else if (usigned_val >= 0 && usigned_val <= UINT16_MAX) {
-        return TOK_L_U16;
-      } else if (usigned_val >= 0 && usigned_val <= UINT32_MAX) {
-        return TOK_L_U32;
-      } else if (usigned_val >= 0 && usigned_val <= UINT64_MAX) {
-        return TOK_L_U64;
-      }
-    } else if (signed_val >= INT8_MIN && signed_val <= INT8_MAX) {
-      return TOK_L_I8;
-    } else if (signed_val >= INT16_MIN && signed_val <= INT16_MAX) {
-      return TOK_L_I16;
-    } else if (signed_val >= INT32_MIN && signed_val <= INT32_MAX) {
-      return TOK_L_I32;
-    } else if (signed_val >= INT64_MIN && signed_val <= INT64_MAX) {
-      return TOK_L_I64;
-    }
+    return TOK_L_UINT;
   }
-
-  return TOK_ERR;
 }
 
 Token* lexer_process_pos_singlechar(Lexer* lexer, char next_char,
