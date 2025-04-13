@@ -522,14 +522,7 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
     case TOK_NL:
       col_val->is_null = true;
       break;
-    case TOK_L_I8:
-    case TOK_L_I16:
-    case TOK_L_I32:
-    case TOK_L_I64:
-    case TOK_L_U8:
-    case TOK_L_U16:
-    case TOK_L_U32:
-    case TOK_L_U64:
+    case TOK_L_INT: case TOK_L_UINT:
       return &(col_val->int_value);
     case TOK_L_FLOAT:
       return &(col_val->float_value);
@@ -683,46 +676,6 @@ bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Cont
       return false;
   }
 }
-
-void print_column_value(ColumnValue* val) {
-  if (val->is_null) {
-    printf("nil");
-    return;
-  }
-
-  printf("[");
-
-  switch (val->type) {
-    case TOK_L_I8: case TOK_L_I16: case TOK_L_I32: case TOK_L_I64:
-    case TOK_L_U8: case TOK_L_U16: case TOK_L_U32: case TOK_L_U64:
-      printf("%d", val->int_value);
-      break;
-
-    case TOK_L_FLOAT:
-      printf("%f", val->float_value);
-      break;
-
-    case TOK_L_DOUBLE:
-      printf("%lf", val->double_value);
-      break;
-
-    case TOK_L_BOOL:
-      printf(val->bool_value ? "true" : "false");
-      break;
-
-    case TOK_L_STRING:
-    case TOK_L_CHAR:
-      printf("\"%s\"", val->str_value);
-      break;
-
-    default:
-      printf("unprintable type: %d", val->type);
-      break;
-  }
-
-  printf("]");
-}
-
 
 uint32_t get_table_offset(Context* ctx, const char* table_name) {
   for (int i = 0; i < ctx->table_count; i++) {

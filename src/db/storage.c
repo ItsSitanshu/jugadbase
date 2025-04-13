@@ -35,7 +35,6 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
 
   fread(&page->page_id, sizeof(page->page_id), 1, file);
   fread(&page->num_rows, sizeof(page->num_rows), 1, file);
-
   fread(&page->free_space, sizeof(page->free_space), 1, file);
 
   for (int i = 0; i < page->num_rows; i++) {
@@ -73,12 +72,13 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
     return;
   }
 
+  col_val->type = col_def->type;
+
   switch (col_def->type) {
     case TOK_T_INT:
     case TOK_T_SERIAL:
       fread(&col_val->int_value, sizeof(int), 1, file);
       break;
-
     case TOK_T_BOOL:
       {
         uint8_t bool_byte;
