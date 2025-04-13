@@ -6,6 +6,7 @@ RUN_AFTER_BUILD=0
 RUN_TESTS=0
 CLEAN=0
 DEBUG_WITH_GDB=0
+DEBUG_WITH_LLDB=0
 VERBOSE_LEVEL=0
 VERBOSE_MAKE=0
 NUM_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
@@ -15,7 +16,7 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     LINKER_FLAGS="-L/opt/homebrew/lib"
     echo "System detected as macOS (Darwin), setting linker flags to: $LINKER_FLAGS"
 else
-    LINKER_FLAGS="-L/usr/lib"  
+    LINKER_FLAGS="-L/usr/lib"
     echo "System detected as Linux or other UNIX-like, setting linker flags to: $LINKER_FLAGS"
 fi
 
@@ -30,6 +31,7 @@ print_help() {
     echo "  test        Build and run tests"
     echo "  clean       Clean build directory"
     echo "  gdb         Debug with GDB"
+    echo "  lldb        Debug with LLDB"
     echo ""
     echo "Options:"
     echo "  -v, --verbose LEVEL    Set verbosity level (0-3, default: 0)"
@@ -41,7 +43,8 @@ print_help() {
     echo "  --verbose-make         Enable verbose make output"
     echo ""
     echo "Examples:"
-    echo "  ./build.sh clean gdb -v 2     Clean, build, and debug with verbosity 2"
+    echo "  ./build.sh clean gdb -v 2     Clean, build, and debug with GDB"
+    echo "  ./build.sh clean lldb -v 2    Clean, build, and debug with LLDB"
     echo "  ./build.sh clean release drun Run clean release build"
 }
 
@@ -69,6 +72,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         gdb)
             DEBUG_WITH_GDB=1
+            shift
+            ;;
+        lldb)
+            DEBUG_WITH_LLDB=1
             shift
             ;;
         help|--help|-h)
@@ -141,10 +148,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Prevent using both gdb and lldb
+if [ "$DEBUG_WITH_GDB" -eq 1 ] && [ "$DEBUG_WITH_LLDB" -eq 1 ]; then
+    echo "Error: Cannot use both GDB and LLDB simultaneously."
+    exit 1
+fi
+
 if [ "$CLEAN" -eq 1 ]; then
     echo "Cleaning build directory..."
     rm -rf "$BUILD_DIR"
-    [ "$DEBUG_WITH_GDB" -eq 0 ] && [ "$RUN_TESTS" -eq 0 ] && [ "$RUN_AFTER_BUILD" -eq 0 ] && exit 0
+    [ "$DEBUG_WITH_GDB" -eq 0 ] && [ "$DEBUG_WITH_LLDB" -eq 0 ] && [ "$RUN_TESTS" -eq 0 ] && [ "$RUN_AFTER_BUILD" -eq 0 ] && exit 0
 fi
 
 mkdir -p "$BUILD_DIR"
@@ -180,6 +193,13 @@ if [ "$DEBUG_WITH_GDB" -eq 1 ]; then
     EXEC_CMD="gdb --args $BUILD_DIR/jugad-cli"
     [ "$VERBOSE_LEVEL" -gt 0 ] && EXEC_CMD="$EXEC_CMD --verbose $VERBOSE_LEVEL"
     echo "Starting GDB debugging session: $EXEC_CMD"
+    eval "$EXEC_CMD"
+fi
+
+if [ "$DEBUG_WITH_LLDB" -eq 1 ]; then
+    EXEC_CMD="lldb $BUILD_DIR/jugad-cli"
+    [ "$VERBOSE_LEVEL" -gt 0 ] && EXEC_CMD="$EXEC_CMD -- --verbose $VERBOSE_LEVEL"
+    echo "Starting LLDB debugging session: $EXEC_CMD"
     eval "$EXEC_CMD"
 fi
 
