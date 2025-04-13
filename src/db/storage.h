@@ -46,6 +46,7 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc);
+bool serialize_delete(BufferPool* pool, RowID rid);
 
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc);
 

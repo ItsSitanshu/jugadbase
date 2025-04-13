@@ -299,6 +299,37 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   return (RowID){ row.id.page_id, row.id.row_id };
 }
 
+bool serialize_delete(BufferPool* pool, RowID rid) {
+  if (!pool || rid.row_id == 0) return false;
+
+  for (int i = 0; i < POOL_SIZE; i++) {
+    Page* page = pool->pages[i];
+    if (!page || page->page_id != rid.page_id) continue;
+
+    if (rid.row_id == 0 || rid.row_id > page->num_rows) return false;
+
+    Row* row = &page->rows[rid.row_id - 1];
+
+    if (is_struct_zeroed(row, sizeof(Row))) {
+      LOG_WARN("serialize_delete: Row already deleted (page_id=%u, row_id=%u)", rid.page_id, rid.row_id);
+      return false;
+    }
+
+    page->free_space += row->row_length;
+
+    memset(row, 0, sizeof(Row));
+
+    page->is_dirty = true;
+    page->is_full = false;
+
+    LOG_DEBUG("serialize_delete: Deleted row from page %u, slot %u", rid.page_id, rid.row_id);
+    return true;
+  }
+
+  LOG_ERROR("serialize_delete: Page %u not found", rid.page_id);
+  return false;
+}
+
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
   if (pool->num_pages == 0) return;
 
