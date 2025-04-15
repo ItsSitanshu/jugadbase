@@ -36,6 +36,8 @@ typedef struct Token {
     TOK_T_UUID,          // UUID
     TOK_T_SERIAL,          // SERIAL
     TOK_T_UINT,            // UINT
+    
+    TOK_T_STRING,            // More of a universal type
 
     // Special tokens
     TOK_ERR,      // Error token
