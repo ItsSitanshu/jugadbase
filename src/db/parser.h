@@ -16,6 +16,7 @@
 
 struct Context;
 typedef struct Context Context;
+typedef struct ExprNode ExprNode;
 
 typedef enum {
   AST_COMMAND,
@@ -103,39 +104,38 @@ typedef struct {
   };
 } ColumnValue;
 
-
 typedef enum {
-  CONDITION_COMPARISON,
-  CONDITION_AND,
-  CONDITION_OR,
-  CONDITION_NOT
-} ConditionType;
+  EXPR_COLUMN,
+  EXPR_LITERAL,
+  EXPR_BINARY_OP,
+  EXPR_FUNCTION,
+  EXPR_COMPARISON,
+  EXPR_LOGICAL_NOT,
+  EXPR_LOGICAL_AND,
+  EXPR_LOGICAL_OR,
+} ExprType;
 
-typedef enum {
-  COMP_EQ,
-  COMP_NEQ,
-  COMP_LT,
-  COMP_GT,
-  COMP_LTE,
-  COMP_GTE
-} ComparisonOp;
+typedef struct ExprNode {
+  ExprType type;
 
-typedef struct ConditionNode {
-  ConditionType type;
+  union {
+    ColumnValue literal;
+    uint16_t column_index;
+    struct {
+      struct ExprNode* left;
+      struct ExprNode* right;
+      uint16_t op;
+    } binary; 
 
-  struct ConditionNode* left;
-  struct ConditionNode* right;
+    ExprNode* unary;
 
-  ComparisonOp op;
-
-  bool left_is_column;
-  uint8_t left_column_index;
-  ColumnValue left_value;
-
-  bool right_is_column;
-  uint8_t right_column_index;
-  ColumnValue right_value;
-} ConditionNode;
+    struct {
+      char* func_name;
+      ExprNode** args;
+      uint8_t arg_count;
+    } function_call;  
+  };
+} ExprNode;
 
 typedef struct {
   char name[MAX_IDENTIFIER_LEN];
@@ -191,7 +191,7 @@ typedef struct {
   ColumnValue* values;
   char** columns;
 
-  ConditionNode* where;
+  ExprNode* where;
   bool has_where;
 
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
@@ -242,19 +242,22 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type);
 bool parser_parse_value(Parser* parser, ColumnValue* col_val);
 bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output);
 
-ConditionNode* parser_parse_condition(Parser* parser, TableSchema* schema);
-ConditionNode* parser_parse_logical_or(Parser* parser, TableSchema* schema);
-ConditionNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
-ConditionNode* parser_parse_logical_not(Parser* parser, TableSchema* schema);
-ConditionNode* parser_parse_comparison(Parser* parser, TableSchema* schema);
-void parser_parse_column_or_value(Parser* parser, TableSchema* schema, ConditionNode* node, bool left_side);
-ComparisonOp parser_parse_comparison_operator(Parser* parser);
-void free_condition_node(ConditionNode* node);
+char* expr_node_to_json(ExprNode* node);
+void print_expr_node_json(FILE* out, ExprNode* node);
+void print_expr_node_json_stdout(ExprNode* node);
+
+ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_term(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema);
+
+void free_expr_node(ExprNode* node);
 
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
 void print_column_value(ColumnValue* val);
-
-ASTNode* parser_parse_expression(Parser* parser);
 
 #endif // JQL_COMMAND_H

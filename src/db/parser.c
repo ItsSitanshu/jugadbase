@@ -486,9 +486,11 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
     parser_consume(parser);
     command.has_where = true;
 
-    command.where = malloc(sizeof(ConditionNode));
-    command.where = parser_parse_condition(parser, ctx->tc[idx].schema);
+    command.where = malloc(sizeof(ExprNode));
+    command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
   }
+
+  LOG_DEBUG("%s", parser->cur->value);
 
   command.is_invalid = false;
   return command;
@@ -598,8 +600,8 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
     parser_consume(parser);
     command.has_where = true;
 
-    command.where = malloc(sizeof(ConditionNode));
-    command.where = parser_parse_condition(parser, ctx->tc[idx].schema);
+    command.where = malloc(sizeof(ExprNode));
+    command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
   }
 
   command.is_invalid = false;
@@ -646,7 +648,7 @@ JQLCommand parser_parse_delete(Parser* parser, Context* ctx) {
     parser_consume(parser);  
     command.has_where = true;
 
-    command.where = parser_parse_condition(parser, ctx->tc[idx].schema);
+    command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
     if (!command.where) {
       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_WHERE_CLAUSE");
       return command;
@@ -711,50 +713,43 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type) {
 }
 
 bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
-  memset(col_val, 0, sizeof(ColumnValue));  // Ensure clean struct
+  memset(col_val, 0, sizeof(ColumnValue)); 
 
   switch (parser->cur->type) {
     case TOK_NL:
       col_val->is_null = true;
       break;
-    case TOK_T_INT:
+    case TOK_L_INT:
       col_val->type = TOK_T_INT;
       col_val->int_value = strtol(parser->cur->value, NULL, 10);
       break;
-
-    case TOK_T_UINT:
-      col_val->type = TOK_T_INT;
+    case TOK_L_UINT:
+      col_val->type = TOK_T_UINT;
       col_val->int_value = strtoul(parser->cur->value, NULL, 10);
       break;
-
-    case TOK_T_FLOAT:
+    case TOK_L_FLOAT:
       col_val->type = TOK_T_FLOAT;
       col_val->float_value = strtof(parser->cur->value, NULL);
       break;
-
-    case TOK_T_DOUBLE:
+    case TOK_L_DOUBLE:
       col_val->type = TOK_T_DOUBLE;
       col_val->double_value = strtod(parser->cur->value, NULL);
       break;
-
-    case TOK_T_BOOL:
+    case TOK_L_BOOL:
       col_val->type = TOK_T_BOOL;
       col_val->bool_value = (strcmp(parser->cur->value, "true") == 0);
       break;
-
     case TOK_L_STRING:
       // date time, uuid
-      col_val->type = TOK_L_STRING;
+      col_val->type = TOK_T_STRING;
       strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
       col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';  // Null-terminate
       break;
-
-    case TOK_T_CHAR:
+    case TOK_L_CHAR:
       col_val->type = TOK_T_CHAR;
       col_val->str_value[0] = parser->cur->value[0];  
       col_val->str_value[1] = '\0';
       break;
-
     default:
       REPORT_ERROR(parser->lexer, "SYE_E_UNSUPPORTED_LITERAL_TYPE");
       return false;
@@ -783,122 +778,172 @@ bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output) {
   return j == 32;
 }
 
-ConditionNode* parser_parse_condition(Parser* parser, TableSchema* schema) {
-  return parser_parse_logical_or(parser, schema);
-}
-
-ConditionNode* parser_parse_logical_or(Parser* parser, TableSchema* schema) {
-  ConditionNode* node = parser_parse_logical_and(parser, schema);
+ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema) {
+  ExprNode* node = parser_parse_logical_and(parser, schema);
+  
   while (parser->cur->type == TOK_OR) {
-    parser_consume(parser);  
-    ConditionNode* right = parser_parse_logical_and(parser, schema);
-    ConditionNode* new_node = calloc(1, sizeof(ConditionNode));
-    new_node->type = CONDITION_OR;
-    new_node->left = node;
-    new_node->right = right;
+    uint16_t op = parser->cur->type;
+    parser_consume(parser);
+    
+    ExprNode* right = parser_parse_logical_and(parser, schema);
+    
+    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    new_node->type = EXPR_LOGICAL_OR;
+    new_node->binary.left = node;
+    new_node->binary.right = right;
+    new_node->binary.op = op;
     node = new_node;
   }
+  
   return node;
 }
 
-ConditionNode* parser_parse_logical_and(Parser* parser, TableSchema* schema) {
-  ConditionNode* node = parser_parse_logical_not(parser, schema);
+ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema) {
+  ExprNode* node = parser_parse_logical_not(parser, schema);
+  
   while (parser->cur->type == TOK_AND) {
-    parser_consume(parser);  
-    ConditionNode* right = parser_parse_logical_not(parser, schema);
-    ConditionNode* new_node = calloc(1, sizeof(ConditionNode));
-    new_node->type = CONDITION_AND;
-    new_node->left = node;
-    new_node->right = right;
+    uint16_t op = parser->cur->type;
+    parser_consume(parser);
+    
+    ExprNode* right = parser_parse_logical_not(parser, schema);
+    
+    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    new_node->type = EXPR_LOGICAL_AND;
+    new_node->binary.left = node;
+    new_node->binary.right = right;
+    new_node->binary.op = op;
     node = new_node;
   }
+  
   return node;
 }
 
-ConditionNode* parser_parse_logical_not(Parser* parser, TableSchema* schema) {
+ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema) {
   if (parser->cur->type == TOK_NOT) {
     parser_consume(parser);
-    ConditionNode* node = calloc(1, sizeof(ConditionNode));
-    node->type = CONDITION_NOT;
-    node->right = parser_parse_logical_not(parser, schema);
-    return node;
-  }
-
-  if (parser->cur->type == TOK_LP) {
-    parser_consume(parser);  
-    ConditionNode* node = parser_parse_condition(parser, schema);
-    if (parser->cur->type != TOK_RP) {
-      REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
-      return NULL;
-    }
-    parser_consume(parser); 
+    
+    ExprNode* node = calloc(1, sizeof(ExprNode));
+    node->type = EXPR_LOGICAL_NOT;    
+    node->unary = parser_parse_logical_not(parser, schema);
+    
     return node;
   }
 
   return parser_parse_comparison(parser, schema);
 }
 
-ConditionNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
-  ConditionNode* node = calloc(1, sizeof(ConditionNode));
 
-  parser_parse_column_or_value(parser, schema, node, true);  
-  node->op = parser_parse_comparison_operator(parser);
-  parser_parse_column_or_value(parser, schema, node, false);
+ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
+  ExprNode* left = parser_parse_arithmetic(parser, schema);
+  
+  if (parser->cur->type == TOK_EQ || parser->cur->type == TOK_NE ||
+      parser->cur->type == TOK_LT || parser->cur->type == TOK_GT ||
+      parser->cur->type == TOK_LE || parser->cur->type == TOK_GE) {
+    
+    uint16_t op = parser->cur->type;
+    parser_consume(parser);
+    
+    ExprNode* right = parser_parse_arithmetic(parser, schema);
+    
+    ExprNode* node = calloc(1, sizeof(ExprNode));
+    node->type = EXPR_COMPARISON;
+    node->binary.left = left;
+    node->binary.right = right;
+    node->binary.op = op;
+    
+    return node;
+  }
+  
+  return left;
+}
 
-  node->type = CONDITION_COMPARISON;
+ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema) {
+  ExprNode* node = parser_parse_term(parser, schema);
+
+  while (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
+    uint16_t op = parser->cur->type;
+    parser_consume(parser);
+    ExprNode* right = parser_parse_term(parser, schema);
+
+    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    new_node->type = EXPR_BINARY_OP;
+    new_node->binary.op = op;
+    new_node->binary.left = node;
+    new_node->binary.right = right;
+    node = new_node;
+  }
+
   return node;
 }
 
-void parser_parse_column_or_value(Parser* parser, TableSchema* schema, ConditionNode* node, bool left_side) {
+ExprNode* parser_parse_term(Parser* parser, TableSchema* schema) {
+  ExprNode* node = parser_parse_primary(parser, schema);
+
+  while (parser->cur->type == TOK_MUL || parser->cur->type == TOK_DIV || parser->cur->type == TOK_MOD) {
+    uint16_t op = parser->cur->type;
+
+    parser_consume(parser);
+    ExprNode* right = parser_parse_primary(parser, schema);
+
+    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    new_node->type = EXPR_BINARY_OP;
+    new_node->binary.op = op;
+    new_node->binary.left = node;
+    new_node->binary.right = right;
+    node = new_node;
+  }
+
+  return node;
+}
+
+ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
+  if (parser->cur->type == TOK_LP) {
+    parser_consume(parser);
+    ExprNode* node = parser_parse_expression(parser, schema);
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
+      return NULL;
+    }
+    parser_consume(parser);
+    return node;
+  }
+
   if (parser->cur->type == TOK_ID) {
     int col_index = find_column_index(schema, parser->cur->value);
     if (col_index == -1) {
       REPORT_ERROR(parser->lexer, "SYE_E_UNKNOWN_COLUMN", parser->cur->value);
-      return;
+      return NULL;
     }
 
-    if (left_side) {
-      node->left_is_column = true;
-      node->left_column_index = col_index;
-    } else {
-      node->right_is_column = true;
-      node->right_column_index = col_index;
-    }
-
+    ExprNode* node = calloc(1, sizeof(ExprNode));
+    node->type = EXPR_COLUMN;
+    node->column_index = col_index;
     parser_consume(parser);
-  } else {
-    if (left_side) {
-      node->left_is_column = false;
-      parser_parse_value(parser, &node->left_value);
-    } else {
-      node->right_is_column = false;
-      parser_parse_value(parser, &node->right_value);
-    }
+    return node;
   }
+
+  ColumnValue val;
+  if (!parser_parse_value(parser, &val)) return NULL;
+
+  ExprNode* node = calloc(1, sizeof(ExprNode));
+  node->type = EXPR_LITERAL;
+  node->literal = val;
+  return node;
 }
 
-
-ComparisonOp parser_parse_comparison_operator(Parser* parser) {
-  ComparisonOp op;
-  switch (parser->cur->type) {
-    case TOK_EQ: op = COMP_EQ; break;
-    case TOK_NE: op = COMP_NEQ; break;
-    case TOK_LT: op = COMP_LT; break;
-    case TOK_GT: op = COMP_GT; break;
-    case TOK_LE: op = COMP_LTE; break;
-    case TOK_GE: op = COMP_GTE; break;
-    default:
-      LOG_ERROR("Unexpected token for comparison operator: %d\n", parser->cur->type);
-      op = -1;
-  }
-  parser_consume(parser);
-  return op;
-}
-
-void free_condition_node(ConditionNode* node) {
+void free_expr_node(ExprNode* node) {
   if (!node) return;
-  if (node->left) free_condition_node(node->left);
-  if (node->right) free_condition_node(node->right);
+  if (node->type == EXPR_BINARY_OP || node->type == EXPR_LOGICAL_AND || node->type == EXPR_LOGICAL_OR || node->type == EXPR_COMPARISON) {
+    free_expr_node(node->binary.left);
+    free_expr_node(node->binary.right);
+  } else if (node->type == EXPR_LOGICAL_NOT) {
+    free_expr_node(node->binary.right);
+  } else if (node->type == EXPR_FUNCTION) {
+    for (uint8_t i = 0; i < node->function_call.arg_count; i++) {
+      free_expr_node(node->function_call.args[i]);
+    }
+    free(node->function_call.args);
+  }
   free(node);
 }
 
@@ -925,7 +970,7 @@ void print_column_value(ColumnValue* val) {
   printf("[");
 
   switch (val->type) {
-    case TOK_T_INT: case TOK_T_UINT:
+    case TOK_T_INT: case TOK_T_UINT: case TOK_T_SERIAL: 
       printf("%d", val->int_value);
       break;
 
@@ -941,7 +986,7 @@ void print_column_value(ColumnValue* val) {
       printf(val->bool_value ? "true" : "false");
       break;
 
-    case TOK_L_STRING:
+    case TOK_T_STRING:
     case TOK_T_CHAR:
       printf("\"%s\"", val->str_value);
       break;
