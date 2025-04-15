@@ -21,10 +21,10 @@ file(GLOB UTILS_SOURCES src/utils/*.c)
 add_library(jugadbase STATIC ${DB_SOURCES} ${UTILS_SOURCES})
 
 add_executable(jugad-cli src/cli.c)
-target_link_libraries(jugad-cli PRIVATE jugadbase)
+target_link_libraries(jugad-cli PRIVATE jugadbase m) 
 
 add_executable(jugad-svr src/server.c)
-target_link_libraries(jugad-svr PRIVATE jugadbase)
+target_link_libraries(jugad-svr PRIVATE jugadbase m)
 
 enable_testing()
 
@@ -36,20 +36,21 @@ file(GLOB TEST_SOURCES test/*.c)
 
 set(TEST_UNIT_SOURCES
   test/unit/test_create_table.c
-  test/unit/test_insert_select.c
+  test/unit/test_insert_simple_select.c
 )
 
 foreach(test_src IN LISTS TEST_UNIT_SOURCES)
   get_filename_component(test_name ${test_src} NAME_WE)
-  add_executable(${test_name} ${test_src})
-  target_link_libraries(${test_name} PRIVATE jugadbase ${CHECK_LIBRARIES} m pthread)
-  add_test(NAME ${test_name} COMMAND test_runner)
+  file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/${test_name})
+  add_executable(${test_name}_runner ${test_src})
+  target_link_libraries(${test_name}_runner PRIVATE jugadbase ${CHECK_LIBRARIES} m)
+  add_test(NAME ${test_name}_runner COMMAND ${test_name}_runner)
 endforeach()
 
 add_executable(test_runner
   test/test_runner.c
 )
 
-target_link_libraries(test_runner PRIVATE jugadbase ${CHECK_LIBRARIES} m pthread)
+target_link_libraries(test_runner PRIVATE jugadbase ${CHECK_LIBRARIES} m)
 
 add_test(NAME test_runner COMMAND test_runner)
