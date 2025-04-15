@@ -47,12 +47,16 @@ static int create_directory(char* path) {
   #if defined(_WIN32) || defined(_WIN64)
     struct _stat st = {0};
     if (_stat(path, &st) == -1) {
-      return _mkdir(path);  
+      int result = _mkdir(path);
+      if (result != 0) perror("mkdir");
+      return result;
     }
   #else
     struct stat st = {0};
     if (stat(path, &st) == -1) {
-      return mkdir(path, 0700); 
+      int result = mkdir(path, 0700);
+      if (result != 0) perror("mkdir");
+      return result;
     }
   #endif
   return 0;
