@@ -164,7 +164,7 @@ char lexer_peep(Lexer* lexer, int8_t offset) {
   size_t peep_index = (size_t)(lexer->i + offset);
 
   if (peep_index >= lexer->buf_size || peep_index < 0) {
-      return '\0';
+    return '\0';
   }
 
   return lexer->buf[peep_index];
@@ -518,17 +518,15 @@ uint8_t lexer_process_decimal_type(char* buf, uint8_t diadc) {
 }
 
 uint8_t lexer_process_int_type(char* buf) {
-  char *endptr;
-  int64_t signed_val;
-  uint64_t usigned_val;
-
   buf[strlen(buf)] = '\0';
 
-  if (*buf == '-') {        
+  if (*buf == '-') {
     return TOK_L_INT;
   } else {
     return TOK_L_UINT;
   }
+
+  return TOK_ERR;
 }
 
 Token* lexer_process_pos_singlechar(Lexer* lexer, char next_char,
