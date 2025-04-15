@@ -501,6 +501,13 @@ void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type)
 }
 
 int key_compare(void* key1, void* key2, uint8_t type) {
+  /*
+  return:
+    -1 if key1 is less than key2.
+    1 if key1 is greater than key2.
+    0 if key1 is equal to key2.
+  */
+
   switch (type) {
     case TOK_T_INT:
     case TOK_T_SERIAL: {
