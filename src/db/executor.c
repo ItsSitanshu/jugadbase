@@ -517,23 +517,196 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
   };
 }
 
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx, uint8_t* out_type) {
+  ColumnValue value = evaluate_expression(expr, row, schema, ctx, schema_idx);
+
+  if (expr->type == EXPR_COLUMN) {
+    int col_index = expr->column_index;
+    value = row->values[col_index];
+    *out_type = schema->columns[col_index].type;
+  }
+
+  return value;
+}
+
+ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+  ColumnValue result;
+  memset(&result, 0, sizeof(ColumnValue));
+  
+  if (!expr) return result;
+  switch (expr->type) {
+    case EXPR_LITERAL:
+      return expr->literal;
+    case EXPR_COLUMN: {
+      if (row && expr->column_index < schema->column_count) {
+        ColumnValue col = row->values[expr->column_index];
+        col.type = schema->columns[expr->column_index].type;
+        return col;
+      }
+      result.type = schema->columns[expr->column_index].type;
+      return result;
+    }
+    case EXPR_BINARY_OP: {
+      uint8_t type = 0;
+
+      ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, ctx, schema_idx, &type);
+      ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, ctx, schema_idx, &type);
+
+      switch (type) {
+        case TOK_T_INT:
+        case TOK_T_UINT:
+          result.type = TOK_T_INT;
+          switch (expr->binary.op) {
+            case TOK_ADD: result.int_value = left.int_value + right.int_value; break;
+            case TOK_SUB: result.int_value = left.int_value - right.int_value; break;
+            case TOK_MUL: result.int_value = left.int_value * right.int_value; break;
+            case TOK_DIV: result.int_value = right.int_value ? left.int_value / right.int_value : 0; break;
+            case TOK_MOD: result.int_value = right.int_value ? left.int_value % right.int_value : 0; break;
+            default: LOG_WARN("Invalid binary-operation found, will produce incorrect results");
+          }
+          break;
+        case TOK_T_FLOAT:
+        case TOK_T_DOUBLE:
+          result.type = TOK_T_DOUBLE;
+          switch (expr->binary.op) {
+            case TOK_ADD: result.double_value = left.double_value + right.double_value; break;
+            case TOK_SUB: result.double_value = left.double_value - right.double_value; break;
+            case TOK_MUL: result.double_value = left.double_value * right.double_value; break;
+            case TOK_DIV: result.double_value = right.double_value ? left.double_value / right.double_value : 0.0; break;
+            default: LOG_WARN("Invalid binary-operation found, will produce incorrect results");
+          }
+          break;
+        default:
+          LOG_DEBUG("SYE_E_UNSUPPORTED_BINARY_EXPR_TYPE: %d", type);
+          break;
+      }
+      return result;
+    }
+
+    case EXPR_FUNCTION:
+      return evaluate_function(expr->function_call.func_name,
+                               expr->function_call.args,
+                               expr->function_call.arg_count,
+                               row, schema);
+
+    case EXPR_COMPARISON: {
+      uint8_t type = 0;
+
+      ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, ctx, schema_idx, &type);
+      ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, ctx, schema_idx, &type);
+      
+      if (expr->binary.op == TOK_EQ &&
+          expr->binary.left->type == EXPR_COLUMN &&
+          expr->binary.right->type == EXPR_LITERAL &&
+          schema->columns[expr->binary.left->column_index].is_primary_key && ctx) {
+        
+        void* key = get_column_value_as_pointer(&right);
+        uint8_t btree_idx = hash_fnv1a(schema->columns[expr->binary.left->column_index].name, MAX_COLUMNS);
+        RowID rid = btree_search(ctx->tc[schema_idx].btree[btree_idx], key);
+
+        result.type = TOK_T_BOOL;
+        result.bool_value = (!is_struct_zeroed(&rid, sizeof(RowID)) &&
+                             row->id.page_id == rid.page_id &&
+                             row->id.row_id == rid.row_id);
+        return result;
+      }
+
+      bool valid_conversion = true;
+
+      infer_and_cast_value(&left, type, &valid_conversion);
+      infer_and_cast_value(&right, type, &valid_conversion);
+
+      if (!valid_conversion) {
+        LOG_ERROR("Invalid conversion whilst trying to evaluate conditions");
+        return (ColumnValue){0};
+      }
+
+      int cmp = key_compare(get_column_value_as_pointer(&left), get_column_value_as_pointer(&right), type);
+      if (left.type == EXPR_COLUMN) {
+        key_compare(get_column_value_as_pointer(&right), get_column_value_as_pointer(&left), type);
+      }
+
+      result.type = TOK_T_BOOL;
+
+      switch (expr->binary.op) {
+        case TOK_EQ: result.bool_value = (cmp == 0); break;
+        case TOK_NE: result.bool_value = (cmp != 0); break;
+        case TOK_LT: result.bool_value = (cmp == -1); break;
+        case TOK_GT: result.bool_value = (cmp == 1); break;
+        case TOK_LE: result.bool_value = (cmp == 0 || cmp == -1); break;
+        case TOK_GE: result.bool_value = (cmp == 0 || cmp == 1); break;
+        default: result.bool_value = false; break;
+      }
+
+      return result;
+    }
+
+    case EXPR_LOGICAL_AND: {
+      ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
+      // if (!left.bool_value) {
+      //   result.type = TOK_T_BOOL;
+      //   result.bool_value = false;
+      //   return result;
+      // }
+      ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
+      result.type = TOK_T_BOOL;
+      result.bool_value = left.bool_value && right.bool_value;
+
+      return result;
+    }
+
+    case EXPR_LOGICAL_OR: {
+      ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
+      // if (!left.bool_value) {
+      //   result.type = TOK_T_BOOL;
+      //   result.bool_value = true;
+      //   return result;
+      // }
+      ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
+      result.type = TOK_T_BOOL;
+      result.bool_value = left.bool_value || right.bool_value;
+      
+      return result;
+    }
+
+    case EXPR_LOGICAL_NOT: {
+      ColumnValue operand = evaluate_expression(expr->unary, row, schema, ctx, schema_idx);
+            
+      result.type = TOK_T_BOOL;
+      result.bool_value = !operand.bool_value;
+
+      return result;
+    }
+
+    default:
+      return result;
+  }
+}
+
+bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+  if (!expr) return false;
+  
+  ColumnValue result = evaluate_expression(expr, row, schema, ctx, schema_idx);
+
+  return result.bool_value;
+}
+
 void* get_column_value_as_pointer(ColumnValue* col_val) {
   switch (col_val->type) {
     case TOK_NL:
       col_val->is_null = true;
       break;
-    case TOK_L_INT: case TOK_L_UINT:
+    case TOK_T_INT: case TOK_T_UINT: case TOK_T_SERIAL:
       return &(col_val->int_value);
-    case TOK_L_FLOAT:
+    case TOK_T_FLOAT:
       return &(col_val->float_value);
-    case TOK_L_DOUBLE:
+    case TOK_T_DOUBLE:
       return &(col_val->double_value);
-    case TOK_L_BOOL:
+    case TOK_T_BOOL:
       return &(col_val->bool_value);
-    case TOK_L_CHAR:
+    case TOK_T_CHAR:
       return &(col_val->str_value[0]);
-    case TOK_L_STRING:
-      LOG_DEBUG("%s", col_val->str_value);
+    case TOK_T_STRING:
       return col_val->str_value;
     case TOK_T_BLOB:
       return &(col_val->blob_value);
@@ -555,6 +728,93 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
 
   return NULL;
 }
+
+void infer_and_cast_value(ColumnValue* col_val, uint8_t target_type, bool* is_valid) {
+  *is_valid = true;
+
+  if (col_val->type == TOK_NL) {
+    col_val->is_null = true;
+    *is_valid = false; 
+  }
+
+  switch (col_val->type) {
+    case TOK_T_INT:
+    case TOK_T_UINT:
+    case TOK_T_SERIAL: {
+      if (target_type == TOK_T_FLOAT) {
+        col_val->type = target_type;
+        col_val->float_value = (float)(col_val->int_value);
+      } else if (target_type == TOK_T_DOUBLE) {
+        col_val->type = target_type;
+        col_val->double_value = (double)(col_val->int_value);
+      }
+      break;
+    }
+    case TOK_T_FLOAT: {
+      if (target_type == TOK_T_DOUBLE) {
+        double* result = malloc(sizeof(double));
+        *result = (double)(col_val->float_value);
+      }
+      break;
+    }
+    case TOK_T_DOUBLE: {
+      if (target_type == TOK_T_FLOAT) {
+        float* result = malloc(sizeof(float));
+        *result = (float)(col_val->double_value);
+      }
+      break;
+    }
+    case TOK_T_BOOL: {
+      if (target_type == TOK_T_INT) {
+        int* result = malloc(sizeof(int));
+        *result = (col_val->bool_value ? 1 : 0);
+      }
+      break;
+    }
+    case TOK_T_CHAR: {
+      if (target_type == TOK_T_STRING) {
+        char* result = malloc(sizeof(char) * (strlen(col_val->str_value) + 1));
+        strcpy(result, col_val->str_value);
+      }
+      break;
+    }
+    case TOK_T_STRING: {
+      if (target_type == TOK_T_CHAR) {
+        char* result = malloc(sizeof(char));
+        *result = col_val->str_value[0];
+      }
+      break;
+    }
+    case TOK_T_BLOB: {
+      if (target_type == TOK_T_STRING) {
+        break;
+      }
+      break;
+    }
+    case TOK_T_JSON: {
+      if (target_type == TOK_T_STRING) {
+        break;
+      }
+      break;
+    }
+    // case TOK_T_DECIMAL: {
+    //   if (target_type == TOK_T_FLOAT) {
+    //     float* result = malloc(sizeof(float));
+    //     *result = (float)(col_val->decimal.decimal_value);
+    //     return result;
+    //   }
+    //   if (target_type == TOK_T_DOUBLE) {
+    //     double* result = malloc(sizeof(double));
+    //     *result = (double)(col_val->decimal.decimal_value);
+    //     return result;
+    //   }
+    //   break;
+    // }
+    default:
+      *is_valid = false;  
+  }
+}
+
 
 size_t size_from_type(uint8_t column_type) {
   size_t size = 0;
@@ -601,80 +861,6 @@ size_t size_from_type(uint8_t column_type) {
   }
 
   return size;
-}
-
-bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-  if (!cond) return false;
-
-  switch (cond->type) {
-    case CONDITION_COMPARISON: {
-      ColumnValue left, right;
-      uint8_t column_type = 0;
-
-      if (cond->left_is_column) {
-        left = row->values[cond->left_column_index];
-        column_type = schema->columns[cond->left_column_index].type;
-      } else {
-        left = cond->left_value;
-      }
-
-      if (cond->right_is_column) {
-        right = row->values[cond->right_column_index];
-        if (!column_type) {
-          column_type = schema->columns[cond->right_column_index].type;
-        }
-      } else {
-        right = cond->right_value;
-      }
-
-      print_column_value(&left);
-      printf("left \n");
-      print_column_value(&right);
-      printf("right \n");
-
-      if (cond->op == COMP_EQ && cond->left_is_column && !cond->right_is_column &&
-          schema->columns[cond->left_column_index].is_primary_key) {
-
-        void* key = get_column_value_as_pointer(&right);
-        uint8_t btree_idx = hash_fnv1a(schema->columns[cond->left_column_index].name, MAX_COLUMNS);
-        RowID rid = btree_search(ctx->tc[schema_idx].btree[btree_idx], key);
-          
-        return (!is_struct_zeroed(&rid, sizeof(RowID)) &&
-                row->id.page_id == rid.page_id &&
-                row->id.row_id == rid.row_id);
-      }
-
-      int cmp = key_compare(get_column_value_as_pointer(&left),
-                            get_column_value_as_pointer(&right),
-                            column_type);
-
-      switch (cond->op) {
-        case COMP_EQ:  return cmp == 0;
-        case COMP_NEQ: return cmp != 0;
-        case COMP_LT:  return cmp < 0;
-        case COMP_GT:  return cmp > 0;
-        case COMP_LTE: return cmp <= 0;
-        case COMP_GTE: return cmp >= 0;
-        default: return false;
-      }
-    }
-
-    case CONDITION_AND:
-      evaluate_condition(cond->right, row, schema, ctx, schema_idx), evaluate_condition(cond->left, row, schema, ctx, schema_idx) &&
-      evaluate_condition(cond->right, row, schema, ctx, schema_idx);
-      return evaluate_condition(cond->left, row, schema, ctx, schema_idx) &&
-             evaluate_condition(cond->right, row, schema, ctx, schema_idx);
-
-    case CONDITION_OR:
-      return evaluate_condition(cond->left, row, schema, ctx, schema_idx) ||
-             evaluate_condition(cond->right, row, schema, ctx, schema_idx);
-
-    case CONDITION_NOT:
-      return !evaluate_condition(cond->right, row, schema, ctx, schema_idx);
-
-    default:
-      return false;
-  }
 }
 
 uint32_t get_table_offset(Context* ctx, const char* table_name) {

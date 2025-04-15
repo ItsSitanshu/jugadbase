@@ -2,6 +2,7 @@
 #define EXECUTOR_H
 
 #include "context.h"
+#include "functions.h"
 
 typedef struct {
   int code;
@@ -20,11 +21,13 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_update(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd);
 
-void write_column_value(FILE* io, ColumnValue* col_val, ColumnDefinition* col_def);
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx, uint8_t* out_type);
+ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 
 void* get_column_value_as_pointer(ColumnValue* col_val);
+void infer_and_cast_value(ColumnValue* col_val, uint8_t target_type, bool* is_valid);
 size_t size_from_type(uint8_t column_type);
-bool evaluate_condition(ConditionNode* cond, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 uint32_t get_table_offset(Context* ctx, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);
 
