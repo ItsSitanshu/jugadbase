@@ -30,6 +30,12 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - `IN`
   - Limits `LIM`
   - Ordering `ODR` (`ASRT` and `DSRT`)
+- Important logic and functions for dynamic types
+  - Datetime
+  - Json
+  - Text
+  - Blob
+- Compacting in actual storage of rows (storage.c)
 - Implement foreign constraints
 - Design casading  
 - Implement `DROP` to remove tables
@@ -44,4 +50,4 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Add replication and sharding for scalability  
 - Add support for database-specific file management, including backing up and restoring individual files
 - Implement composite primary keys
-- Custom importable C-written functions
+- Custom importable C-written functions with <dlfcn.h>
