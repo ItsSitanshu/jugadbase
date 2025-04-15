@@ -24,7 +24,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Data from [load_pages()](https://github.com/ItsSitanshu/jugadbase/blob/4c0066d1993d3ae9dd8b39eb77508cc41a76551c/src/db/context.c#L739-L782) isn't being loaded / read properly~~   
 - Support advanced queries
   - Mathematical operations
-    - basic
+    - ~~basic~~
     - functions
   - Regex / `LIKE` and string functions
   - `IN`
