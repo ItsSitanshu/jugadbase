@@ -4,13 +4,10 @@
 #include <unistd.h>
 
 #include "executor.h"
+#include "testing.h"
 
 START_TEST(test_read_table_schema) {
-  char path[MAX_PATH_LENGTH];
-  sprintf(path, "%s" SEP "test_create_table", DB_ROOT_DIRECTORY);
-  
-  Context* ctx = ctx_init(path);
-  ck_assert_ptr_nonnull(ctx);
+  INIT_TEST(ctx);
 
   char* create_queries[] = {
     "CREATE TABLE users ("
