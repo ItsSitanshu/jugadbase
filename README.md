@@ -38,6 +38,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Compacting in actual storage of rows (storage.c)
 - Implement foreign constraints
 - Design casading  
+- Implement `$variables` for cleaner SDK support
 - Implement `DROP` to remove tables
 - Add indexing for performance optimization  
 - Implement `JOIN` operations  
@@ -51,3 +52,4 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Add support for database-specific file management, including backing up and restoring individual files
 - Implement composite primary keys
 - Custom importable C-written functions with <dlfcn.h>
+- Batch mass inserts
