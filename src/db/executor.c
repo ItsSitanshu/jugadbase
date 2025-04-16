@@ -230,34 +230,96 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   }
 
   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
-  if (!schema) {
-    return (ExecutionResult){1, "Error: Invalid schema"};
-  }
+  if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
   load_btree_cluster(ctx, schema->table_name);
 
   uint8_t column_count = schema->column_count;
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
 
-  ColumnDefinition* primary_key_cols[MAX_COLUMNS] = {NULL};
-  ColumnValue* primary_key_vals[MAX_COLUMNS] = {NULL};
+  ColumnDefinition* primary_key_cols = malloc(sizeof(ColumnDefinition) * column_count);
+  ColumnValue* primary_key_vals = malloc(sizeof(ColumnValue) * column_count);
+
+  uint8_t success = 0;
+
+  for (uint32_t i = 0; i < cmd->row_count; i++) {
+    if (execute_row_insert(cmd->values[i], ctx, schema_idx, 
+      primary_key_cols, primary_key_vals, schema, column_count)) {
+        success += 1;
+    }
+  }
+
+  if (success < cmd->row_count) {
+    LOG_ERROR("Inserted %d out of %d provided, could not insert %d row(s)", 
+      success, cmd->row_count, (cmd->row_count - success));
+  }
+
+  return (ExecutionResult){0, "Record inserted successfully"};
+}
+
+bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx, 
+                      ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
+                      TableSchema* schema, uint8_t column_count) {
   uint8_t primary_key_count = 0;
 
+  Row row = {0};
+  row.values = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
+
+  if (!row.values) {
+    return false;
+  }
+
+  row.id.row_id = 0; 
+  row.id.page_id = 0; 
+
+  uint8_t null_bitmap_size = (column_count + 7) / 8;
+  uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
+  
+  if (!null_bitmap) {
+    free(row.values);
+    return false;
+  }
+  
+  memset(null_bitmap, 0, null_bitmap_size);
+
+  row.null_bitmap_size = null_bitmap_size;
+  row.null_bitmap = null_bitmap;
+  row.row_length = sizeof(row.id) + null_bitmap_size;
+
   for (uint8_t i = 0; i < column_count; i++) {
+    Row empty_row = {0};
+    ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, ctx, schema_idx);
+    
+    row.values[i] = cur;
+
+    if (is_struct_zeroed(&cur, sizeof(ColumnValue))) {
+      free(row.values);
+      free(row.null_bitmap);
+      return false;
+    }
+
+    if (cur.is_null) {
+      null_bitmap[i / 8] |= (1 << (i % 8));
+    }
+
+    row.row_length += size_from_type(schema->columns[i].type); 
+
     if (schema->columns[i].is_primary_key) {
-      primary_key_cols[primary_key_count] = &schema->columns[i];
-      primary_key_vals[primary_key_count] = &cmd->values[i];
+      primary_key_cols[primary_key_count] = schema->columns[i];
+      primary_key_vals[primary_key_count] = cur;
       primary_key_count++;
     }
   }
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
-    if (primary_key_cols[i]) {
-      uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
-      void* key = get_column_value_as_pointer(primary_key_vals[i]);
+    if (&primary_key_cols[i]) {
+      uint8_t idx = hash_fnv1a(primary_key_cols[i].name, MAX_COLUMNS);
+      void* key = get_column_value_as_pointer(&primary_key_vals[i]);
       RowID res = btree_search(ctx->tc[schema_idx].btree[idx], key);
       if (!is_struct_zeroed(&res, sizeof(RowID))) {
-        return (ExecutionResult){1, "Primary Key already exists"};
+        free(row.values);
+        free(row.null_bitmap);
+        return false;
       }
     }
   }
@@ -269,57 +331,24 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 
   if (is_struct_zeroed(pool, sizeof(BufferPool))) {
     initialize_buffer_pool(pool, schema_idx, row_file);
-    LOG_INFO("%d %p", pool->idx, pool->pages);
-  }
-
-  Row row = {0};
-  row.id.row_id = 0; 
-  row.id.page_id = 0; 
-
-  uint8_t null_bitmap_size = (column_count + 7) / 8;
-  uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
-  if (!null_bitmap) {
-    return (ExecutionResult){1, "Memory allocation failed for null bitmap"};
-  }
-  memset(null_bitmap, 0, null_bitmap_size);
-
-  for (uint8_t i = 0; i < column_count; i++) {
-    if (cmd->values[i].is_null) {
-      null_bitmap[i / 8] |= (1 << (i % 8));
-    }
-  }
-
-  row.null_bitmap_size = null_bitmap_size;
-  row.null_bitmap = null_bitmap;
-  row.row_length = sizeof(row.id) + null_bitmap_size;
-
-  row.values = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
-  if (!row.values) {
-    free(null_bitmap);
-    return (ExecutionResult){1, "Memory allocation failed for column data"};
-  }
-
-  for (uint8_t i = 0; i < column_count; i++) {
-    row.values[i] = cmd->values[i];
-    row.row_length += size_from_type(schema->columns[i].type); 
   }
 
   RowID row_id = serialize_insert(pool, row, ctx->tc[schema_idx]);
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
-    if (primary_key_cols[i]) {
-      uint8_t idx = hash_fnv1a(primary_key_cols[i]->name, MAX_COLUMNS);
-      void* key = get_column_value_as_pointer(primary_key_vals[i]);
+    if (&primary_key_cols[i]) {
+      uint8_t idx = hash_fnv1a(primary_key_cols[i].name, MAX_COLUMNS);
+      void* key = get_column_value_as_pointer(&primary_key_vals[i]);
     
       if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_id)) {
         free(row.values);
         free(row.null_bitmap);
-        return (ExecutionResult){1, "Failed to insert record into B-tree"};
+        return false;
       }
     }
   }
 
-  return (ExecutionResult){0, "Record inserted successfully"};
+  return true;
 }
 
 ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
@@ -374,7 +403,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
     return (ExecutionResult){1, "Memory allocation failed for final result copy"};
   }
 
-  if (cmd->value_count == 1 && strcmp(cmd->columns[0], "*") == 0) {
+  if (cmd->value_counts[0] == 1 && strcmp(cmd->columns[0], "*") == 0) {
     memcpy(result_rows, collected_rows, sizeof(Row) * total_found);
   } else {
     for (uint32_t i = 0; i < total_found; i++) {
@@ -390,7 +419,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
         return (ExecutionResult){1, "Memory allocation failed for projected values"};
       }
 
-      for (int j = 0; j < cmd->value_count; j++) {
+      for (int j = 0; j < cmd->value_counts[0]; j++) {
         char* colname = cmd->columns[j];
 
         for (uint8_t k = 0; k < schema->column_count; k++) {
@@ -423,7 +452,6 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
   if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
   load_btree_cluster(ctx, schema->table_name);
-  cmd->schema = schema;
 
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &ctx->lake[schema_idx];
@@ -441,13 +469,11 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
         continue;
       }
 
-      for (int k = 0; k < cmd->value_count; k++) {
-        LOG_DEBUG("%u %u", row->id.row_id, row->row_length);
+      for (int k = 0; k < cmd->value_counts[0]; k++) {
         char* colname = cmd->columns[k];
-        ColumnValue* new_value = &cmd->values[k];
-
         int col_index = find_column_index(schema, colname);
-        row->values[col_index] = *new_value;
+       
+        row->values[col_index] = evaluate_expression(cmd->values[0][k], row, schema, ctx, schema_idx);
         row->null_bitmap = cmd->bitmap;
       }
 
@@ -533,6 +559,14 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   
+  if (is_struct_zeroed(row, sizeof(Row)) && !(
+    expr->type == EXPR_LITERAL || 
+    expr->type == EXPR_FUNCTION ||
+    expr->type == EXPR_BINARY_OP
+  )) {
+    LOG_WARN("Latest query expects literals or functions, not logical comparisons");
+  }
+
   if (!expr) return result;
   switch (expr->type) {
     case EXPR_LITERAL:
