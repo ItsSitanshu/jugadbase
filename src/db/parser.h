@@ -8,6 +8,7 @@
 #include "../utils/security.h"
 
 #define MAX_COLUMNS 256
+#define MAX_OPERATIONS 128
 #define MAX_TEXT_SIZE 256
 #define MAX_DECIMAL_LEN 256
 #define MAX_BLOB_SIZE 512
@@ -187,8 +188,9 @@ typedef struct {
   char* schema_name;
 
   uint8_t* bitmap;
-  int value_count;
-  ColumnValue* values;
+  uint8_t value_counts[MAX_OPERATIONS];
+  ExprNode** (*values);
+  uint8_t row_count;
   char** columns;
 
   ExprNode* where;
@@ -230,7 +232,7 @@ void jql_command_free(JQLCommand* cmd);
 JQLCommand parser_parse(Context* ctx);
 
 JQLCommand parser_parse_create_table(Parser* parser);
-JQLCommand parser_parse_insert(Parser* parser);
+JQLCommand parser_parse_insert(Parser *parser, Context* ctx);
 JQLCommand parser_parse_select(Parser* parser, Context* ctx);
 JQLCommand parser_parse_update(Parser* parser, Context* ctx);
 JQLCommand parser_parse_delete(Parser* parser, Context* ctx);
