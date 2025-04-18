@@ -30,10 +30,8 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   cmd->values = NULL;
 
   cmd->constraint_count = 0;
-  cmd->constraints = NULL;
 
   cmd->function_count = 0;
-  cmd->functions = NULL;
 
   memset(cmd->value_counts, 0, MAX_OPERATIONS);
   memset(cmd->conditions, 0, MAX_IDENTIFIER_LEN);
@@ -69,8 +67,6 @@ void jql_command_free(JQLCommand* cmd) {
   free(cmd->schema->columns);
   
   free(cmd->values);
-  free(cmd->constraints);
-  free(cmd->functions);
 
   free(cmd);
 }
