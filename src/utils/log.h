@@ -89,26 +89,15 @@ static void log_transaction(const char* filename, const char* fmt, ...) {
 }
 
 static const char* token_type_strings[] = {
-  "INTEGER", 
-  "VARCHAR", 
-  "CHAR", 
-  "TEXT", 
-  "BOOLEAN", 
-  "FLOAT", 
-  "DOUBLE", 
-  "DECIMAL", 
-  "DATE", 
-  "TIME", 
-  "DATETIME", 
-  "TIMESTAMP", 
-  "BLOB", 
-  "JSON", 
-  "UUID", 
-  "SERIAL"
+  "i",   "vch",  "ch",   "tex",
+  "b",   "f",   "d",   "dec",
+  "dt",  "tm",  "dtm", "ts",
+  "blb", "jsn",  "uid",  "ser",
+  "u",   "str"
 };
 
 static const char* get_token_type(int type) {
-  if (type >= 0 && type < 16) {
+  if (type >= 0 && type < 18) {
     return token_type_strings[type];
   } else {
     return "UNKNOWN";
