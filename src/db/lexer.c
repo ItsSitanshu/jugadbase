@@ -14,7 +14,7 @@ char* keywords[NO_OF_KEYWORDS] = {
   "FRNKEY", "REF", "INDEX", "CAST", "CASE", "WHEN", "THEN", "ELSE", "END", "DEFAULT",
   "CHECK", "UNIQUE", "CONSTR", "INT", "VARCHAR", "CHAR", "TEXT",
   "BOOL", "FLOAT", "DOUBLE", "DECIMAL", "DATE", "TIME", "DATETIME", "TIMESTAMP", "BLOB", "JSON",
-  "UUID", "SERIAL", "true", "false", "UINT", "LIKE"
+  "UUID", "SERIAL", "true", "false", "UINT", "LIKE", "BETWEEN"
 };
 
 Lexer* lexer_init() {
@@ -291,7 +291,7 @@ Token* lexer_handle_alpha(Lexer* lexer) {
     TOK_CHK, TOK_UNQ, TOK_CNST, TOK_T_INT, TOK_T_VARCHAR, TOK_T_CHAR, TOK_T_TEXT,
     TOK_T_BOOL, TOK_T_FLOAT, TOK_T_DOUBLE, TOK_T_DECIMAL, TOK_T_DATE, TOK_T_TIME, TOK_T_DATETIME,
     TOK_T_TIMESTAMP, TOK_T_BLOB, TOK_T_JSON, TOK_T_UUID, TOK_T_SERIAL, TOK_L_BOOL, TOK_L_BOOL, TOK_T_UINT,
-    TOK_LIKE
+    TOK_LIKE, TOK_BETWEEN
   };
 
   for (uint8_t i = 0; i < NO_OF_KEYWORDS; i++) {

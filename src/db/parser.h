@@ -66,8 +66,10 @@ typedef enum {
   EXPR_UNARY_OP,
   EXPR_BINARY_OP,
   EXPR_FUNCTION,
-  EXPR_LIKE,
   EXPR_COMPARISON,
+  EXPR_IN,
+  EXPR_BETWEEN,
+  EXPR_LIKE,
   EXPR_LOGICAL_NOT,
   EXPR_LOGICAL_AND,
   EXPR_LOGICAL_OR,
@@ -95,6 +97,18 @@ typedef struct ExprNode {
       ExprNode* left;
       char* pattern;
     } like;
+
+    struct {
+      struct ExprNode* value;
+      struct ExprNode* lower;
+      struct ExprNode* upper;
+    } between;
+
+    struct {
+      struct ExprNode* value;
+      struct ExprNode** list; 
+      size_t count;
+    } in;
 
     struct function_expr {
       char* name;
@@ -221,10 +235,6 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type);
 bool parser_parse_value(Parser* parser, ColumnValue* col_val);
 bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output);
 
-char* expr_node_to_json(ExprNode* node);
-void print_expr_node_json(FILE* out, ExprNode* node);
-void print_expr_node_json_stdout(ExprNode* node);
-
 ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema);
@@ -234,7 +244,12 @@ ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema);
 
+ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left);
+ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* left);
+ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* left);
+
 void free_expr_node(ExprNode* node);
+
 
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);

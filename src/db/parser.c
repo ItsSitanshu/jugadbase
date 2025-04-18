@@ -871,44 +871,34 @@ ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema) {
 ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
   ExprNode* left = parser_parse_arithmetic(parser, schema);
 
-  if (parser->cur->type == TOK_LIKE) {
-    parser_consume(parser);
+  switch (parser->cur->type) {
+    case TOK_LIKE:
+      return parser_parse_like(parser, schema, left);
+    case TOK_BETWEEN:
+      return parser_parse_between(parser, schema, left);
+    case TOK_IN:
+      return parser_parse_in(parser, schema, left);
+    case TOK_EQ:
+    case TOK_NE:
+    case TOK_LT:
+    case TOK_GT:
+    case TOK_LE:
+    case TOK_GE: {
+      uint16_t op = parser->cur->type;
+      parser_consume(parser);
+      ExprNode* right = parser_parse_arithmetic(parser, schema);
 
-    ExprNode* pattern_expr = malloc(sizeof(ExprNode));
+      ExprNode* node = calloc(1, sizeof(ExprNode));
+      node->type = EXPR_COMPARISON;
+      node->binary.left = left;
+      node->binary.right = right;
+      node->binary.op = op;
 
-    ExprNode* node = calloc(1, sizeof(ExprNode));
-    node->type = EXPR_LIKE;
-    node->like.left = left;
-    
-    if (parser->cur->type != TOK_L_STRING) {
-      REPORT_ERROR(parser->lexer, "E_VALID_PATTERN_LIKE");
+      return node;
     }
-
-    node->like.pattern = strdup(parser->cur->value);
-    parser_consume(parser);
-
-    return node; 
+    default:
+      return left;
   }
-
-  if (parser->cur->type == TOK_EQ || parser->cur->type == TOK_NE ||
-      parser->cur->type == TOK_LT || parser->cur->type == TOK_GT ||
-      parser->cur->type == TOK_LE || parser->cur->type == TOK_GE) {
-
-    uint16_t op = parser->cur->type;
-    parser_consume(parser);
-
-    ExprNode* right = parser_parse_arithmetic(parser, schema);
-
-    ExprNode* node = calloc(1, sizeof(ExprNode));
-    node->type = EXPR_COMPARISON;
-    node->binary.left = left;
-    node->binary.right = right;
-    node->binary.op = op;
-
-    return node;
-  }
-
-  return left;
 }
 
 ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema) {
@@ -1042,6 +1032,80 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   ExprNode* node = calloc(1, sizeof(ExprNode));
   node->type = EXPR_LITERAL;
   node->literal = val;
+  return node;
+}
+
+ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left) {
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_L_STRING) {
+    REPORT_ERROR(parser->lexer, "E_VALID_PATTERN_LIKE");
+  }
+
+  ExprNode* node = calloc(1, sizeof(ExprNode));
+  node->type = EXPR_LIKE;
+  node->like.left = left;
+  node->like.pattern = strdup(parser->cur->value);
+
+  parser_consume(parser);
+  return node;
+}
+
+ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* value) {
+  parser_consume(parser);
+
+  ExprNode* lower = parser_parse_arithmetic(parser, schema);
+
+  if (parser->cur->type != TOK_AND) {
+    REPORT_ERROR(parser->lexer, "E_EXPECTED_AND_BETWEEN");
+  }
+  parser_consume(parser);
+
+  ExprNode* upper = parser_parse_arithmetic(parser, schema);
+
+  ExprNode* node = calloc(1, sizeof(ExprNode));
+  node->type = EXPR_BETWEEN;
+  node->between.value = value;
+  node->between.lower = lower;
+  node->between.upper = upper;
+
+  return node;
+}
+
+ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) {
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_LP) {
+    REPORT_ERROR(parser->lexer, "E_EXPECTED_PAREN_IN");
+  }
+  parser_consume(parser);
+
+  ExprNode** values = NULL;
+  size_t count = 0;
+
+  while (1) {
+    ExprNode* val = parser_parse_arithmetic(parser, schema);
+    values = realloc(values, sizeof(ExprNode*) * (count + 1));
+    values[count++] = val;
+
+    if (parser->cur->type == TOK_COM) {
+      parser_consume(parser);
+    } else {
+      break;
+    }
+  }
+
+  if (parser->cur->type != TOK_RP) {
+    REPORT_ERROR(parser->lexer, "E_EXPECTED_CLOSING_PAREN_IN");
+  }
+  parser_consume(parser);
+
+  ExprNode* node = calloc(1, sizeof(ExprNode));
+  node->type = EXPR_IN;
+  node->in.value = value;
+  node->in.list = values;
+  node->in.count = count;
+
   return node;
 }
 
