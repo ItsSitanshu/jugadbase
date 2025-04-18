@@ -207,10 +207,18 @@ typedef struct {
   bool is_invalid;
 } JQLCommand;
 
+
+typedef struct {
+  size_t lexer_position;
+  size_t lexer_line;
+  size_t lexer_column;
+  Token* current_token;
+} ParserState;
+
 typedef struct {
   Lexer* lexer;
   Token* cur;
-  JQLCommand** exec;
+  ParserState state;
 } Parser;
 
 Parser* parser_init(Lexer* lexer);
@@ -235,6 +243,10 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type);
 bool parser_parse_value(Parser* parser, ColumnValue* col_val);
 bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output);
 
+ParserState parser_save_state(Parser* parser);
+void parser_restore_state(Parser* parser, ParserState state);
+Token* parser_peek_ahead(Parser* parser, int offset);
+
 ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema);
@@ -249,7 +261,6 @@ ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* le
 ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* left);
 
 void free_expr_node(ExprNode* node);
-
 
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);

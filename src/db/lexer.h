@@ -24,7 +24,6 @@ typedef struct Lexer {
   unsigned int cl; // current line
 } Lexer;
 
-
 Lexer* lexer_init();
 void lexer_set_buffer(Lexer* lexer, char* buffer);
 void lexer_free(Lexer* lexer);

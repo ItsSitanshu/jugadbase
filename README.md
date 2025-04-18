@@ -25,9 +25,9 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Support advanced queries
   - ~~Mathematical operations~~
     - ~~basic~~
-    - ~~~~functions~~
+    - ~~functions~~
   - ~~Regex / `LIKE` and string functions~~
-  - `IN`
+  - ~~`IN` / `BETWEEN`~~
   - FIX BUG: [SELECT](https://github.com/ItsSitanshu/jugadbase/blob/main/src/db/parser.c#L459-L534) requires back-trackable parser
   - Limits `LIM`
   - Ordering `ODR` (`ASRT` and `DSRT`)

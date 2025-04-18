@@ -6,7 +6,6 @@ Parser* parser_init(Lexer* lexer) {
   
   parser->lexer = lexer;
   parser->cur = NULL;
-  parser->exec = calloc(1, sizeof(JQLCommand));
 
   return parser;
 }
@@ -462,10 +461,11 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   command.type = CMD_SELECT;
   command.is_invalid = true;
 
-  parser_consume(parser); 
+  parser_consume(parser);
 
   uint8_t value_count = 0;
   command.columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
+  command.schema = malloc(sizeof(TableSchema));
 
   if (parser->cur->type == TOK_MUL) {
     command.select_all = true;
@@ -473,36 +473,58 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
     parser_consume(parser);
   } else {
     int column_count = 0;
+    ParserState state = parser_save_state(parser);
+      
+    while (parser->cur->type != TOK_FRM) {
+      parser_consume(parser);
+      if (parser->cur->type != TOK_EOF || parser->cur->type != TOK_SC) {
+        return command;
+      }
+    }
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_ID) {
+      return command;
+    }
+
+    command.schema = ctx->tc[hash_fnv1a(parser->cur->value, MAX_TABLES)].schema;
+    parser_restore_state(parser, state);
+
     while (true) {
-      ExprNode* expr =  NULL;
-    
+      ExprNode* expr = parser_parse_expression(parser, command.schema);
+      
+      if (expr == NULL) {
+        REPORT_ERROR(parser->lexer, "E_INVALID_COLUMN_EXPR");
+        return command;
+      }
+      
       char* alias = NULL;
       if (parser->cur->type == TOK_AS) {
-        parser_consume(parser); 
+        parser_consume(parser);
         if (parser->cur->type == TOK_ID) {
           alias = strdup(parser->cur->value);
           parser_consume(parser);
         } else {
           REPORT_ERROR(parser->lexer, "E_IDEN_AF_ALIAS_KW");
+          free_expr_node(expr);
           return command;
         }
       }
-    
+      
       command.sel_columns[column_count].expr = expr;
       command.sel_columns[column_count].alias = alias;
       column_count++;
-    
+      
       if (parser->cur->type != TOK_COM) break;
-      parser_consume(parser);
+      parser_consume(parser); // Consume comma
     }
-    
+    value_count = column_count;
   }
 
   if (parser->cur->type != TOK_FRM) {
     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_FROM");
     return command;
   }
-
   parser_consume(parser); 
 
   if (parser->cur->type != TOK_ID) {
@@ -510,7 +532,6 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
     return command;
   }
 
-  command.schema = malloc(sizeof(TableSchema));
   strcpy(command.schema->table_name, parser->cur->value);
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
 
@@ -812,6 +833,48 @@ bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output) {
   }
 
   return j == 32;
+}
+
+ParserState parser_save_state(Parser* parser) {
+  ParserState state;
+  state.lexer_position = parser->lexer->i;
+  state.lexer_line = parser->lexer->cl;
+  state.lexer_column = parser->lexer->cc;
+  state.current_token = parser->cur;
+  return state;
+}
+
+void parser_restore_state(Parser* parser, ParserState state) {
+  parser->lexer->i = state.lexer_position;
+  parser->lexer->cl = state.lexer_line;
+  parser->lexer->cc = state.lexer_column;
+  
+  if (parser->lexer->i < parser->lexer->buf_size) {
+    parser->lexer->c = parser->lexer->buf[parser->lexer->i];
+  } else {
+    parser->lexer->c = '\0';
+  }
+  
+  parser->cur = state.current_token;
+}
+
+Token* parser_peek_ahead(Parser* parser, int offset) {
+  ParserState state = parser_save_state(parser);
+  
+  Token* token = parser->cur;
+  
+  for (int i = 0; i < offset; i++) {
+    token = lexer_next_token(parser->lexer);
+    if (token->type == TOK_EOF) {
+      break;
+    }
+  }
+  
+  Token* result = token;
+  
+  parser_restore_state(parser, state);
+  
+  return result;
 }
 
 ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema) {
