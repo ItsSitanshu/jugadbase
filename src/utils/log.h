@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <time.h>
 #include <sys/stat.h>
 #include <stdarg.h>
@@ -86,6 +87,17 @@ static void log_transaction(const char* filename, const char* fmt, ...) {
   va_end(args);
 
   fclose(log_file);
+}
+
+static char* tolower_copy(const char* s) {
+  size_t len = strlen(s);
+  char* lower = malloc(len + 1);
+  if (!lower) return NULL;
+  for (size_t i = 0; i < len; ++i) {
+    lower[i] = tolower((unsigned char)s[i]);
+  }
+  lower[len] = '\0';
+  return lower;
 }
 
 static const char* token_type_strings[] = {

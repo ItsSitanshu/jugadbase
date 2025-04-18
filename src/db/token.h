@@ -111,7 +111,7 @@ typedef struct Token {
     TOK_CHK,      // CHECK
     TOK_UNQ,      // UNIQUE
     TOK_CNST,     // CONSTRAINT
-    TOK_FNSUM,     // fSUM
+    TOK_LIKE,     // LIKE
 
     // Sorting & Transactions
     TOK_ASC,      // ASC (Ascending Sort)

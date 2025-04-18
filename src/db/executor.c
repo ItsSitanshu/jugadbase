@@ -708,7 +708,22 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
 
       return result;
     }
+    case EXPR_LIKE: {
+      uint8_t type = 0;
+    
+      ColumnValue left = resolve_expr_value(expr->like.left, row, schema, ctx, schema_idx, &type);
+      if (left.type != TOK_T_VARCHAR || left.str_value == NULL) {
+        LOG_ERROR("LIKE can only be applied to VARCHAR values");
+        return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
+      }
+          
+      bool res = like_match(left.str_value, expr->like.pattern);
+      if (res) {
+        return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = true };
+      }
 
+      return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
+    }
     case EXPR_LOGICAL_AND: {
       ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
       // if (!left.bool_value) {
@@ -757,6 +772,99 @@ bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* 
   ColumnValue result = evaluate_expression(expr, row, schema, ctx, schema_idx);
 
   return result.bool_value;
+}
+
+
+bool match_char_class(char** pattern_ptr, char* str) {
+  char* pattern = *pattern_ptr;
+  bool negated = false;
+
+  LOG_DEBUG("Initial pattern: %s", pattern);
+  LOG_DEBUG("Character to match: %c", *str);
+
+  if (*pattern == '^') {
+    negated = true;
+    pattern++;
+    LOG_DEBUG("Negated character class detected, moving pattern pointer to: %s", pattern);
+  }
+
+  bool matched = false;
+
+  while (*pattern && *pattern != ']') {
+    if (*(pattern + 1) == '-' && *(pattern + 2) && *(pattern + 2) != ']') {
+      char start = *pattern;
+      char end = *(pattern + 2);
+
+      LOG_DEBUG("Character range: %c-%c", start, end);
+
+      if (start <= *str && *str <= end) {
+        matched = true;
+        LOG_DEBUG("Matched range: %c is between %c and %c", *str, start, end);
+      }
+      pattern += 3; 
+    } else {
+      if (*pattern == *str) {
+        matched = true;
+        LOG_DEBUG("Matched character: %c == %c", *pattern, *str);
+      }
+      pattern++; 
+    }
+  }
+
+  if (*pattern == ']') {
+    pattern++; 
+    LOG_DEBUG("Closing character class found, moving pattern pointer to: %s", pattern);
+  }
+
+  *pattern_ptr = pattern;
+  LOG_DEBUG("Pattern pointer updated to: %s", pattern);
+
+  return negated ? !matched : matched;
+}
+
+bool like_match(char* str, char* pattern) {
+  bool case_insensitive = false;
+
+  if (strncmp(pattern, "(?i)", 4) == 0) {
+    case_insensitive = true;
+    pattern += 4;
+    str = tolower_copy(str);
+    pattern = tolower_copy(pattern);
+  }
+
+  while (*pattern) {
+    if (*pattern == '\\') {
+      pattern++;
+      if (!*pattern) return false;
+      if (*str != *pattern) return false;
+      str++; pattern++;
+    }
+    else if (*pattern == '%' || *pattern == '*') {
+      pattern++;
+      if (!*pattern) return true;
+      while (*str) {
+        if (like_match(str, pattern)) return true;
+        str++;
+      }
+      return false;
+    }
+    else if (*pattern == '_') {
+      if (!*str) return false;
+      str++; pattern++;
+    }
+    else if (*pattern == '[') {
+      if (!*str) return false;
+      pattern++;
+      bool res = match_char_class(&pattern, str);
+      LOG_DEBUG("%d > %s %s", !res, str, pattern);
+      if (!res) return false;
+    } else {
+      if (*str != *pattern) return false;
+      str++; pattern++;
+    }
+  }
+
+  return *str == '\0';
 }
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {

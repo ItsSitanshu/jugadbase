@@ -15,6 +15,7 @@
 #define MAX_JSON_SIZE 512
 #define MAX_VARCHAR_SIZE 255
 #define MAX_FN_ARGS 40
+#define MAX_LIKE_PATTERNS 32
 
 struct Context;
 typedef struct Context Context;
@@ -65,6 +66,7 @@ typedef enum {
   EXPR_UNARY_OP,
   EXPR_BINARY_OP,
   EXPR_FUNCTION,
+  EXPR_LIKE,
   EXPR_COMPARISON,
   EXPR_LOGICAL_NOT,
   EXPR_LOGICAL_AND,
@@ -84,10 +86,15 @@ typedef struct ExprNode {
     } binary; 
 
     ExprNode* unary;
-    struct unary {
+    struct arth_unary {
       struct ExprNode* expr;
       uint16_t op;
     } arth_unary;
+
+    struct like {
+      ExprNode* left;
+      char* pattern;
+    } like;
 
     struct function_expr {
       char* name;

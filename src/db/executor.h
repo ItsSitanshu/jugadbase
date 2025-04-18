@@ -29,6 +29,8 @@ ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Co
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 
+bool match_char_class(char** pattern_ptr, char* str);
+bool like_match(char* str, char* pattern);
 void* get_column_value_as_pointer(ColumnValue* col_val);
 size_t size_from_type(uint8_t column_type);
 uint32_t get_table_offset(Context* ctx, const char* table_name);

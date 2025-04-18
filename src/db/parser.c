@@ -868,28 +868,46 @@ ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema) {
   return parser_parse_comparison(parser, schema);
 }
 
-
 ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
   ExprNode* left = parser_parse_arithmetic(parser, schema);
-  
+
+  if (parser->cur->type == TOK_LIKE) {
+    parser_consume(parser);
+
+    ExprNode* pattern_expr = malloc(sizeof(ExprNode));
+
+    ExprNode* node = calloc(1, sizeof(ExprNode));
+    node->type = EXPR_LIKE;
+    node->like.left = left;
+    
+    if (parser->cur->type != TOK_L_STRING) {
+      REPORT_ERROR(parser->lexer, "E_VALID_PATTERN_LIKE");
+    }
+
+    node->like.pattern = strdup(parser->cur->value);
+    parser_consume(parser);
+
+    return node; 
+  }
+
   if (parser->cur->type == TOK_EQ || parser->cur->type == TOK_NE ||
       parser->cur->type == TOK_LT || parser->cur->type == TOK_GT ||
       parser->cur->type == TOK_LE || parser->cur->type == TOK_GE) {
-    
+
     uint16_t op = parser->cur->type;
     parser_consume(parser);
-    
+
     ExprNode* right = parser_parse_arithmetic(parser, schema);
-    
+
     ExprNode* node = calloc(1, sizeof(ExprNode));
     node->type = EXPR_COMPARISON;
     node->binary.left = left;
     node->binary.right = right;
     node->binary.op = op;
-    
+
     return node;
   }
-  
+
   return left;
 }
 
@@ -985,7 +1003,6 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
           }
 
           ExprNode* arg = parser_parse_expression(parser, schema);
-          LOG_DEBUG("parsed arg type: %d", arg->type);
           if (!arg) return NULL;
 
           node->fn.args[node->fn.arg_count] = arg;
