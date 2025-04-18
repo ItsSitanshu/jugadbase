@@ -289,7 +289,13 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
   for (uint8_t i = 0; i < column_count; i++) {
     Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, ctx, schema_idx);
-    
+    bool valid_conversion = infer_and_cast_value(&cur, schema->columns[i].type);
+
+    if (!valid_conversion) {
+      LOG_ERROR("Invalid conversion whilst trying to insert row");
+      return false;
+    }
+
     row.values[i] = cur;
 
     if (is_struct_zeroed(&cur, sizeof(ColumnValue))) {
@@ -403,7 +409,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
     return (ExecutionResult){1, "Memory allocation failed for final result copy"};
   }
 
-  if (cmd->value_counts[0] == 1 && strcmp(cmd->columns[0], "*") == 0) {
+  if (cmd->value_counts[0] == 1 && cmd->select_all) {
     memcpy(result_rows, collected_rows, sizeof(Row) * total_found);
   } else {
     for (uint32_t i = 0; i < total_found; i++) {
@@ -420,14 +426,12 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
       }
 
       for (int j = 0; j < cmd->value_counts[0]; j++) {
-        char* colname = cmd->columns[j];
-
-        for (uint8_t k = 0; k < schema->column_count; k++) {
-          if (strcmp(schema->columns[k].name, colname) == 0) {
-            dst->values[k] = src->values[k];
-            break;
-          }
+        ColumnValue val = evaluate_expression(cmd->sel_columns[j].expr, src, schema, ctx, schema_idx);
+        bool is_valid = verify_select_col(&cmd->sel_columns[j], &val);
+        if (!is_valid) {
+          return (ExecutionResult){1, "Un-expected error"};
         }
+        dst->values = memcpy(dst->values, src->values, (sizeof(ColumnValue) * schema->column_count));
       }
     }
   }
@@ -464,6 +468,8 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
 
     for (uint16_t j = 0; j < page->num_rows; j++) {
       Row* row = &page->rows[j];
+      Row* temp = malloc(sizeof(Row)); 
+      memcpy(temp, &page->rows[j], sizeof(Row));
 
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
         continue;
@@ -472,9 +478,16 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
       for (int k = 0; k < cmd->value_counts[0]; k++) {
         char* colname = cmd->columns[k];
         int col_index = find_column_index(schema, colname);
-       
-        row->values[col_index] = evaluate_expression(cmd->values[0][k], row, schema, ctx, schema_idx);
+
+        row->values[col_index] = evaluate_expression(cmd->values[0][k], temp, schema, ctx, schema_idx);
+        bool valid_conversion = infer_and_cast_value(&row->values[col_index], schema->columns[col_index].type);
+    
+        if (!valid_conversion) {          
+          return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};;
+        }
+
         row->null_bitmap = cmd->bitmap;
+        free(temp);
       }
 
       rows_updated++;
@@ -564,7 +577,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
     expr->type == EXPR_FUNCTION ||
     expr->type == EXPR_BINARY_OP
   )) {
-    LOG_WARN("Latest query expects literals or functions, not logical comparisons");
+    LOG_WARN("Latest query expects literals or functions, not logical comparisons. Query not processed.");
   }
 
   if (!expr) return result;
@@ -580,6 +593,28 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       result.type = schema->columns[expr->column_index].type;
       return result;
     }
+    case EXPR_UNARY_OP: {
+      ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, schema, ctx, schema_idx, &result.type);
+    
+      switch (expr->arth_unary.op) {
+        case TOK_SUB:
+          if (operand.type == TOK_T_INT || operand.type == TOK_T_UINT) {
+            result.type = TOK_T_INT;
+            result.int_value = -operand.int_value;
+          } else if (operand.type == TOK_T_FLOAT || operand.type == TOK_T_DOUBLE) {
+            result.type = TOK_T_DOUBLE;
+            result.double_value = -operand.double_value;
+          } else {
+            LOG_ERROR("Unary minus not supported on this type");
+            result.type = operand.type;
+          }
+          return result;
+    
+        default:
+          LOG_WARN("Unsupported unary operation: %d", expr->arth_unary.op);
+          return (ColumnValue){0};
+      }
+    }    
     case EXPR_BINARY_OP: {
       uint8_t type = 0;
 
@@ -616,12 +651,11 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       }
       return result;
     }
-
     case EXPR_FUNCTION:
-      return evaluate_function(expr->function_call.func_name,
-                               expr->function_call.args,
-                               expr->function_call.arg_count,
-                               row, schema);
+      return evaluate_function(expr->fn.name,
+                               expr->fn.args,
+                               expr->fn.arg_count,
+                               row, schema, ctx, schema_idx);
 
     case EXPR_COMPARISON: {
       uint8_t type = 0;
@@ -645,10 +679,10 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
         return result;
       }
 
-      bool valid_conversion = true;
-
-      infer_and_cast_value(&left, type, &valid_conversion);
-      infer_and_cast_value(&right, type, &valid_conversion);
+      bool valid_conversion = infer_and_cast_va(2,
+        (__c){&left, type},
+        (__c){&right, type}
+      );
 
       if (!valid_conversion) {
         LOG_ERROR("Invalid conversion whilst trying to evaluate conditions");
@@ -763,12 +797,34 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
   return NULL;
 }
 
-void infer_and_cast_value(ColumnValue* col_val, uint8_t target_type, bool* is_valid) {
-  *is_valid = true;
+bool infer_and_cast_va(size_t count, ...) {
+  bool valid = true;
+  va_list args;
+  va_start(args, count);
 
+  for (size_t i = 0; i < count; i++) {
+    __c item = va_arg(args, __c);
+    valid = infer_and_cast_value(item.value, item.expected_type);
+
+    if (!valid) {
+      LOG_ERROR("Invalid conversion on item %zu", i);
+      va_end(args);
+      return false;
+    }
+  }
+
+  va_end(args);
+  return true;
+}
+
+bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
   if (col_val->type == TOK_NL) {
     col_val->is_null = true;
-    *is_valid = false; 
+    return true;
+  }
+
+  if (col_val->type == target_type) {
+    return true;
   }
 
   switch (col_val->type) {
@@ -776,77 +832,165 @@ void infer_and_cast_value(ColumnValue* col_val, uint8_t target_type, bool* is_va
     case TOK_T_UINT:
     case TOK_T_SERIAL: {
       if (target_type == TOK_T_FLOAT) {
-        col_val->type = target_type;
         col_val->float_value = (float)(col_val->int_value);
       } else if (target_type == TOK_T_DOUBLE) {
-        col_val->type = target_type;
         col_val->double_value = (double)(col_val->int_value);
+      } else if (target_type == TOK_T_BOOL) {
+        col_val->bool_value = (col_val->int_value != 0);
+      } else if (target_type == TOK_T_INT ||
+        target_type == TOK_T_UINT ||
+        target_type == TOK_T_SERIAL) {
+          (void)(0);
+      } else {
+        return false;
       }
       break;
     }
     case TOK_T_FLOAT: {
       if (target_type == TOK_T_DOUBLE) {
-        double* result = malloc(sizeof(double));
-        *result = (double)(col_val->float_value);
+        col_val->double_value = (double)(col_val->float_value);
+      } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (int64_t)(col_val->float_value);
+      } else if (target_type == TOK_T_BOOL) {
+        col_val->bool_value = (col_val->float_value != 0.0f);
+      } else {
+        return false;
       }
       break;
     }
     case TOK_T_DOUBLE: {
       if (target_type == TOK_T_FLOAT) {
-        float* result = malloc(sizeof(float));
-        *result = (float)(col_val->double_value);
+        col_val->float_value = (float)(col_val->double_value);
+      } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (int64_t)(col_val->double_value);
+      } else if (target_type == TOK_T_BOOL) {
+        col_val->bool_value = (col_val->double_value != 0.0);
+      } else {
+        return false;
       }
       break;
     }
     case TOK_T_BOOL: {
-      if (target_type == TOK_T_INT) {
-        int* result = malloc(sizeof(int));
-        *result = (col_val->bool_value ? 1 : 0);
+      if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (col_val->bool_value ? 1 : 0);
+      } else if (target_type == TOK_T_FLOAT) {
+        col_val->float_value = (col_val->bool_value ? 1.0f : 0.0f);
+      } else if (target_type == TOK_T_DOUBLE) {
+        col_val->double_value = (col_val->bool_value ? 1.0 : 0.0);
+      } else {
+        return false;
       }
       break;
     }
     case TOK_T_CHAR: {
+      if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (int64_t)(col_val->str_value[0]);
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_VARCHAR: {
       if (target_type == TOK_T_STRING) {
-        char* result = malloc(sizeof(char) * (strlen(col_val->str_value) + 1));
-        strcpy(result, col_val->str_value);
+        (void)(0);
       }
       break;
     }
     case TOK_T_STRING: {
       if (target_type == TOK_T_CHAR) {
-        char* result = malloc(sizeof(char));
-        *result = col_val->str_value[0];
+        if (!(col_val->str_value && strlen(col_val->str_value) > 0)) {
+          return false;
+        }
+      } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        char* endptr;
+        col_val->int_value = strtoll(col_val->str_value, &endptr, 10);
+        if (*endptr != '\0') {
+          return false;
+        }
+      } else if (target_type == TOK_T_FLOAT) {
+        char* endptr;
+        col_val->float_value = strtof(col_val->str_value, &endptr);
+        if (*endptr != '\0') {
+          return false;
+        } else {
+        }
+      } else if (target_type == TOK_T_DOUBLE) {
+        char* endptr;
+        col_val->double_value = strtod(col_val->str_value, &endptr);
+        if (*endptr != '\0') {
+          return false;
+        } else {
+        }
+      } else if (target_type == TOK_T_BOOL) {
+        if (strcasecmp(col_val->str_value, "true") == 0 || 
+            strcmp(col_val->str_value, "1") == 0) {
+          col_val->bool_value = true;
+        } else if (strcasecmp(col_val->str_value, "false") == 0 || 
+                  strcmp(col_val->str_value, "0") == 0) {
+          col_val->bool_value = false;
+        } else {
+          return false;
+        }
+      } else if (target_type == TOK_T_VARCHAR) {
+        (void)(0);
+      } else {
+        return false;
       }
       break;
     }
-    case TOK_T_BLOB: {
-      if (target_type == TOK_T_STRING) {
-        break;
-      }
-      break;
-    }
-    case TOK_T_JSON: {
-      if (target_type == TOK_T_STRING) {
-        break;
-      }
-      break;
-    }
+    // case TOK_T_BLOB: {
+    //   if (target_type == TOK_T_STRING) {
+    //     if (col_val->blob_data && col_val->blob_size > 0) {
+    //       col_val->str_value = malloc(col_val->blob_size + 1);
+    //       memcpy(col_val->str_value, col_val->blob_data, col_val->blob_size);
+    //       col_val->str_value[col_val->blob_size] = '\0';
+    //       col_val->type = target_type;
+    //     } else {
+    //       return false;
+    //     }
+    //   } else {
+    //     return false;
+    //   }
+    //   break;
+    // }
+    // case TOK_T_JSON: {
+    //   if (target_type == TOK_T_STRING) {
+    //     if (col_val->json_value) {
+    //       col_val->str_value = strdup(col_val->json_value);
+    //       col_val->type = target_type;
+    //     } else {
+    //       return false;
+    //     }
+    //   } else {
+    //     return false;
+    //   }
+    //   break;
+    // }
     // case TOK_T_DECIMAL: {
     //   if (target_type == TOK_T_FLOAT) {
-    //     float* result = malloc(sizeof(float));
-    //     *result = (float)(col_val->decimal.decimal_value);
-    //     return result;
-    //   }
-    //   if (target_type == TOK_T_DOUBLE) {
-    //     double* result = malloc(sizeof(double));
-    //     *result = (double)(col_val->decimal.decimal_value);
-    //     return result;
+    //     col_val->type = target_type;
+    //     col_val->float_value = (float)(col_val->decimal.decimal_value);
+    //   } else if (target_type == TOK_T_DOUBLE) {
+    //     col_val->type = target_type;
+    //     col_val->double_value = (double)(col_val->decimal.decimal_value);
+    //   } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+    //     col_val->type = target_type;
+    //     col_val->int_value = (int64_t)(col_val->decimal.decimal_value);
+    //   } else if (target_type == TOK_T_STRING) {
+    //     // Convert decimal to string (implementation depends on decimal structure)
+    //     // ...
+    //     col_val->type = target_type;
+    //   } else {
+    //     return false;
     //   }
     //   break;
     // }
     default:
-      *is_valid = false;  
+      return false;
   }
+  
+  col_val->type = target_type;
+  return true;
 }
 
 

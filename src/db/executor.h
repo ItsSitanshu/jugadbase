@@ -4,6 +4,8 @@
 #include "context.h"
 #include "functions.h"
 
+#include <stdarg.h>
+
 typedef struct {
   int code;
   const char* message;
@@ -28,7 +30,6 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
 bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 
 void* get_column_value_as_pointer(ColumnValue* col_val);
-void infer_and_cast_value(ColumnValue* col_val, uint8_t target_type, bool* is_valid);
 size_t size_from_type(uint8_t column_type);
 uint32_t get_table_offset(Context* ctx, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);

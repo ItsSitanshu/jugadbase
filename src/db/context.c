@@ -62,6 +62,8 @@ Context* ctx_init(char* dir) {
   }
   load_lake(ctx);
   LOG_INFO("Successfully loaded %lu table(s) from catalog", ctx->table_count);
+  
+  register_builtin_functions();
 
   return ctx;
 }
