@@ -14,6 +14,7 @@
 #define MAX_BLOB_SIZE 512
 #define MAX_JSON_SIZE 512
 #define MAX_VARCHAR_SIZE 255
+#define MAX_FN_ARGS 40
 
 struct Context;
 typedef struct Context Context;
@@ -90,7 +91,7 @@ typedef struct {
   bool is_null;
   
   union {  
-    int int_value;
+    int64_t int_value;
     float float_value;
     double double_value;
     bool bool_value;
@@ -108,6 +109,7 @@ typedef struct {
 typedef enum {
   EXPR_COLUMN,
   EXPR_LITERAL,
+  EXPR_UNARY_OP,
   EXPR_BINARY_OP,
   EXPR_FUNCTION,
   EXPR_COMPARISON,
@@ -129,12 +131,16 @@ typedef struct ExprNode {
     } binary; 
 
     ExprNode* unary;
+    struct unary {
+      struct ExprNode* expr;
+      uint16_t op;
+    } arth_unary;
 
-    struct {
-      char* func_name;
+    struct function_expr {
+      char* name;
       ExprNode** args;
       uint8_t arg_count;
-    } function_call;  
+    } fn;  
   };
 } ExprNode;
 
@@ -183,6 +189,16 @@ typedef struct {
 } TableCatalogEntry;
 
 typedef struct {
+  ExprNode* expr;
+  char* alias;
+} SelectColumn;
+
+typedef struct {
+  ColumnValue* value;
+  uint8_t expected_type;
+} __c;
+
+typedef struct {
   JQLCommandType type;
   TableSchema* schema;
   char* schema_name;
@@ -192,6 +208,9 @@ typedef struct {
   ExprNode** (*values);
   uint8_t row_count;
   char** columns;
+
+  SelectColumn* sel_columns;
+  bool select_all;
 
   ExprNode* where;
   bool has_where;
@@ -253,6 +272,7 @@ ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_term(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema);
 
@@ -261,5 +281,9 @@ void free_expr_node(ExprNode* node);
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
 void print_column_value(ColumnValue* val);
+bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
+
+bool infer_and_cast_va(size_t count, ...);
+bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type);
 
 #endif // JQL_COMMAND_H

@@ -469,25 +469,37 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   parser_consume(parser); 
 
   uint8_t value_count = 0;
-  command.columns = calloc(MAX_COLUMNS, sizeof(char*));
+  command.columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
 
   if (parser->cur->type == TOK_MUL) {
-    command.columns[value_count] = strdup("*");
+    command.select_all = true;
     value_count++;
     parser_consume(parser);
   } else {
-    while (parser->cur->type == TOK_ID) {
-      command.columns[value_count] = strdup(parser->cur->value);
-
-      parser_consume(parser);
-      value_count++;
-
-      if (parser->cur->type == TOK_COM) {
-        parser_consume(parser);
-      } else {
-        break;
+    int column_count = 0;
+    while (true) {
+      ExprNode* expr =  NULL;
+    
+      char* alias = NULL;
+      if (parser->cur->type == TOK_AS) {
+        parser_consume(parser); 
+        if (parser->cur->type == TOK_ID) {
+          alias = strdup(parser->cur->value);
+          parser_consume(parser);
+        } else {
+          REPORT_ERROR(parser->lexer, "E_IDEN_AF_ALIAS_KW");
+          return command;
+        }
       }
+    
+      command.sel_columns[column_count].expr = expr;
+      command.sel_columns[column_count].alias = alias;
+      column_count++;
+    
+      if (parser->cur->type != TOK_COM) break;
+      parser_consume(parser);
     }
+    
   }
 
   if (parser->cur->type != TOK_FRM) {
@@ -885,13 +897,32 @@ ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
   return left;
 }
 
+ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema) {
+  if (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
+    uint16_t op = parser->cur->type;
+    parser_consume(parser);
+    
+    ExprNode* operand = parser_parse_unary(parser, schema); 
+    if (!operand) return NULL;
+
+    ExprNode* node = calloc(1, sizeof(ExprNode));
+    node->type = EXPR_UNARY_OP;
+    node->arth_unary.op = op;
+    node->arth_unary.expr = operand;
+    return node;
+  }
+
+  return parser_parse_term(parser, schema); 
+}
+
+
 ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema) {
-  ExprNode* node = parser_parse_term(parser, schema);
+  ExprNode* node = parser_parse_unary(parser, schema);
 
   while (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
     uint16_t op = parser->cur->type;
     parser_consume(parser);
-    ExprNode* right = parser_parse_term(parser, schema);
+    ExprNode* right = parser_parse_unary(parser, schema);
 
     ExprNode* new_node = calloc(1, sizeof(ExprNode));
     new_node->type = EXPR_BINARY_OP;
@@ -937,16 +968,58 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   }
 
   if (parser->cur->type == TOK_ID) {
-    int col_index = find_column_index(schema, parser->cur->value);
+    char* ident = strdup(parser->cur->value);
+    parser_consume(parser);
+    
+
+    if (parser->cur->type == TOK_LP) {
+      ExprNode* node = calloc(1, sizeof(ExprNode));
+      node->fn.args = calloc(MAX_FN_ARGS, sizeof(ExprNode));
+      node->type = EXPR_FUNCTION;
+      node->fn.name = ident;
+      node->fn.arg_count = 0;
+
+      parser_consume(parser); 
+
+      if (parser->cur->type != TOK_RP) {
+        while (true) {
+          if (node->fn.arg_count >= MAX_FN_ARGS) {
+            REPORT_ERROR(parser->lexer, "SYE_E_TOO_MANY_FN_ARGS");
+            return NULL;
+          }
+
+          ExprNode* arg = parser_parse_expression(parser, schema);
+          LOG_DEBUG("parsed arg type: %d", arg->type);
+          if (!arg) return NULL;
+
+          node->fn.args[node->fn.arg_count] = arg;
+          node->fn.arg_count += 1;
+          if (parser->cur->type == TOK_COM) {
+            parser_consume(parser);
+          } else {
+            break;
+          }
+        }
+      }
+
+      if (parser->cur->type != TOK_RP) {
+        REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
+        return NULL;
+      }
+
+      parser_consume(parser);
+      return node;
+    }
+
+    int col_index = find_column_index(schema, ident);
     if (col_index == -1) {
-      REPORT_ERROR(parser->lexer, "SYE_E_UNKNOWN_COLUMN", parser->cur->value);
+      REPORT_ERROR(parser->lexer, "SYE_E_UNKNOWN_COLUMN", ident);
       return NULL;
     }
 
     ExprNode* node = calloc(1, sizeof(ExprNode));
     node->type = EXPR_COLUMN;
     node->column_index = col_index;
-    parser_consume(parser);
     return node;
   }
 
@@ -967,10 +1040,10 @@ void free_expr_node(ExprNode* node) {
   } else if (node->type == EXPR_LOGICAL_NOT) {
     free_expr_node(node->binary.right);
   } else if (node->type == EXPR_FUNCTION) {
-    for (uint8_t i = 0; i < node->function_call.arg_count; i++) {
-      free_expr_node(node->function_call.args[i]);
+    for (uint8_t i = 0; i < node->fn.arg_count; i++) {
+      free_expr_node(node->fn.args[i]);
     }
-    free(node->function_call.args);
+    free(node->fn.args);
   }
   free(node);
 }
@@ -995,11 +1068,11 @@ void print_column_value(ColumnValue* val) {
     return;
   }
 
-  printf("[");
+  printf("%s[", get_token_type(val->type));
 
   switch (val->type) {
     case TOK_T_INT: case TOK_T_UINT: case TOK_T_SERIAL: 
-      printf("%d", val->int_value);
+      printf("%ld", val->int_value);
       break;
 
     case TOK_T_FLOAT:
@@ -1015,6 +1088,7 @@ void print_column_value(ColumnValue* val) {
       break;
 
     case TOK_T_STRING:
+    case TOK_T_VARCHAR:
     case TOK_T_CHAR:
       printf("\"%s\"", val->str_value);
       break;
@@ -1025,4 +1099,21 @@ void print_column_value(ColumnValue* val) {
   }
 
   printf("]");
+}
+
+bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr) {
+  if (!col->expr || !evaluated_expr || is_struct_zeroed(evaluated_expr, sizeof(ColumnValue))) {
+    return false;
+  }
+
+  if (evaluated_expr->type == EXPR_COMPARISON || 
+    evaluated_expr->type == EXPR_LOGICAL_AND ||
+    evaluated_expr->type == EXPR_LOGICAL_NOT ||
+    evaluated_expr->type == EXPR_LOGICAL_OR
+  ) {
+    LOG_WARN("Latest query expects literals, functions, columns and binary operations between them, not logical comparisons. Query not processed.");
+    return false;
+  }
+
+  return true;
 }
