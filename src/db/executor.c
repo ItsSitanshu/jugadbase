@@ -679,6 +679,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
         return result;
       }
 
+
       bool valid_conversion = infer_and_cast_va(2,
         (__c){&left, type},
         (__c){&right, type}
@@ -691,7 +692,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
 
       int cmp = key_compare(get_column_value_as_pointer(&left), get_column_value_as_pointer(&right), type);
       if (left.type == EXPR_COLUMN) {
-        key_compare(get_column_value_as_pointer(&right), get_column_value_as_pointer(&left), type);
+        cmp = key_compare(get_column_value_as_pointer(&right), get_column_value_as_pointer(&left), type);
       }
 
       result.type = TOK_T_BOOL;
@@ -724,6 +725,51 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
 
       return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
     }
+    case EXPR_BETWEEN: {
+      uint8_t type = 0;
+    
+      ColumnValue value = resolve_expr_value(expr->between.value, row, schema, ctx, schema_idx, &type);
+      ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, ctx, schema_idx, &type);
+      ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, ctx, schema_idx, &type);
+    
+      ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
+    
+      if (value.type == TOK_T_INT) {
+        result.bool_value = (value.int_value >= lower.int_value) && (value.int_value <= upper.int_value);
+      } /* else if (value.type == TOK_T_DATE) {
+        result.bool_value = (value.date_value >= lower.date_value) && (value.date_value <= upper.date_value);
+      } */ else {
+        LOG_ERROR("BETWEEN only supports INT or DATE values");
+        result.is_null = true;
+      }
+    
+      return result;
+    }
+    case EXPR_IN: {
+      uint8_t type = 0;
+      ColumnValue value = resolve_expr_value(expr->in.value, row, schema, ctx, schema_idx, &type);
+      ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
+    
+      for (size_t i = 0; i < expr->in.count; ++i) {
+        ColumnValue val = resolve_expr_value(expr->in.list[i], row, schema, ctx, schema_idx, &type);
+    
+        bool match = false;
+        if (value.type == TOK_T_INT || value.type == TOK_T_UINT || value.type == TOK_T_SERIAL) {
+          match = (value.int_value == val.int_value);
+        } else if (value.type == TOK_T_VARCHAR) {
+          match = (strcmp(value.str_value, val.str_value) == 0);
+        } /* else if (value.type == TOK_T_DATE) {
+          match = (value.date_value == val.date_value);
+        } */
+    
+        if (match) {
+          result.bool_value = true;
+          return result;
+        }
+      }
+    
+      return result;
+    }        
     case EXPR_LOGICAL_AND: {
       ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
       // if (!left.bool_value) {
@@ -737,7 +783,6 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
 
       return result;
     }
-
     case EXPR_LOGICAL_OR: {
       ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
       // if (!left.bool_value) {
@@ -883,6 +928,7 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
     case TOK_T_CHAR:
       return &(col_val->str_value[0]);
     case TOK_T_STRING:
+    case TOK_T_VARCHAR:
       return col_val->str_value;
     case TOK_T_BLOB:
       return &(col_val->blob_value);
