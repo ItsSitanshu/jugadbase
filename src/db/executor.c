@@ -3,9 +3,9 @@
 #include "../utils/log.h"
 #include "../utils/security.h"
 
-ExecutionResult process(Context* ctx, char* buffer) {
+Result process(Context* ctx, char* buffer) {
   if (!ctx || !ctx->lexer || !ctx->parser) {
-    return (ExecutionResult){1, "Invalid execution context"};
+    return (Result){(ExecutionResult){1, "Invalid context"}, NULL};
   }
 
   lexer_set_buffer(ctx->lexer, buffer);
@@ -15,38 +15,39 @@ ExecutionResult process(Context* ctx, char* buffer) {
   return execute_cmd(ctx, &cmd);
 }
 
-ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd) {
+Result execute_cmd(Context* ctx, JQLCommand* cmd) {
   if (cmd->is_invalid) {
-    return (ExecutionResult){1, "Invalid command"};
+    return (Result){(ExecutionResult){1, "Invalid command"}, NULL};
   }
 
-  ExecutionResult result = {0, "Execution successful"};
+  Result result = {(ExecutionResult){0, "Execution successful"}, NULL};
 
   switch (cmd->type) {
     case CMD_CREATE:
-      result = execute_create_table(ctx, cmd);
+      result = (Result){execute_create_table(ctx, cmd), cmd};
       break;
     case CMD_INSERT:
-      result = execute_insert(ctx, cmd);
+      result = (Result){execute_insert(ctx, cmd), cmd};
       break;
     case CMD_SELECT:
-      result = execute_select(ctx, cmd);
+      result = (Result){execute_select(ctx, cmd), cmd};
       break;
     case CMD_UPDATE:
-      result = execute_update(ctx, cmd);
+      result = (Result){execute_update(ctx, cmd), cmd};
       break;
     case CMD_DELETE:
-      result = execute_delete(ctx, cmd);
+      result = (Result){execute_delete(ctx, cmd), cmd};
       break;
     default:
-      result = (ExecutionResult){1, "Unknown command type"};
+      result = (Result){(ExecutionResult){1, "Unknown command type"}, NULL};
   }
 
-  if (result.rows && result.row_count > 0) {
-    printf("-> Returned %u row(s):\n", result.row_count);
 
-    for (uint32_t i = 0; i < result.row_count; i++) {
-      Row* row = &result.rows[i];
+  if (result.exec.rows && result.exec.row_count > 0) {
+    printf("-> Returned %u row(s):\n", result.exec.row_count);
+
+    for (uint32_t i = 0; i < result.exec.row_count; i++) {
+      Row* row = &result.exec.rows[i];
       if (is_struct_zeroed(row, sizeof(Row))) { 
         printf("Slot %u is [nil]\n", i + 1);
         continue;
@@ -691,9 +692,6 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       }
 
       int cmp = key_compare(get_column_value_as_pointer(&left), get_column_value_as_pointer(&right), type);
-      if (left.type == EXPR_COLUMN) {
-        cmp = key_compare(get_column_value_as_pointer(&right), get_column_value_as_pointer(&left), type);
-      }
 
       result.type = TOK_T_BOOL;
 
@@ -707,6 +705,25 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
         default: result.bool_value = false; break;
       }
 
+      const char* op_to_str[] = {
+        "=",    // TOK_EQ 
+        "<",    // TOK_LT 
+        ">",    // TOK_GT 
+        "<=",   // TOK_LE 
+        ">="    // TOK_GE 
+        "!=",   // TOK_NE 
+      };
+      
+      if (left.type == EXPR_COLUMN) {
+        LOG_DEBUG("LEFT COL");
+        print_column_value(&left); printf(" %s ", op_to_str[expr->binary.op - TOK_EQ]);
+        print_column_value(&right); printf("= %d\n", result.bool_value);
+      } else {
+        LOG_DEBUG("RIGHT COL");
+        print_column_value(&right); printf(" %s ", op_to_str[expr->binary.op - TOK_EQ]);
+        print_column_value(&left); printf("= %d\n", result.bool_value);
+      }
+      
       return result;
     }
     case EXPR_LIKE: {
@@ -780,6 +797,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
       result.type = TOK_T_BOOL;
       result.bool_value = left.bool_value && right.bool_value;
+      LOG_DEBUG("AND = %d", result.bool_value);
 
       return result;
     }
@@ -793,7 +811,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
       result.type = TOK_T_BOOL;
       result.bool_value = left.bool_value || right.bool_value;
-      
+      LOG_DEBUG("OR = %d", result.bool_value);
       return result;
     }
 
@@ -802,10 +820,9 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
             
       result.type = TOK_T_BOOL;
       result.bool_value = !operand.bool_value;
-
+      LOG_DEBUG("NOT = %d", result.bool_value);
       return result;
     }
-
     default:
       return result;
   }

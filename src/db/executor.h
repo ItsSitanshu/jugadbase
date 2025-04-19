@@ -14,9 +14,14 @@ typedef struct {
   uint8_t owns_rows;
 } ExecutionResult;
 
-ExecutionResult process(Context* ctx, char* buffer);
+typedef struct Result {
+  ExecutionResult exec;
+  JQLCommand* cmd;
+} Result;
 
-ExecutionResult execute_cmd(Context* ctx, JQLCommand* cmd);
+Result process(Context* ctx, char* buffer);
+
+Result execute_cmd(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd);
 bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx, 
