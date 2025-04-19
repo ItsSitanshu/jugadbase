@@ -189,12 +189,16 @@ typedef struct {
   ExprNode* where;
   bool has_where;
 
+  bool has_limit;
+  bool has_offset;
+  uint32_t limit;
+  uint32_t offset;
+
+
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
   char order_by[MAX_IDENTIFIER_LEN];  // ORDER BY clause
   char group_by[MAX_IDENTIFIER_LEN];  // GROUP BY clause
   char having[MAX_IDENTIFIER_LEN];    // HAVING clause
-  char limit[MAX_IDENTIFIER_LEN];     // LIMIT clause
-  char offset[MAX_IDENTIFIER_LEN];    // OFFSET clause
 
   char join_table[MAX_IDENTIFIER_LEN]; 
   char join_condition[MAX_IDENTIFIER_LEN];

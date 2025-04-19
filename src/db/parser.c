@@ -37,8 +37,6 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   memset(cmd->order_by, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->group_by, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->having, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->limit, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->offset, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->join_table, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->join_condition, 0, MAX_IDENTIFIER_LEN);
   memset(cmd->transaction, 0, MAX_IDENTIFIER_LEN);
@@ -80,22 +78,37 @@ JQLCommand parser_parse(Context* ctx) {
 
   switch (ctx->parser->cur->type) {
     case TOK_CRT:
-      return parser_parse_create_table(ctx->parser);
+      command = parser_parse_create_table(ctx->parser);
+      break;
     case TOK_INS:
-      return parser_parse_insert(ctx->parser, ctx);
+      command = parser_parse_insert(ctx->parser, ctx);
+      break;
     case TOK_SEL: 
-      return parser_parse_select(ctx->parser, ctx);
+      command = parser_parse_select(ctx->parser, ctx);
+      break;
     case TOK_UPD:
-      return parser_parse_update(ctx->parser, ctx);
+      command = parser_parse_update(ctx->parser, ctx);
+      break;
     case TOK_DEL:
-      return parser_parse_delete(ctx->parser, ctx);
+      command = parser_parse_delete(ctx->parser, ctx);
+      break;
     case TOK_EOF:
       return command;
     default:
       REPORT_ERROR(ctx->parser->lexer, "SYE_UNSUPPORTED");
       return command;
   }
+
+  if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF) {
+    REPORT_ERROR(ctx->parser->lexer, "SYE_E_MISSING_SEMICOLON");
+    command.is_invalid = true;
+  } else if (ctx->parser->cur->type == TOK_SC) {
+    parser_consume(ctx->parser);
+  }
+
+  return command;
 }
+
 
 bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   if (parser->cur->type != TOK_ID) {
@@ -447,10 +460,6 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
     }
   }
 
-  parser_consume(parser);
-
-  if(parser->cur->type == TOK_SC) parser_consume(parser); 
-
   command.is_invalid = false;
   return command;
 }
@@ -480,7 +489,7 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   
   command.schema = malloc(sizeof(TableSchema));
   strcpy(command.schema->table_name, parser->cur->value);
-  LOG_DEBUG("%s, %s", parser->cur->value, command.schema->table_name);
+
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
   
   if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
@@ -553,7 +562,33 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
     command.where = malloc(sizeof(ExprNode));
     command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
   }
-  
+
+  char* endptr;
+
+  if (parser->cur->type == TOK_LIM) {
+    parser_consume(parser);
+    if (parser->cur->type == TOK_L_UINT) {
+      command.has_limit = true;
+      command.limit = (uint32_t)strtoul(parser->cur->value, &endptr, 10);
+      parser_consume(parser);
+    } else {
+      REPORT_ERROR(parser->lexer, "E_INVALID_LIMIT_VALUE");
+      return command;
+    }
+  }
+
+  if (parser->cur->type == TOK_OFF) {
+    parser_consume(parser);
+    if (parser->cur->type == TOK_L_UINT) {
+      command.has_offset = true;
+      command.offset = (uint32_t)strtoul(parser->cur->value, &endptr, 10);
+      parser_consume(parser);
+    } else {
+      REPORT_ERROR(parser->lexer, "E_INVALID_OFFSET_VALUE");
+      return command;
+    }
+  }
+
   command.is_invalid = false;
   return command;
 }
@@ -952,7 +987,6 @@ ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
     case TOK_LE:
     case TOK_GE: {
       uint16_t op = parser->cur->type;
-      LOG_DEBUG("%d %s", parser->cur->type, parser->cur->value);
       parser_consume(parser);
       ExprNode* right = parser_parse_arithmetic(parser, schema);
 
@@ -1209,7 +1243,7 @@ bool is_primary_key_column(TableSchema* schema, int column_index) {
 
 void print_column_value(ColumnValue* val) {
   if (val->is_null) {
-    printf("nil");
+    // printf("nil");
     return;
   }
 
