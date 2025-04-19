@@ -589,6 +589,47 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
     }
   }
 
+  if (parser->cur->type == TOK_ODR) {
+    parser_consume(parser);
+    if (parser->cur->type != TOK_BY) {
+      REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_BY_AFTER_ORDER");
+      return command;
+    }
+
+    parser_consume(parser);
+
+    command.has_order_by = true;
+    command.order_by_count = 0;
+    command.order_by = calloc(ctx->tc[idx].schema->column_count, (sizeof(bool) + (2 * sizeof(uint8_t))));
+
+    while (true) {
+      ExprNode* ord_expr = parser_parse_expression(parser, ctx->tc[idx].schema);
+      if (!ord_expr || ord_expr->type != EXPR_COLUMN) {
+        REPORT_ERROR(parser->lexer, "E_INVALID_ORDER_EXPRESSION");
+        return command;
+      }
+
+      command.order_by[command.order_by_count].decend = false;
+      if (parser->cur->type == TOK_ASC) {
+        parser_consume(parser);
+      } else if (parser->cur->type == TOK_DESC) {
+        parser_consume(parser);
+        command.order_by[command.order_by_count].decend = true;      
+      }
+
+      command.order_by[command.order_by_count].col = ord_expr->column_index;
+      command.order_by[command.order_by_count].type = ord_expr->type;
+      command.order_by_count++;
+
+      if (parser->cur->type != TOK_COM) break;
+      if (command.order_by_count > ctx->tc[idx].schema->column_count) {
+        LOG_ERROR("Got more ORDER basises (%d) than existing columns (%d)", command.order_by_count, ctx->tc[idx].schema->column_count);
+        return command;
+      }
+      parser_consume(parser);
+    }
+  }
+
   command.is_invalid = false;
   return command;
 }

@@ -194,9 +194,15 @@ typedef struct {
   uint32_t limit;
   uint32_t offset;
 
+  bool has_order_by;
+  uint8_t order_by_count;
+  struct order_by {
+    uint8_t col;
+    uint8_t type;
+    bool decend;
+  }* order_by; 
 
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
-  char order_by[MAX_IDENTIFIER_LEN];  // ORDER BY clause
   char group_by[MAX_IDENTIFIER_LEN];  // GROUP BY clause
   char having[MAX_IDENTIFIER_LEN];    // HAVING clause
 
