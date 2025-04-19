@@ -29,6 +29,7 @@ void lexer_set_buffer(Lexer* lexer, char* buffer);
 void lexer_free(Lexer* lexer);
 
 Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type);
+Token* token_clone(Token* src);
 void token_free(Token* token);
 
 Token* lexer_next_token(Lexer* lexer);

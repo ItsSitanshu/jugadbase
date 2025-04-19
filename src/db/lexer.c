@@ -87,6 +87,18 @@ Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type) {
   return (Token*)token;
 }
 
+Token* token_clone(Token* src) {
+  Token* copy = malloc(sizeof(Token));
+  if (!copy) return NULL;
+
+  copy->line = src->line;
+  copy->col = src->col;
+  copy->type = src->type;
+  copy->value = strdup(src->value);
+    
+  return copy;
+}
+
 void token_free(Token* token) {
   /*
   De-initializes provided token
