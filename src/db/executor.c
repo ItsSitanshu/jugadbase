@@ -402,6 +402,10 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
       break;
   }
 
+  if (cmd->has_order_by && total_found > 1) {
+    quick_sort_rows(collected_rows, 0, total_found - 1, cmd, schema);
+  }
+
   uint32_t start = cmd->has_offset ? cmd->offset : 0;
   uint32_t max_out = cmd->has_limit  ? cmd->limit  : total_found;
   uint32_t available = (start < total_found) ? (total_found - start) : 0;
@@ -440,6 +444,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
   }
 
   free(collected_rows);
+
   return (ExecutionResult){
     .code = 0,
     .message = "Select executed successfully",
@@ -448,6 +453,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
     .owns_rows = 1
   };
 }
+
 
 ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
   if (!ctx || !cmd || !cmd->schema) {
@@ -774,11 +780,11 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
     }        
     case EXPR_LOGICAL_AND: {
       ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
-      // if (!left.bool_value) {
-      //   result.type = TOK_T_BOOL;
-      //   result.bool_value = false;
-      //   return result;
-      // }
+      if (!left.bool_value) {
+        result.type = TOK_T_BOOL;
+        result.bool_value = false;
+        return result;
+      }
       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
       result.type = TOK_T_BOOL;
       result.bool_value = left.bool_value && right.bool_value;
@@ -787,11 +793,11 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
     }
     case EXPR_LOGICAL_OR: {
       ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
-      // if (!left.bool_value) {
-      //   result.type = TOK_T_BOOL;
-      //   result.bool_value = true;
-      //   return result;
-      // }
+      if (left.bool_value) {
+        result.type = TOK_T_BOOL;
+        result.bool_value = true;
+        return result;
+      }
       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
       result.type = TOK_T_BOOL;
       result.bool_value = left.bool_value || right.bool_value;
@@ -816,6 +822,78 @@ bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* 
   ColumnValue result = evaluate_expression(expr, row, schema, ctx, schema_idx);
 
   return result.bool_value;
+}
+
+
+void swap_rows(Row* r1, Row* r2) {
+  Row temp = *r1;
+  *r1 = *r2;
+  *r2 = temp;
+}
+
+int compare_rows(const Row* r1, const Row* r2, JQLCommand* cmd, TableSchema* schema) {
+  for (uint8_t i = 0; i < cmd->order_by_count; i++) {
+    uint8_t col = cmd->order_by[i].col;
+    bool desc = cmd->order_by[i].decend;
+
+    ColumnValue v1 = r1->values[col];
+    ColumnValue v2 = r2->values[col];
+
+    if (v1.type == TOK_T_VARCHAR || v1.type == TOK_T_STRING) {
+      if (v1.is_null && !v2.is_null) return desc ? 1 : -1; 
+      if (!v1.is_null && v2.is_null) return desc ? -1 : 1;
+      
+      if (v1.is_null && v2.is_null) {
+        if (strlen(v1.str_value) == 0 && strlen(v2.str_value) == 0) return 0;
+        if (strlen(v1.str_value) == 0) return desc ? 1 : -1;
+        if (strlen(v2.str_value) == 0) return desc ? -1 : 1;
+      }
+
+      char* str1 = v1.str_value;
+      char* str2 = v2.str_value;
+
+      while (*str1 && *str2) {
+        if (*str1 != *str2) {
+          return desc ? (*str1 > *str2 ? -1 : 1) : (*str1 > *str2 ? 1 : -1);
+        }
+        str1++;
+        str2++;
+      }
+
+      if (*str1 && !*str2) return desc ? -1 : 1;
+      if (!*str1 && *str2) return desc ? 1 : -1;
+    }
+
+    int cmp = key_compare(get_column_value_as_pointer(&v1),
+      get_column_value_as_pointer(&v2),
+      cmd->order_by[i].type);
+
+    if (cmp != 0) return desc ? -cmp : cmp;
+  }
+  return 0;
+}
+
+int partition_rows(Row rows[], int low, int high,
+                          JQLCommand *cmd, TableSchema *schema) {
+  Row pivot = rows[high];
+  int i = low - 1;
+  for (int j = low; j < high; ++j) {
+    if (compare_rows(&rows[j], &pivot, cmd, schema) <= 0) {
+      ++i;
+      swap_rows(&rows[i], &rows[j]);
+    }
+  }
+  swap_rows(&rows[i + 1], &rows[high]);
+  return i + 1;
+}
+
+void quick_sort_rows(Row rows[], int low, int high,
+                     JQLCommand *cmd, TableSchema *schema) {
+  if (low < high) {
+    int pi = partition_rows(rows, low, high, cmd, schema);
+    quick_sort_rows(rows,     low, pi - 1, cmd, schema);
+    quick_sort_rows(rows, pi + 1,   high, cmd, schema);
+  }
 }
 
 

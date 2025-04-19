@@ -34,6 +34,11 @@ ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Co
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 
+void swap_rows(Row* r1, Row* r2);
+int compare_rows(const Row* r1, const Row* r2, JQLCommand* cmd, TableSchema* schema);
+int partition_rows(Row rows[], int low, int high, JQLCommand *cmd, TableSchema *schema);
+void quick_sort_rows(Row rows[], int low, int high, JQLCommand *cmd, TableSchema *schema);
+
 bool match_char_class(char** pattern_ptr, char* str);
 bool like_match(char* str, char* pattern);
 void* get_column_value_as_pointer(ColumnValue* col_val);
