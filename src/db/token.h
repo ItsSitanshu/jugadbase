@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NO_OF_KEYWORDS 64
+#define NO_OF_KEYWORDS 66
 #define KEYWORDS keywords
 
 #define MAX_KEYWORD_LEN 9
