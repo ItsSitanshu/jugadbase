@@ -554,84 +554,96 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   parser_consume(parser); 
   
   command.value_counts[0] = value_count;
-  
+
+  parse_where_clause(parser, ctx, &command, idx);
+  parse_limit_clause(parser, &command);
+  parse_offset_clause(parser, &command);
+  parse_order_by_clause(parser, ctx, &command, idx);
+
+  command.is_invalid = false;
+  return command;
+}
+
+void parse_where_clause(Parser* parser, Context* ctx, JQLCommand* command, uint32_t idx) {
   if (parser->cur->type == TOK_WR) {
     parser_consume(parser);
-    command.has_where = true;
-    
-    command.where = malloc(sizeof(ExprNode));
-    command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
+    command->has_where = true;
+    command->where = malloc(sizeof(ExprNode));
+    command->where = parser_parse_expression(parser, ctx->tc[idx].schema);
   }
+}
 
+void parse_limit_clause(Parser* parser, JQLCommand* command) {
   char* endptr;
 
   if (parser->cur->type == TOK_LIM) {
     parser_consume(parser);
     if (parser->cur->type == TOK_L_UINT) {
-      command.has_limit = true;
-      command.limit = (uint32_t)strtoul(parser->cur->value, &endptr, 10);
+      command->has_limit = true;
+      command->limit = (uint32_t)strtoul(parser->cur->value, &endptr, 10);
       parser_consume(parser);
     } else {
       REPORT_ERROR(parser->lexer, "E_INVALID_LIMIT_VALUE");
-      return command;
     }
   }
+}
+
+void parse_offset_clause(Parser* parser, JQLCommand* command) {
+  char* endptr;
 
   if (parser->cur->type == TOK_OFF) {
     parser_consume(parser);
     if (parser->cur->type == TOK_L_UINT) {
-      command.has_offset = true;
-      command.offset = (uint32_t)strtoul(parser->cur->value, &endptr, 10);
+      command->has_offset = true;
+      command->offset = (uint32_t)strtoul(parser->cur->value, &endptr, 10);
       parser_consume(parser);
     } else {
       REPORT_ERROR(parser->lexer, "E_INVALID_OFFSET_VALUE");
-      return command;
     }
   }
+}
 
+void parse_order_by_clause(Parser* parser, Context* ctx, JQLCommand* command, uint32_t idx) {
   if (parser->cur->type == TOK_ODR) {
     parser_consume(parser);
     if (parser->cur->type != TOK_BY) {
       REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_BY_AFTER_ORDER");
-      return command;
+      return;
     }
 
     parser_consume(parser);
 
-    command.has_order_by = true;
-    command.order_by_count = 0;
-    command.order_by = calloc(ctx->tc[idx].schema->column_count, (sizeof(bool) + (2 * sizeof(uint8_t))));
+    command->has_order_by = true;
+    command->order_by_count = 0;
+    command->order_by = calloc(ctx->tc[idx].schema->column_count, (sizeof(bool) + (2 * sizeof(uint8_t))));
 
     while (true) {
       ExprNode* ord_expr = parser_parse_expression(parser, ctx->tc[idx].schema);
       if (!ord_expr || ord_expr->type != EXPR_COLUMN) {
         REPORT_ERROR(parser->lexer, "E_INVALID_ORDER_EXPRESSION");
-        return command;
+        return;
       }
 
-      command.order_by[command.order_by_count].decend = false;
+      command->order_by[command->order_by_count].decend = false;
       if (parser->cur->type == TOK_ASC) {
         parser_consume(parser);
       } else if (parser->cur->type == TOK_DESC) {
         parser_consume(parser);
-        command.order_by[command.order_by_count].decend = true;      
+        command->order_by[command->order_by_count].decend = true;      
       }
 
-      command.order_by[command.order_by_count].col = ord_expr->column_index;
-      command.order_by[command.order_by_count].type = ord_expr->type;
-      command.order_by_count++;
+      command->order_by[command->order_by_count].col = ord_expr->column_index;
+      command->order_by[command->order_by_count].type = ord_expr->type;
+      command->order_by_count++;
 
       if (parser->cur->type != TOK_COM) break;
-      if (command.order_by_count > ctx->tc[idx].schema->column_count) {
-        LOG_ERROR("Got more ORDER basises (%d) than existing columns (%d)", command.order_by_count, ctx->tc[idx].schema->column_count);
-        return command;
+      if (command->order_by_count > ctx->tc[idx].schema->column_count) {
+        LOG_ERROR("Got more ORDER basises (%d) than existing columns (%d)", command->order_by_count, ctx->tc[idx].schema->column_count);
+        return;
       }
       parser_consume(parser);
     }
   }
-
-  command.is_invalid = false;
-  return command;
 }
 
 JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
@@ -732,13 +744,7 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
   
   command.value_counts[0] = value_count;
 
-  if (parser->cur->type == TOK_WR) {
-    parser_consume(parser);
-    command.has_where = true;
-
-    command.where = malloc(sizeof(ExprNode));
-    command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
-  }
+  parse_where_clause(parser, ctx, &command, idx);
 
   command.is_invalid = false;
   return command;
@@ -780,16 +786,7 @@ JQLCommand parser_parse_delete(Parser* parser, Context* ctx) {
 
   parser_consume(parser);
 
-  if (parser->cur->type == TOK_WR) {
-    parser_consume(parser);  
-    command.has_where = true;
-
-    command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
-    if (!command.where) {
-      REPORT_ERROR(parser->lexer, "SYE_E_INVALID_WHERE_CLAUSE");
-      return command;
-    }
-  }
+  parse_where_clause(parser, ctx, &command, idx);
 
   command.is_invalid = false;
   return command;
