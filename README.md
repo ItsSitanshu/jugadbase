@@ -29,7 +29,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Regex / `LIKE` and string functions~~
   - ~~`IN` / `BETWEEN`~~
   - ~~FIX BUG: [SELECT](https://github.com/ItsSitanshu/jugadbase/blob/main/src/db/parser.c#L459-L534) requires back-trackable parser~~
-  - Limits `LIM`
+  - ~~`LIM` and `OFFSET~~
   - Ordering `ODR` (`ASRT` and `DSRT`)
 - Important logic and functions for dynamic types
   - Datetime
