@@ -207,7 +207,7 @@ void process_file(Context* ctx, char* filename) {
   buffer[bytes_read] = '\0';
 
   LOG_INFO("Processing file: %s", filename);
-  ExecutionResult* res_list = malloc(sizeof(ExecutionResult) * 5);
+  Result* res_list = malloc(sizeof(Result) * 5);
   size_t res_n = 0;
   size_t res_capacity = 5; 
   
@@ -220,7 +220,7 @@ void process_file(Context* ctx, char* filename) {
   
     if (res_n + 1 >= res_capacity) {
       res_capacity *= 2; 
-      res_list = realloc(res_list, sizeof(ExecutionResult) * res_capacity);
+      res_list = realloc(res_list, sizeof(Result) * res_capacity);
       if (!res_list) {
         LOG_ERROR("Memory allocation failed during reallocation");
         return;

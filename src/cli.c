@@ -10,9 +10,13 @@
 #include "executor.h"
 
 int main(int argc, char* argv[]) {
+  const char* output_filename = NULL;
+
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--verbose") == 0 && i + 1 < argc) {
       *verbosity_level = atoi(argv[++i]); 
+    } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
+      output_filename = argv[++i];
     }
   }
 
@@ -41,8 +45,10 @@ int main(int argc, char* argv[]) {
     input = jugadline(&history, prompt);
 
     if (!process_dot_cmd(ctx, input)) {
-      ExecutionResult result = process(ctx, input);
-      printf("Result: %s sc: %d\n", result.message, result.code);
+      Result result = process(ctx, input);
+      if (output_filename) {
+        print_text_table_to_file(result.exec, result.cmd, output_filename);
+      }
     }
   }
 
