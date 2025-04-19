@@ -265,6 +265,7 @@ void free_expr_node(ExprNode* node);
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
 void print_column_value(ColumnValue* val);
+char* sprintf_column_value(ColumnValue* val, char* buffer);  
 bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
 
 bool infer_and_cast_va(size_t count, ...);

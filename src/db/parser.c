@@ -460,38 +460,49 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_SELECT;
   command.is_invalid = true;
-
+  
+  parser_consume(parser);
+  
+  ParserState state = parser_save_state(parser);
+  
+  while (parser->cur->type != TOK_FRM) {
+    parser_consume(parser);
+    if (parser->cur->type == TOK_EOF || parser->cur->type == TOK_SC) {
+      return command;
+    }
+  }
   parser_consume(parser);
 
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
+    return command;
+  }
+  
+  command.schema = malloc(sizeof(TableSchema));
+  strcpy(command.schema->table_name, parser->cur->value);
+  LOG_DEBUG("%s, %s", parser->cur->value, command.schema->table_name);
+  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+  
+  if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
+    LOG_ERROR("Couldn't fetch rows from table '%s', doesn't exist", command.schema->table_name);
+    return command;
+  }
+    
+  parser_restore_state(parser, state);
+  
   uint8_t value_count = 0;
   command.columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
-  command.schema = malloc(sizeof(TableSchema));
-
+  
   if (parser->cur->type == TOK_MUL) {
     command.select_all = true;
     value_count++;
     parser_consume(parser);
   } else {
     int column_count = 0;
-    ParserState state = parser_save_state(parser);
-      
-    while (parser->cur->type != TOK_FRM) {
-      parser_consume(parser);
-      if (parser->cur->type != TOK_EOF || parser->cur->type != TOK_SC) {
-        return command;
-      }
-    }
-    parser_consume(parser);
-
-    if (parser->cur->type != TOK_ID) {
-      return command;
-    }
-
-    command.schema = ctx->tc[hash_fnv1a(parser->cur->value, MAX_TABLES)].schema;
-    parser_restore_state(parser, state);
-
+    command.sel_columns = calloc(MAX_COLUMNS, sizeof(ExprNode*));
+    
     while (true) {
-      ExprNode* expr = parser_parse_expression(parser, command.schema);
+      ExprNode* expr = parser_parse_expression(parser, ctx->tc[idx].schema);
       
       if (expr == NULL) {
         REPORT_ERROR(parser->lexer, "E_INVALID_COLUMN_EXPR");
@@ -516,41 +527,33 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
       column_count++;
       
       if (parser->cur->type != TOK_COM) break;
-      parser_consume(parser); // Consume comma
+      parser_consume(parser);
     }
     value_count = column_count;
   }
-
+  
   if (parser->cur->type != TOK_FRM) {
     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_FROM");
     return command;
   }
   parser_consume(parser); 
-
+  
   if (parser->cur->type != TOK_ID) {
     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
     return command;
   }
-
-  strcpy(command.schema->table_name, parser->cur->value);
-  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
-
-  if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
-    LOG_ERROR("Couldn't fetch rows from table '%s', doesn't exist", command.schema->table_name);
-    return command;
-  }
-
-  command.value_counts[0] = value_count;
   parser_consume(parser); 
-
+  
+  command.value_counts[0] = value_count;
+  
   if (parser->cur->type == TOK_WR) {
     parser_consume(parser);
     command.has_where = true;
-
+    
     command.where = malloc(sizeof(ExprNode));
     command.where = parser_parse_expression(parser, ctx->tc[idx].schema);
   }
-
+  
   command.is_invalid = false;
   return command;
 }
@@ -840,7 +843,7 @@ ParserState parser_save_state(Parser* parser) {
   state.lexer_position = parser->lexer->i;
   state.lexer_line = parser->lexer->cl;
   state.lexer_column = parser->lexer->cc;
-  state.current_token = parser->cur;
+  state.current_token = token_clone(parser->cur);
   return state;
 }
 
@@ -848,15 +851,16 @@ void parser_restore_state(Parser* parser, ParserState state) {
   parser->lexer->i = state.lexer_position;
   parser->lexer->cl = state.lexer_line;
   parser->lexer->cc = state.lexer_column;
-  
-  if (parser->lexer->i < parser->lexer->buf_size) {
-    parser->lexer->c = parser->lexer->buf[parser->lexer->i];
-  } else {
-    parser->lexer->c = '\0';
-  }
-  
-  parser->cur = state.current_token;
+
+  parser->lexer->c = (parser->lexer->i < parser->lexer->buf_size) ?
+                     parser->lexer->buf[parser->lexer->i] : '\0';
+
+  if (parser->cur) token_free(parser->cur);
+  parser->cur = token_clone(state.current_token);
+
+  token_free(state.current_token);
 }
+
 
 Token* parser_peek_ahead(Parser* parser, int offset) {
   ParserState state = parser_save_state(parser);
@@ -948,6 +952,7 @@ ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
     case TOK_LE:
     case TOK_GE: {
       uint16_t op = parser->cur->type;
+      LOG_DEBUG("%d %s", parser->cur->type, parser->cur->value);
       parser_consume(parser);
       ExprNode* right = parser_parse_arithmetic(parser, schema);
 
@@ -1239,6 +1244,45 @@ void print_column_value(ColumnValue* val) {
   }
 
   printf("]");
+}
+
+char* sprintf_column_value(ColumnValue* val, char* buffer) {  
+  if (val->is_null) {
+    snprintf(buffer, sizeof(buffer), "nil");
+    return strdup(buffer);
+  }
+
+  const char* type_str = get_token_type(val->type);
+  
+  switch (val->type) {
+    case TOK_T_INT: case TOK_T_UINT: case TOK_T_SERIAL: 
+      snprintf(buffer, sizeof(buffer), "%s[%ld]", type_str, val->int_value);
+      break;
+
+    case TOK_T_FLOAT:
+      snprintf(buffer, sizeof(buffer), "%s[%f]", type_str, val->float_value);
+      break;
+
+    case TOK_T_DOUBLE:
+      snprintf(buffer, sizeof(buffer), "%s[%lf]", type_str, val->double_value);
+      break;
+
+    case TOK_T_BOOL:
+      snprintf(buffer, sizeof(buffer), "%s[%s]", type_str, val->bool_value ? "true" : "false");
+      break;
+
+    case TOK_T_STRING:
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR:
+      snprintf(buffer, sizeof(buffer), "%s[\"%s\"]", type_str, val->str_value);
+      break;
+
+    default:
+      snprintf(buffer, sizeof(buffer), "%s[unprintable type: %d]", type_str, val->type);
+      break;
+  }
+
+  return strdup(buffer);
 }
 
 bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr) {
