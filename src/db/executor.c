@@ -58,11 +58,13 @@ Result execute_cmd(Context* ctx, JQLCommand* cmd) {
       for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
         ColumnDefinition col = cmd->schema->columns[c];
         ColumnValue val = row->values[c];
-
-        printf("%s=", col.name);
+        
+        if (!val.is_null) {
+          printf("%s=", col.name);
+        }
         print_column_value(&val);
 
-        if (c < cmd->schema->column_count - 1) {
+        if ((c < cmd->value_counts[0] - 1) && (!val.is_null))  {
           printf(", ");
         }
       }
@@ -364,7 +366,9 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
   }
 
   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
-  if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
+  if (!schema) {
+    return (ExecutionResult){1, "Error: Invalid schema"};
+  }
 
   load_btree_cluster(ctx, schema->table_name);
   cmd->schema = schema;
@@ -379,71 +383,68 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
   }
 
   uint32_t total_found = 0;
-
   for (uint16_t i = 0; i < pool->num_pages; i++) {
     Page* page = pool->pages[i];
     if (!page || page->num_rows == 0) continue;
-
     for (uint16_t j = 0; j < page->num_rows; j++) {
-      Row* row = &(page->rows[j]);
-
+      Row* row = &page->rows[j];
       if (!is_struct_zeroed(&row_start, sizeof(RowID))) {
-        if (row->id.page_id != row_start.page_id || row->id.row_id != row_start.row_id) continue;
+        if (row->id.page_id != row_start.page_id || row->id.row_id != row_start.row_id)
+          continue;
       }
-
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx))
         continue;
-      }
-
       collected_rows[total_found++] = *row;
-
-      if (!is_struct_zeroed(&row_start, sizeof(RowID))) break;
+      if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0)
+        break;
     }
-
-    if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0) break;
+    if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0)
+      break;
   }
 
-  Row* result_rows = malloc(sizeof(Row) * (PAGE_SIZE / 10));
+  uint32_t start = cmd->has_offset ? cmd->offset : 0;
+  uint32_t max_out = cmd->has_limit  ? cmd->limit  : total_found;
+  uint32_t available = (start < total_found) ? (total_found - start) : 0;
+  uint32_t out_count = (available < max_out) ? available : max_out;
 
+  Row* result_rows = malloc(sizeof(Row) * out_count);
   if (!result_rows) {
     free(collected_rows);
-    return (ExecutionResult){1, "Memory allocation failed for final result copy"};
+    return (ExecutionResult){1, "Memory allocation failed for limited result rows"};
   }
 
-  if (cmd->value_counts[0] == 1 && cmd->select_all) {
-    memcpy(result_rows, collected_rows, sizeof(Row) * total_found);
+  if (cmd->select_all && cmd->value_counts[0] == 1) {
+    for (uint32_t i = 0; i < out_count; i++) {
+      result_rows[i] = collected_rows[start + i];
+    }
   } else {
-    for (uint32_t i = 0; i < total_found; i++) {
-      Row* src = &collected_rows[i];
+    for (uint32_t i = 0; i < out_count; i++) {
+      Row* src = &collected_rows[start + i];
       Row* dst = &result_rows[i];
       memset(dst, 0, sizeof(Row));
       dst->id = src->id;
-
       dst->values = calloc(schema->column_count, sizeof(ColumnValue));
       if (!dst->values) {
         free(collected_rows);
         free(result_rows);
         return (ExecutionResult){1, "Memory allocation failed for projected values"};
       }
-
+      for (int k = 0; k < schema->column_count; k++) {
+        dst->values[k].is_null = true;
+      }
       for (int j = 0; j < cmd->value_counts[0]; j++) {
         ColumnValue val = evaluate_expression(cmd->sel_columns[j].expr, src, schema, ctx, schema_idx);
-        bool is_valid = verify_select_col(&cmd->sel_columns[j], &val);
-        if (!is_valid) {
-          return (ExecutionResult){1, "Un-expected error"};
-        }
-        dst->values = memcpy(dst->values, src->values, (sizeof(ColumnValue) * schema->column_count));
+        dst->values[val.column_index] = val;
       }
     }
   }
 
   free(collected_rows);
-
   return (ExecutionResult){
     .code = 0,
     .message = "Select executed successfully",
     .rows = result_rows,
-    .row_count = total_found,
+    .row_count = out_count,
     .owns_rows = 1
   };
 }
@@ -586,9 +587,12 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
     case EXPR_LITERAL:
       return expr->literal;
     case EXPR_COLUMN: {
+      result.column_index = expr->column_index;
+
       if (row && expr->column_index < schema->column_count) {
         ColumnValue col = row->values[expr->column_index];
         col.type = schema->columns[expr->column_index].type;
+        col.column_index = expr->column_index;
         return col;
       }
       result.type = schema->columns[expr->column_index].type;
@@ -704,25 +708,6 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
         case TOK_GE: result.bool_value = (cmp == 0 || cmp == 1); break;
         default: result.bool_value = false; break;
       }
-
-      const char* op_to_str[] = {
-        "=",    // TOK_EQ 
-        "<",    // TOK_LT 
-        ">",    // TOK_GT 
-        "<=",   // TOK_LE 
-        ">="    // TOK_GE 
-        "!=",   // TOK_NE 
-      };
-      
-      if (left.type == EXPR_COLUMN) {
-        LOG_DEBUG("LEFT COL");
-        print_column_value(&left); printf(" %s ", op_to_str[expr->binary.op - TOK_EQ]);
-        print_column_value(&right); printf("= %d\n", result.bool_value);
-      } else {
-        LOG_DEBUG("RIGHT COL");
-        print_column_value(&right); printf(" %s ", op_to_str[expr->binary.op - TOK_EQ]);
-        print_column_value(&left); printf("= %d\n", result.bool_value);
-      }
       
       return result;
     }
@@ -797,7 +782,6 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
       result.type = TOK_T_BOOL;
       result.bool_value = left.bool_value && right.bool_value;
-      LOG_DEBUG("AND = %d", result.bool_value);
 
       return result;
     }
@@ -811,7 +795,6 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
       result.type = TOK_T_BOOL;
       result.bool_value = left.bool_value || right.bool_value;
-      LOG_DEBUG("OR = %d", result.bool_value);
       return result;
     }
 
@@ -820,7 +803,6 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
             
       result.type = TOK_T_BOOL;
       result.bool_value = !operand.bool_value;
-      LOG_DEBUG("NOT = %d", result.bool_value);
       return result;
     }
     default:
@@ -918,7 +900,6 @@ bool like_match(char* str, char* pattern) {
       if (!*str) return false;
       pattern++;
       bool res = match_char_class(&pattern, str);
-      LOG_DEBUG("%d > %s %s", !res, str, pattern);
       if (!res) return false;
     } else {
       if (*str != *pattern) return false;
