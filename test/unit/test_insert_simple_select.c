@@ -6,7 +6,7 @@
 #include "executor.h"
 #include "testing.h"
 
-START_TEST(test_complex_where_conditions) {
+START_TEST(test_insert_simple_select) {
   INIT_TEST(ctx);
 
   char* setup_queries[] = {
@@ -56,13 +56,13 @@ START_TEST(test_complex_where_conditions) {
   
   for (int i = 0; i < sizeof(setup_queries) / sizeof(setup_queries[0]); i++) {
     printf("Executing setup query #%d: %s\n", i + 1, setup_queries[i]);
-    ExecutionResult res = process(ctx, setup_queries[i]);
+    ExecutionResult res = process(ctx, setup_queries[i]).exec;
     ck_assert_int_eq(res.code, 0);
   }
 
   for (int i = 0; i < sizeof(complex_where_cases) / sizeof(complex_where_cases[0]); i++) {
     printf("Executing complex WHERE query #%d: %s\n", i + 1, complex_where_cases[i].query);
-    ExecutionResult res = process(ctx, complex_where_cases[i].query);
+    ExecutionResult res = process(ctx, complex_where_cases[i].query).exec;
   
     ck_assert_int_eq(res.code, 0);
     ck_assert_msg(res.row_count == complex_where_cases[i].expected_rows,
@@ -83,7 +83,7 @@ Suite* complex_where_suite(void) {
   Suite* s = suite_create("ComplexWhere");
   TCase* tc = tcase_create("ComplexWhereTests");
 
-  tcase_add_test(tc, test_complex_where_conditions);
+  tcase_add_test(tc, test_insert_simple_select);
   suite_add_tcase(s, tc);
   return s;
 }

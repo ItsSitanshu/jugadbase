@@ -48,7 +48,7 @@ START_TEST(test_read_table_schema) {
 
   for (int i = 0; i < sizeof(create_queries) / sizeof(create_queries[0]); i++) {
     printf("Executing query #%d: %s\n", i + 1, create_queries[i]);
-    ExecutionResult res = process(ctx, create_queries[i]);
+    ExecutionResult res = process(ctx, create_queries[i]).exec;
     ck_assert_int_eq(res.code, 0);
   }
 

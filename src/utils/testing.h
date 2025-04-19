@@ -4,7 +4,8 @@
 
 #define INIT_TEST(ctx_var)                                                  \
   char path[MAX_PATH_LENGTH];                                                \
-  do {                                                                       \
+  do {                                                                      \
+    *verbosity_level = 2;                                                    \
     const char* __file = __FILE__;                                           \
     const char* __filename = strrchr(__file, '/');                           \
     __filename = (__filename) ? __filename + 1 : __file;                     \
