@@ -30,7 +30,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~`IN` / `BETWEEN`~~
   - ~~FIX BUG: [SELECT](https://github.com/ItsSitanshu/jugadbase/blob/main/src/db/parser.c#L459-L534) requires back-trackable parser~~
   - ~~`LIM` and `OFFSET`~~
-  - Ordering `ODR` (`ASRT` and `DSRT`)
+  - ~~Ordering `ODR` (`ASRT` and `DSRT`)~~
 - Important logic and functions for dynamic types
   - Datetime
   - Json
