@@ -103,7 +103,8 @@ static char* tolower_copy(const char* s) {
 static const char* token_type_strings[] = {
   "i",   "vch",  "ch",   "tex",
   "b",   "f",   "d",   "dec",
-  "dt",  "tm",  "dtm", "ts",
+  "dt",  "tm", "tmtz", "dtm",
+  "dttz", "ts", "tstz", "tint",
   "blb", "jsn",  "uid",  "ser",
   "u",   "str"
 };

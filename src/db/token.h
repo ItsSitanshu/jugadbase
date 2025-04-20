@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NO_OF_KEYWORDS 66
+#define NO_OF_KEYWORDS 70
 #define KEYWORDS keywords
 
 #define MAX_KEYWORD_LEN 9
@@ -27,10 +27,14 @@ typedef struct Token {
     TOK_T_FLOAT,         // FLOAT
     TOK_T_DOUBLE,        // DOUBLE
     TOK_T_DECIMAL,       // DECIMAL
-    TOK_T_DATE,          // DATE
-    TOK_T_TIME,          // TIME
-    TOK_T_DATETIME,      // DATETIME
-    TOK_T_TIMESTAMP,     // TIMESTAMP
+    TOK_T_DATE,    
+    TOK_T_TIME,    
+    TOK_T_TIME_TZ,    
+    TOK_T_DATETIME,    
+    TOK_T_DATETIME_TZ,    
+    TOK_T_TIMESTAMP,    
+    TOK_T_TIMESTAMP_TZ,    
+    TOK_T_INTERVAL,
     TOK_T_BLOB,          // BLOB
     TOK_T_JSON,          // JSON
     TOK_T_UUID,          // UUID
@@ -133,23 +137,26 @@ typedef struct Token {
 } Token;
 
 #define VALID_TYPES_MASK ( \
-  (1 << TOK_T_INT) |      \
-  (1 << TOK_T_VARCHAR) |  \
-  (1 << TOK_T_CHAR) |     \
-  (1 << TOK_T_TEXT) |     \
-  (1 << TOK_T_BOOL) |     \
-  (1 << TOK_T_FLOAT) |    \
-  (1 << TOK_T_DOUBLE) |   \
-  (1 << TOK_T_DECIMAL) |  \
-  (1 << TOK_T_DATE) |     \
-  (1 << TOK_T_TIME) |     \
-  (1 << TOK_T_DATETIME) | \
-  (1 << TOK_T_TIMESTAMP) |\
-  (1 << TOK_T_BLOB) |     \
-  (1 << TOK_T_JSON) |     \
-  (1 << TOK_T_UUID) |     \
-  (1 << TOK_T_SERIAL) |      \
-  (1 << TOK_T_UINT)       \
+  (1 << TOK_T_INT) |           \
+  (1 << TOK_T_VARCHAR) |       \
+  (1 << TOK_T_CHAR) |          \
+  (1 << TOK_T_TEXT) |          \
+  (1 << TOK_T_BOOL) |          \
+  (1 << TOK_T_FLOAT) |         \
+  (1 << TOK_T_DOUBLE) |        \
+  (1 << TOK_T_DECIMAL) |       \
+  (1 << TOK_T_DATE) |          \
+  (1 << TOK_T_TIME) |          \
+  (1 << TOK_T_TIME_TZ) |       \
+  (1 << TOK_T_DATETIME) |      \
+  (1 << TOK_T_DATETIME_TZ) |   \
+  (1 << TOK_T_TIMESTAMP) |     \
+  (1 << TOK_T_TIMESTAMP_TZ) |  \
+  (1 << TOK_T_BLOB) |          \
+  (1 << TOK_T_JSON) |          \
+  (1 << TOK_T_UUID) |          \
+  (1 << TOK_T_SERIAL) |        \
+  (1 << TOK_T_UINT)            \
 )
 
 #endif // TOKEN_H
