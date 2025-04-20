@@ -59,3 +59,9 @@ node_modules/
 .next/
 *.jdb
 CMakeCache.txt
+
+target/
+!src/viie/Cargo.lock
+!src/coco/Cargo.lock
+
+Cargo.lock
