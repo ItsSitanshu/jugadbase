@@ -1041,6 +1041,46 @@ ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
   }
 }
 
+
+ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema) {
+  ExprNode* node = parser_parse_term(parser, schema);
+
+  while (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
+    uint16_t op = parser->cur->type;
+    parser_consume(parser);
+    ExprNode* right = parser_parse_term(parser, schema);
+
+    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    new_node->type = EXPR_BINARY_OP;
+    new_node->binary.op = op;
+    new_node->binary.left = node;
+    new_node->binary.right = right;
+    node = new_node;
+  }
+
+  return node;
+}
+
+ExprNode* parser_parse_term(Parser* parser, TableSchema* schema) {
+  ExprNode* node = parser_parse_unary(parser, schema);
+
+  while (parser->cur->type == TOK_MUL || parser->cur->type == TOK_DIV || parser->cur->type == TOK_MOD) {
+    uint16_t op = parser->cur->type;
+
+    parser_consume(parser);
+    ExprNode* right = parser_parse_unary(parser, schema);
+
+    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    new_node->type = EXPR_BINARY_OP;
+    new_node->binary.op = op;
+    new_node->binary.left = node;
+    new_node->binary.right = right;
+    node = new_node;
+  }
+
+  return node;
+}
+
 ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema) {
   if (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
     uint16_t op = parser->cur->type;
@@ -1056,47 +1096,7 @@ ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema) {
     return node;
   }
 
-  return parser_parse_term(parser, schema); 
-}
-
-
-ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema) {
-  ExprNode* node = parser_parse_unary(parser, schema);
-
-  while (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
-    uint16_t op = parser->cur->type;
-    parser_consume(parser);
-    ExprNode* right = parser_parse_unary(parser, schema);
-
-    ExprNode* new_node = calloc(1, sizeof(ExprNode));
-    new_node->type = EXPR_BINARY_OP;
-    new_node->binary.op = op;
-    new_node->binary.left = node;
-    new_node->binary.right = right;
-    node = new_node;
-  }
-
-  return node;
-}
-
-ExprNode* parser_parse_term(Parser* parser, TableSchema* schema) {
-  ExprNode* node = parser_parse_primary(parser, schema);
-
-  while (parser->cur->type == TOK_MUL || parser->cur->type == TOK_DIV || parser->cur->type == TOK_MOD) {
-    uint16_t op = parser->cur->type;
-
-    parser_consume(parser);
-    ExprNode* right = parser_parse_primary(parser, schema);
-
-    ExprNode* new_node = calloc(1, sizeof(ExprNode));
-    new_node->type = EXPR_BINARY_OP;
-    new_node->binary.op = op;
-    new_node->binary.left = node;
-    new_node->binary.right = right;
-    node = new_node;
-  }
-
-  return node;
+  return parser_parse_primary(parser, schema); 
 }
 
 ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {

@@ -486,10 +486,10 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
       for (int k = 0; k < cmd->value_counts[0]; k++) {
         char* colname = cmd->columns[k];
         int col_index = find_column_index(schema, colname);
-
-        row->values[col_index] = evaluate_expression(cmd->values[0][k], temp, schema, ctx, schema_idx);
+        
+        row->values[col_index] = evaluate_expression(cmd->values[0][k], row, schema, ctx, schema_idx);
         bool valid_conversion = infer_and_cast_value(&row->values[col_index], schema->columns[col_index].type);
-    
+        
         if (!valid_conversion) {          
           return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};;
         }
@@ -499,6 +499,10 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
       }
 
       rows_updated++;
+    }
+    
+    if (rows_updated > 0) {
+      page->is_dirty = true;
     }
   }
 
@@ -635,24 +639,24 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       switch (type) {
         case TOK_T_INT:
         case TOK_T_UINT:
-          result.type = TOK_T_INT;
-          switch (expr->binary.op) {
-            case TOK_ADD: result.int_value = left.int_value + right.int_value; break;
-            case TOK_SUB: result.int_value = left.int_value - right.int_value; break;
-            case TOK_MUL: result.int_value = left.int_value * right.int_value; break;
-            case TOK_DIV: result.int_value = right.int_value ? left.int_value / right.int_value : 0; break;
-            case TOK_MOD: result.int_value = right.int_value ? left.int_value % right.int_value : 0; break;
-            default: LOG_WARN("Invalid binary-operation found, will produce incorrect results");
-          }
-          break;
+        case TOK_T_SERIAL:
         case TOK_T_FLOAT:
         case TOK_T_DOUBLE:
+          bool valid_conversion = infer_and_cast_va(2,
+            (__c){&left, TOK_T_DOUBLE},
+            (__c){&right, TOK_T_DOUBLE}  
+          );
+
+          if (!valid_conversion) {          
+            return (ColumnValue){0};
+          }
+          
           result.type = TOK_T_DOUBLE;
           switch (expr->binary.op) {
             case TOK_ADD: result.double_value = left.double_value + right.double_value; break;
             case TOK_SUB: result.double_value = left.double_value - right.double_value; break;
             case TOK_MUL: result.double_value = left.double_value * right.double_value; break;
-            case TOK_DIV: result.double_value = right.double_value ? left.double_value / right.double_value : 0.0; break;
+            case TOK_DIV: result.double_value = left.double_value / right.double_value; break;
             default: LOG_WARN("Invalid binary-operation found, will produce incorrect results");
           }
           break;
