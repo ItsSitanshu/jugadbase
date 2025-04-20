@@ -873,10 +873,99 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       col_val->bool_value = (strcmp(parser->cur->value, "true") == 0);
       break;
     case TOK_L_STRING:
-      // date time, uuid
-      col_val->type = TOK_T_STRING;
-      strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
-      col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';  // Null-terminate
+      char temp_str[MAX_IDENTIFIER_LEN] = {0};
+      memcpy(temp_str, parser->cur->value, MAX_IDENTIFIER_LEN);
+      size_t value_len = strlen(parser->cur->value);
+
+      DateTime dt;
+      DateTime_TZ dt_tz;
+      __dt temp_dt;
+      bool has_time_component = false;
+      bool has_date_component = false;
+      bool has_timezone = false;
+      
+      has_timezone = (strpbrk(temp_str, "+-") != NULL);
+      
+      if (has_timezone && parse_to_datetime_TZ(temp_str, &dt_tz)) {
+        col_val->type = TOK_T_DATETIME_TZ;
+        memcpy(&col_val->datetime_tz_value, &dt_tz, sizeof(DateTime_TZ));
+      } else if (parse_to_datetime(temp_str, &dt)) {
+        has_time_component = (dt.hour != 0 || dt.minute != 0 || dt.second != 0);
+        
+        bool contains_time_separator = (strchr(temp_str, ':') != NULL);
+        bool contains_date_separator = (strchr(temp_str, '-') != NULL);
+        
+        if (contains_date_separator && contains_time_separator) {
+          col_val->type = TOK_T_DATETIME;
+          memcpy(&col_val->datetime_value, &dt, sizeof(DateTime));
+        } else if (contains_date_separator) {
+          col_val->type = TOK_T_DATE;
+          col_val->date_value = encode_date(dt.year, dt.month, dt.day);
+        } else if (contains_time_separator) {
+          col_val->type = TOK_T_TIME;
+          col_val->time_value = encode_time(dt.hour, dt.minute, dt.second);
+        } else {
+          col_val->type = TOK_T_STRING;
+          strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
+          col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';
+        }
+
+        if (parse_datetime(temp_str, &temp_dt)) {
+          has_time_component = (temp_dt.hour != 0 || temp_dt.minute != 0 || temp_dt.second != 0);
+          has_date_component = (temp_dt.year != JUGADBASE_EPOCH_YEAR || temp_dt.month != 1 || temp_dt.day != 1);
+          
+          if (has_date_component && has_time_component) {
+            col_val->type = TOK_T_TIMESTAMP;
+            col_val->timestamp_value = encode_timestamp(&temp_dt);
+          } else if (has_date_component) {
+            col_val->type = TOK_T_DATE;
+            col_val->date_value = encode_date(temp_dt.year, temp_dt.month, temp_dt.day);
+          } else if (has_time_component) {
+            col_val->type = TOK_T_TIME;
+            col_val->time_value = encode_time(temp_dt.hour, temp_dt.minute, temp_dt.second);
+          }
+        }
+
+        char* time_start = strchr(temp_str, ' '); 
+        if (time_start != NULL) {
+          time_start++; 
+        } else {
+          break;
+        }
+
+
+        if (has_timezone && strchr(time_start, ':') != NULL) {
+          int hours = 0, minutes = 0, seconds = 0;
+          int tz_hours = 0, tz_minutes = 0;
+          char tz_sign = '+';
+          char* tz_part = strpbrk(time_start, "+-");
+          LOG_DEBUG("! %s", tz_part);
+
+          
+          if (tz_part) {
+            if (sscanf(time_start, "%d:%d:%d", &hours, &minutes, &seconds) >= 2) {
+              tz_sign = *tz_part;
+              tz_part++;
+              
+              if (sscanf(tz_part, "%d:%d", &tz_hours, &tz_minutes) != 2) {
+                sscanf(tz_part, "%2d%2d", &tz_hours, &tz_minutes);
+              }
+              
+              int32_t offset = tz_hours * 60 + tz_minutes;
+              if (tz_sign == '-') {
+                offset = -offset;
+              }
+              
+              col_val->type = TOK_T_TIME_TZ;
+              col_val->time_tz_value = encode_time_TZ(hours, minutes, seconds, offset);
+            }
+          }
+        }
+      } else {
+        col_val->type = TOK_T_STRING;
+        strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
+        col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';
+      }
       break;
     case TOK_L_CHAR:
       col_val->type = TOK_T_CHAR;
@@ -887,6 +976,8 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       REPORT_ERROR(parser->lexer, "SYE_E_UNSUPPORTED_LITERAL_TYPE");
       return false;
   }
+
+  LOG_DEBUG("%s", token_type_strings[col_val->type]);
 
   parser_consume(parser);
   return true;
@@ -1281,14 +1372,15 @@ bool is_primary_key_column(TableSchema* schema, int column_index) {
 
 void print_column_value(ColumnValue* val) {
   if (val->is_null) {
-    // printf("nil");
     return;
   }
 
   printf("%s[", get_token_type(val->type));
 
   switch (val->type) {
-    case TOK_T_INT: case TOK_T_UINT: case TOK_T_SERIAL: 
+    case TOK_T_INT:
+    case TOK_T_UINT:
+    case TOK_T_SERIAL:
       printf("%ld", val->int_value);
       break;
 
@@ -1310,6 +1402,58 @@ void print_column_value(ColumnValue* val) {
       printf("\"%s\"", val->str_value);
       break;
 
+    case TOK_T_DATE: {
+      int year, month, day;
+      decode_date(val->date_value, &year, &month, &day);
+      printf("%04d-%02d-%02d", year, month, day);
+      break;
+    }
+
+    case TOK_T_TIME: {
+      int hour, minute, second;
+      decode_time(val->time_value, &hour, &minute, &second);
+      printf("%02d:%02d:%02d", hour, minute, second);
+      break;
+    }
+
+    case TOK_T_DATETIME: {
+      DateTime dt = val->datetime_value;
+      printf("%04d-%02d-%02dT%02d:%02d:%02d", dt.year, dt.month, dt.day,
+             dt.hour, dt.minute, dt.second);
+      break;
+    }
+
+    case TOK_T_TIMESTAMP: {
+      __dt ts;
+      decode_timestamp(val->timestamp_value, &ts);
+      printf("%04d-%02d-%02dT%02d:%02d:%02d", ts.year, ts.month, ts.day,
+             ts.hour, ts.minute, ts.second);
+      break;
+    }
+
+    case TOK_T_TIME_TZ: {
+      int hour, minute, second, offset_minutes;
+      decode_time_TZ(val->time_tz_value, &hour, &minute, &second, &offset_minutes);
+      int abs_offset = abs(offset_minutes);
+      int offset_hours = abs_offset / 60;
+      int offset_min = abs_offset % 60;
+      printf("%02d:%02d:%02d%c%02d:%02d", hour, minute, second,
+             (offset_minutes >= 0 ? '+' : '-'), offset_hours, offset_min);
+      break;
+    }
+
+    case TOK_T_DATETIME_TZ: {
+      DateTime_TZ dt = val->datetime_tz_value;
+      int abs_offset = abs(dt.time_zone_offset);
+      int offset_hours = abs_offset / 60;
+      int offset_min = abs_offset % 60;
+      printf("%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d", dt.year, dt.month, dt.day,
+             dt.hour, dt.minute, dt.second,
+             (dt.time_zone_offset >= 0 ? '+' : '-'),
+             offset_hours, offset_min);
+      break;
+    }
+
     default:
       printf("unprintable type: %d", val->type);
       break;
@@ -1317,6 +1461,7 @@ void print_column_value(ColumnValue* val) {
 
   printf("]");
 }
+
 
 char* sprintf_column_value(ColumnValue* val, char* buffer) {  
   if (val->is_null) {

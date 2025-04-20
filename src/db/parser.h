@@ -4,6 +4,7 @@
 #include "lexer.h"
 #include "io.h"
 #include "btree.h"
+#include "datetime.h"
 
 #include "../utils/security.h"
 
@@ -53,10 +54,14 @@ typedef struct {
     uint8_t blob_value[MAX_BLOB_SIZE]; 
     uint8_t json_value[MAX_JSON_SIZE]; 
     struct { int precision; int scale; char decimal_value[MAX_DECIMAL_LEN]; } decimal;
-    struct { int year, month, day; } date;
-    struct { int hours, minutes, seconds; } time;
-    struct { int year, month, day, hours, minutes, seconds; } datetime;
-    struct { int timestamp; } timestamp;
+    Date date_value;
+    TimeStored time_value;
+    Time_TZ time_tz_value;    
+    DateTime datetime_value;
+    DateTime_TZ datetime_tz_value;
+    Timestamp timestamp_value;
+    Timestamp_TZ timestamp_tz_value;
+    Interval interval;
   };
 } ColumnValue;
 
