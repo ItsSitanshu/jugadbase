@@ -1021,13 +1021,19 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
     case TOK_T_DECIMAL:
       return &(col_val->decimal.decimal_value);
     case TOK_T_DATE:
-      return &(col_val->date);
+      return &(col_val->date_value);
     case TOK_T_TIME:
-      return &(col_val->time);
+      return &(col_val->time_value);
+    case TOK_T_TIME_TZ:
+      return &(col_val->time_tz_value);
     case TOK_T_DATETIME:
-      return &(col_val->datetime);
+      return &(col_val->datetime_value);
+    case TOK_T_DATETIME_TZ:
+      return &(col_val->datetime_tz_value);
     case TOK_T_TIMESTAMP:
-      return &(col_val->timestamp);
+      return &(col_val->timestamp_value);
+    case TOK_T_TIMESTAMP_TZ:
+      return &(col_val->timestamp_tz_value);
     default:
       return NULL;
   }
@@ -1065,6 +1071,8 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
     return true;
   }
 
+  LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
+
   switch (col_val->type) {
     case TOK_T_INT:
     case TOK_T_UINT:
@@ -1075,10 +1083,10 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         col_val->double_value = (double)(col_val->int_value);
       } else if (target_type == TOK_T_BOOL) {
         col_val->bool_value = (col_val->int_value != 0);
-      } else if (target_type == TOK_T_INT ||
-        target_type == TOK_T_UINT ||
-        target_type == TOK_T_SERIAL) {
-          (void)(0);
+      } else if (target_type == TOK_T_INT || 
+                 target_type == TOK_T_UINT || 
+                 target_type == TOK_T_SERIAL) {
+          (void)(0);  
       } else {
         return false;
       }
@@ -1130,7 +1138,7 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
     }
     case TOK_T_VARCHAR: {
       if (target_type == TOK_T_STRING) {
-        (void)(0);
+        (void)(0);  // No casting needed
       }
       break;
     }
@@ -1150,14 +1158,12 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         col_val->float_value = strtof(col_val->str_value, &endptr);
         if (*endptr != '\0') {
           return false;
-        } else {
         }
       } else if (target_type == TOK_T_DOUBLE) {
         char* endptr;
         col_val->double_value = strtod(col_val->str_value, &endptr);
         if (*endptr != '\0') {
           return false;
-        } else {
         }
       } else if (target_type == TOK_T_BOOL) {
         if (strcasecmp(col_val->str_value, "true") == 0 || 
@@ -1170,63 +1176,84 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
           return false;
         }
       } else if (target_type == TOK_T_VARCHAR) {
-        (void)(0);
+        (void)(0);  // No casting needed
       } else {
         return false;
       }
       break;
     }
-    // case TOK_T_BLOB: {
-    //   if (target_type == TOK_T_STRING) {
-    //     if (col_val->blob_data && col_val->blob_size > 0) {
-    //       col_val->str_value = malloc(col_val->blob_size + 1);
-    //       memcpy(col_val->str_value, col_val->blob_data, col_val->blob_size);
-    //       col_val->str_value[col_val->blob_size] = '\0';
-    //       col_val->type = target_type;
-    //     } else {
-    //       return false;
-    //     }
-    //   } else {
-    //     return false;
-    //   }
-    //   break;
-    // }
-    // case TOK_T_JSON: {
-    //   if (target_type == TOK_T_STRING) {
-    //     if (col_val->json_value) {
-    //       col_val->str_value = strdup(col_val->json_value);
-    //       col_val->type = target_type;
-    //     } else {
-    //       return false;
-    //     }
-    //   } else {
-    //     return false;
-    //   }
-    //   break;
-    // }
-    // case TOK_T_DECIMAL: {
-    //   if (target_type == TOK_T_FLOAT) {
-    //     col_val->type = target_type;
-    //     col_val->float_value = (float)(col_val->decimal.decimal_value);
-    //   } else if (target_type == TOK_T_DOUBLE) {
-    //     col_val->type = target_type;
-    //     col_val->double_value = (double)(col_val->decimal.decimal_value);
-    //   } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
-    //     col_val->type = target_type;
-    //     col_val->int_value = (int64_t)(col_val->decimal.decimal_value);
-    //   } else if (target_type == TOK_T_STRING) {
-    //     // Convert decimal to string (implementation depends on decimal structure)
-    //     // ...
-    //     col_val->type = target_type;
-    //   } else {
-    //     return false;
-    //   }
-    //   break;
-    // }
+
+    case TOK_T_DATE: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = (int64_t)(col_val->date_value); 
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_TIME: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = (int64_t)(col_val->time_value); 
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_TIMESTAMP: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = col_val->timestamp_value.timestamp;
+      } else if (target_type == TOK_T_TIMESTAMP_TZ) {
+        col_val->timestamp_tz_value.timestamp = col_val->timestamp_value.timestamp;
+        col_val->timestamp_tz_value.time_zone_offset = 0; 
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_TIMESTAMP_TZ: {
+      if (target_type == TOK_T_TIMESTAMP) {
+        col_val->timestamp_value.timestamp = col_val->timestamp_tz_value.timestamp;
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_TIME_TZ: {
+      if (target_type == TOK_T_TIME) {
+        col_val->time_value = col_val->timestamp_tz_value.timestamp;
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_INTERVAL: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = (int64_t)(col_val->interval.micros); 
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_DATETIME: {
+      if (target_type == TOK_T_TIMESTAMP) {
+        col_val->timestamp_value = datetime_to_timestamp(col_val->datetime_value);
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_DATETIME_TZ: {
+      if (target_type == TOK_T_TIMESTAMP_TZ) {
+        col_val->timestamp_tz_value = datetime_TZ_to_timestamp_TZ(col_val->datetime_tz_value);
+      } else {
+        return false;
+      }
+      break;
+    }
     default:
       return false;
   }
-  
+
   col_val->type = target_type;
   return true;
 }
