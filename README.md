@@ -22,7 +22,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~`UPDATE`~~
   - ~~`DELETE`~~
 - ~~Data from [load_pages()](https://github.com/ItsSitanshu/jugadbase/blob/4c0066d1993d3ae9dd8b39eb77508cc41a76551c/src/db/context.c#L739-L782) isn't being loaded / read properly~~   
-- Support advanced queries
+- ~~Support semi-advanced queries~~
   - ~~Mathematical operations~~
     - ~~basic~~
     - ~~functions~~
@@ -31,6 +31,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~FIX BUG: [SELECT](https://github.com/ItsSitanshu/jugadbase/blob/main/src/db/parser.c#L459-L534) requires back-trackable parser~~
   - ~~`LIM` and `OFFSET`~~
   - ~~Ordering `ODR` (`ASRT` and `DSRT`)~~
+- ~~FIX BUG: Update command on local variables dont work properly~~
 - Important logic and functions for dynamic types
   - Datetime
   - Json
