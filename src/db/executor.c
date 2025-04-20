@@ -43,6 +43,8 @@ Result execute_cmd(Context* ctx, JQLCommand* cmd) {
   }
 
 
+  printf("%s (effected %u rows)\n", result.exec.message, result.exec.row_count);
+
   if (result.exec.rows && result.exec.row_count > 0) {
     printf("-> Returned %u row(s):\n", result.exec.row_count);
 
@@ -477,7 +479,6 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
     for (uint16_t j = 0; j < page->num_rows; j++) {
       Row* row = &page->rows[j];
       Row* temp = malloc(sizeof(Row)); 
-      memcpy(temp, &page->rows[j], sizeof(Row));
 
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
         continue;
@@ -495,7 +496,6 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
         }
 
         row->null_bitmap = cmd->bitmap;
-        free(temp);
       }
 
       rows_updated++;
@@ -743,17 +743,21 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
       ColumnValue value = resolve_expr_value(expr->between.value, row, schema, ctx, schema_idx, &type);
       ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, ctx, schema_idx, &type);
       ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, ctx, schema_idx, &type);
-    
-      ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
-    
-      if (value.type == TOK_T_INT) {
-        result.bool_value = (value.int_value >= lower.int_value) && (value.int_value <= upper.int_value);
-      } /* else if (value.type == TOK_T_DATE) {
-        result.bool_value = (value.date_value >= lower.date_value) && (value.date_value <= upper.date_value);
-      } */ else {
-        LOG_ERROR("BETWEEN only supports INT or DATE values");
-        result.is_null = true;
+      
+      bool valid_conversion = infer_and_cast_va(3,
+        (__c){&lower, TOK_T_DOUBLE},
+        (__c){&upper, TOK_T_DOUBLE},
+        (__c){&value, TOK_T_DOUBLE}
+      );
+
+      if (!valid_conversion) {
+        LOG_ERROR("BETWEEN only supports NUMERIC or DATE values");        
+        return (ColumnValue){0};
       }
+
+      ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
+      
+      result.bool_value = (value.double_value >= lower.double_value) && (value.double_value <= upper.double_value);
     
       return result;
     }

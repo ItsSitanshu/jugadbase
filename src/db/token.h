@@ -85,7 +85,7 @@ typedef struct Token {
     TOK_BY,       // BY
     TOK_GRP,      // GROUP
     TOK_HAV,      // HAVING
-    TOK_LIM,      // LIMIT
+    TOK_LIM,      // LIM
     TOK_OFF,      // OFFSET
     TOK_VAL,      // VALUES
     TOK_SET,      // SET

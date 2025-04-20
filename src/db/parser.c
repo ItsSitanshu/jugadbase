@@ -556,9 +556,9 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   command.value_counts[0] = value_count;
 
   parse_where_clause(parser, ctx, &command, idx);
+  parse_order_by_clause(parser, ctx, &command, idx);
   parse_limit_clause(parser, &command);
   parse_offset_clause(parser, &command);
-  parse_order_by_clause(parser, ctx, &command, idx);
 
   command.is_invalid = false;
   return command;
@@ -583,7 +583,7 @@ void parse_limit_clause(Parser* parser, JQLCommand* command) {
       command->limit = (uint32_t)strtoul(parser->cur->value, &endptr, 10);
       parser_consume(parser);
     } else {
-      REPORT_ERROR(parser->lexer, "E_INVALID_LIMIT_VALUE");
+      REPORT_ERROR(parser->lexer, "E_INVALID_LIM_VALUE");
     }
   }
 }
