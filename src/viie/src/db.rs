@@ -5,6 +5,8 @@ use crate::vector::Vector;
 use std::collections::HashMap;
 use std::fmt;
 use std::error::Error;
+use num_traits::{Float, Num, NumCast};
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub enum VectorDBError {
@@ -37,12 +39,18 @@ impl From<Box<dyn Error>> for VectorDBError {
 
 pub type Result<T> = std::result::Result<T, VectorDBError>;
 
-pub struct VectorDB {
-    collections: HashMap<String, VectorIndex>,
+pub struct VectorDB<T = f32>
+where
+    T: Num + NumCast + Clone + Debug + Float,
+{
+    collections: HashMap<String, VectorIndex<T>>,
     config: EmbeddingConfig
 }
 
-impl VectorDB {
+impl<T> VectorDB<T>
+where
+    T: Num + NumCast + Clone + Debug + Float,
+{
     pub fn new() -> Self {
         VectorDB {
             collections: HashMap::new(),
@@ -61,7 +69,7 @@ impl VectorDB {
         if self.collections.contains_key(name) {
             return Err(VectorDBError::CollectionExists);
         }
-        self.collections.insert(name.to_string(), VectorIndex::with_dim(dim));
+        self.collections.insert(name.to_string(), VectorIndex::<T>::with_dim(dim));
         Ok(())
     }
 
@@ -77,7 +85,7 @@ impl VectorDB {
         self.collections.keys().cloned().collect()
     }
 
-    pub fn insert(&mut self, collection: &str, id: String, vector: Vector) -> Result<()> {
+    pub fn insert(&mut self, collection: &str, id: String, vector: Vector<T>) -> Result<()> {
         if let Some(idx) = self.collections.get_mut(collection) {
             idx.insert(id, vector);
             Ok(())
@@ -86,16 +94,17 @@ impl VectorDB {
         }
     }
 
-    pub fn update(&mut self, collection: &str, id: String, vector: Vector) -> Result<()> {
+    pub fn update(&mut self, collection: &str, id: &str, vector: Vector<T>) -> Result<()> {
         if let Some(idx) = self.collections.get_mut(collection) {
-            idx.update(id, vector);
+            idx.update(id, vector)
+                .map_err(|e| VectorDBError::OtherError(e))?;
             Ok(())
         } else {
             Err(VectorDBError::CollectionNotFound)
         }
     }
 
-    pub fn delete(&mut self, collection: &str, id: String) -> Result<()> {
+    pub fn delete(&mut self, collection: &str, id: &str) -> Result<()> {
         if let Some(idx) = self.collections.get_mut(collection) {
             idx.delete(id);
             Ok(())
@@ -104,15 +113,17 @@ impl VectorDB {
         }
     }
 
-    pub fn search(&self, collection: &str, query: &Vector, top_k: usize) -> Result<Vec<(String, f32)>> {
+    pub fn search(&self, collection: &str, query: &Vector<T>, top_k: usize) -> Result<Vec<(String, f32)>> {
         if let Some(idx) = self.collections.get(collection) {
             Ok(idx.search(query, top_k))
         } else {
             Err(VectorDBError::CollectionNotFound)
         }
     }
+}
 
-    fn embed_content(&self, content: &str, dim: usize, technique: &str) -> Result<Vector> {
+impl VectorDB<f32> {
+    fn embed_content(&self, content: &str, dim: usize, technique: &str) -> Result<Vector<f32>> {
         let embedding_method = match technique {
             "random" => EmbeddingMethod::Random,
             "ascii_sum" => EmbeddingMethod::AsciiSum,
@@ -132,7 +143,6 @@ impl VectorDB {
             }
         };
         
-        // Create a temporary config with the specified method
         let config = EmbeddingConfig {
             method: embedding_method,
             dim,
@@ -168,5 +178,66 @@ impl VectorDB {
             self.embed_and_insert(collection, id, &content, technique)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::vector::Vector;
+
+    #[test]
+    fn test_vector_db_operations() {
+        let mut db = VectorDB::<f32>::new();
+        
+        // Test creating collections
+        assert!(db.create_collection("test_collection", 3).is_ok());
+        assert!(db.create_collection("test_collection", 3).is_err());
+        
+        // Test inserting vectors
+        let v1 = Vector::new(&[1.0f32, 2.0, 3.0]);
+        assert!(db.insert("test_collection", "vec1".to_string(), v1.clone()).is_ok());
+        assert!(db.insert("nonexistent", "vec1".to_string(), v1.clone()).is_err());
+        
+        // Test updating vectors
+        let v2 = Vector::new(&[4.0f32, 5.0, 6.0]);
+        assert!(db.update("test_collection", "vec1", v2.clone()).is_ok());
+        assert!(db.update("test_collection", "nonexistent", v2.clone()).is_err());
+        
+        // Test searching
+        let query = Vector::new(&[4.0f32, 5.0, 6.0]);
+        let results = db.search("test_collection", &query, 10).unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "vec1");
+        assert_eq!(results[0].1, 1.0);
+        
+        // Test deleting vectors
+        assert!(db.delete("test_collection", "vec1").is_ok());
+        let results = db.search("test_collection", &query, 10).unwrap();
+        assert_eq!(results.len(), 0);
+        
+        // Test deleting collections
+        assert!(db.delete_collection("test_collection").is_ok());
+        assert!(db.delete_collection("test_collection").is_err());
+    }
+    
+    #[test]
+    fn test_vector_db_integer_type() {
+        let mut db = VectorDB::<f64>::new();
+        
+        assert!(db.create_collection("int_collection", 2).is_ok());
+        
+        let v1 = Vector::new(&[10.0, 20.0]);
+        let v2 = Vector::new(&[30.0, 40.0]);
+        
+        assert!(db.insert("int_collection", "vec1".to_string(), v1).is_ok());
+        assert!(db.insert("int_collection", "vec2".to_string(), v2).is_ok());
+        
+        let query = Vector::new(&[15.0, 25.0]);
+        let results = db.search("int_collection", &query, 2).unwrap();
+        
+        assert_eq!(results.len(), 2);
+        // First result should be closer to query
+        assert_eq!(results[0].0, "vec1");
     }
 }

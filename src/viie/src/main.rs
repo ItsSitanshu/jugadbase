@@ -3,6 +3,7 @@
 mod vector; 
 mod db;
 mod index;
+mod embedding;
 
 use db::VectorDB;
 use vector::Vector;
@@ -72,7 +73,7 @@ fn main() {
                         .filter_map(|s| s.trim().parse().ok())
                         .collect();
                     let vector = Vector::new(&values);
-                    let _ = db.update(parts[1], parts[2].to_string(), vector);
+                    let _ = db.update(parts[1], parts[2], vector);
                     println!("Updated vector into '{}'", parts[1]);
                 } else {
                     println!("Usage: update <collection_name> <id> <values>");
@@ -82,7 +83,7 @@ fn main() {
             cmd if cmd.starts_with("delete") => {
                 let parts: Vec<&str> = cmd.split_whitespace().collect();
                 if parts.len() == 3 {
-                    let _ = db.delete(parts[0], parts[1].to_string());
+                    let _ = db.delete(parts[0], parts[1]);
                 } else {
                     println!("Usage: delete <collection_name> <id>")
                 }
