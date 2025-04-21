@@ -61,6 +61,7 @@ node_modules/
 CMakeCache.txt
 
 target/
+libtorch/
 !src/viie/Cargo.lock
 !src/coco/Cargo.lock
 
