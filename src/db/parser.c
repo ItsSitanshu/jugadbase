@@ -78,7 +78,7 @@ JQLCommand parser_parse(Context* ctx) {
 
   switch (ctx->parser->cur->type) {
     case TOK_CRT:
-      command = parser_parse_create_table(ctx->parser);
+      command = parser_parse_create_table(ctx->parser, ctx);
       break;
     case TOK_INS:
       command = parser_parse_insert(ctx->parser, ctx);
@@ -284,7 +284,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   return true;
 }
 
-JQLCommand parser_parse_create_table(Parser *parser) {
+JQLCommand parser_parse_create_table(Parser* parser, Context* ctx) {
   JQLCommand command;
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_CREATE;
@@ -301,6 +301,25 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   parser_consume(parser);
 
+  bool if_not_exists = false;
+  if (parser->cur->type == TOK_IF) {
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_NOT) {
+      REPORT_ERROR(parser->lexer, "SYE_NOT_AFIF_CT");
+      return command;
+    }
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_EXISTS) {
+      REPORT_ERROR(parser->lexer, "SYE_NOT_AFIF_CT");
+      return command;
+    }
+    parser_consume(parser);
+
+    if_not_exists = true;
+  }
+
   if (parser->cur->type != TOK_ID) {
     REPORT_ERROR(parser->lexer, "SYE_E_TNAFTA");
     return command;
@@ -308,6 +327,16 @@ JQLCommand parser_parse_create_table(Parser *parser) {
 
   strcpy(command.schema->table_name, parser->cur->value);
   parser_consume(parser);
+
+  int idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+
+  if (!is_struct_zeroed(&ctx->tc[idx], sizeof(TableCatalogEntry))) {
+    if (!if_not_exists) {
+      LOG_ERROR("Table `%s` already exists", command.schema->table_name);
+    }
+
+    return command;
+  }
 
   if (parser->cur->type != TOK_LP) {
     REPORT_ERROR(parser->lexer, "SYE_E_PRNAFDYNA");

@@ -245,9 +245,8 @@ void jql_command_free(JQLCommand* cmd);
 
 JQLCommand parser_parse(Context* ctx);
 
-JQLCommand parser_parse_create_table(Parser* parser);
+JQLCommand parser_parse_create_table(Parser* parser, Context* ctx);
 JQLCommand parser_parse_insert(Parser *parser, Context* ctx);
-
 JQLCommand parser_parse_select(Parser* parser, Context* ctx);
 void parse_where_clause(Parser* parser, Context* ctx, JQLCommand* command, uint32_t idx);
 void parse_limit_clause(Parser* parser, JQLCommand* command);
