@@ -1,4 +1,5 @@
 #include "functions.h"
+#include "datetime.h"
 
 FunctionRegistry global_function_registry = {NULL, 0, 0};
 
@@ -36,7 +37,7 @@ void free_function_registry() {
 void register_builtin_functions() {
   register_function("ABS", fn_abs);
   register_function("ROUND", fn_round);
-  // register_function("NOW", fn_now);
+  register_function("NOW", fn_now);
   register_function("SIN", fn_sin);
   register_function("COS", fn_cos);
   register_function("TAN", fn_tan);
@@ -51,8 +52,8 @@ void register_builtin_functions() {
   register_function("REPLACE", fn_replace);
   register_function("COALESCE", fn_coalesce);
   register_function("CAST", fn_cast);
-  // register_function("DATE", fn_date);
-  // register_function("TIME", fn_time);
+  register_function("DATE", fn_date);
+  register_function("TIME", fn_time);
   register_function("IFNULL", fn_ifnull);
   register_function("GREATEST", fn_greatest);
   register_function("LEAST", fn_least);
@@ -118,13 +119,28 @@ ColumnValue fn_round(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   return result;
 }
 
-// ColumnValue fn_now(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-//   ColumnValue result = { .type = TOK_T_DATETIME };
-//   time_t now = time(NULL);
-//   result.datetime_value = *localtime(&now);
-//   result.is_null = false;
-//   return result;
-// }
+
+ColumnValue fn_now(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+  ColumnValue result = { .type = TOK_T_TIMESTAMP_TZ };
+
+  time_t now = time(NULL);
+  struct tm local_tm = *localtime(&now);
+
+  __dt dt = {
+    .year = local_tm.tm_year + 1900,
+    .month = local_tm.tm_mon + 1,
+    .day = local_tm.tm_mday,
+    .hour = local_tm.tm_hour,
+    .minute = local_tm.tm_min,
+    .second = local_tm.tm_sec
+  };
+
+  int32_t tz_offset = get_timezone_offset(); 
+
+  result.timestamp_tz_value = encode_timestamp_TZ(&dt, tz_offset);
+  result.is_null = false;
+  return result;
+}
 
 ColumnValue fn_sin(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
   ColumnValue input = evaluate_expression(args[0], row, schema, ctx, schema_idx);
@@ -212,7 +228,6 @@ ColumnValue fn_pow(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
     return result;
   }
 
-  LOG_DEBUG("%s %s", token_type_strings[base.type], token_type_strings[exponent.type]);
 
   result.double_value = pow((double)base.double_value, (double)exponent.double_value);
   result.type = TOK_T_DOUBLE;
@@ -447,6 +462,32 @@ ColumnValue fn_cast(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
   return result;
 }
 
+ColumnValue fn_date(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+  ColumnValue result = { .type = TOK_T_DATE };
+
+  time_t now = time(NULL);
+  struct tm local_tm = *localtime(&now);
+
+  Date date = encode_date(local_tm.tm_year + 1900, local_tm.tm_mon + 1, local_tm.tm_mday);
+  result.date_value = date;
+  result.is_null = false;
+
+  return result;
+}
+
+ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+  ColumnValue result = { .type = TOK_T_TIME };
+
+  time_t now = time(NULL);
+  struct tm local_tm = *localtime(&now);
+
+  TimeStored time_val = encode_time(local_tm.tm_hour, local_tm.tm_min, local_tm.tm_sec);
+  result.time_value = time_val;
+  result.is_null = false;
+
+  return result;
+}
+
 ColumnValue fn_ifnull(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
   ColumnValue input = evaluate_expression(args[0], row, schema, ctx, schema_idx);
   
@@ -561,7 +602,6 @@ ColumnValue fn_radians(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
     return result;
   }
 
-  LOG_DEBUG("%lf", input.double_value);
   result.double_value = input.double_value * (M_PI / 180.0);
   result.is_null = false;
 

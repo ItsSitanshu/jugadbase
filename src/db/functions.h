@@ -74,8 +74,8 @@ ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
 ColumnValue fn_replace(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue fn_coalesce(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue fn_cast(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
-// ColumnValue fn_date(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
-// ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue fn_date(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue fn_ifnull(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue fn_greatest(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue fn_least(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
