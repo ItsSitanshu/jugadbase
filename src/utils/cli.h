@@ -169,7 +169,6 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
 void print_text_table(ExecutionResult result, JQLCommand* cmd) {
   char* formatted_table = format_text_table(result, cmd);
   if (formatted_table) {
-    printf("%s", formatted_table);
     free(formatted_table);
   } else {
     printf("Error formatting table output\n");
