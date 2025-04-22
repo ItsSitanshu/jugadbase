@@ -125,7 +125,7 @@ Timestamp encode_timestamp(const __dt* dt) {
 
 void decode_timestamp(Timestamp encoded, __dt* out) {
   int64_t total_micros = encoded.timestamp;
-  int64_t days_micros = SECONDS_PER_DAY * MICROS_PER_SECOND;
+  int64_t days_micros = (int64_t)SECONDS_PER_DAY * (int64_t)MICROS_PER_SECOND;
   
   Date days = total_micros / days_micros;
   TimeStored time_micros = total_micros % days_micros;
@@ -144,6 +144,7 @@ Timestamp_TZ encode_timestamp_TZ(const __dt* dt, int32_t tz_offset) {
 
 void decode_timestamp_TZ(Timestamp_TZ encoded, __dt* out) {
   decode_timestamp((Timestamp){encoded.timestamp}, out);
+  out->tz_offset = encoded.time_zone_offset;
 }
 
 DateTime create_datetime(int y, int m, int d, int h, int mi, int s) {
@@ -230,10 +231,7 @@ bool parse_datetime(const char* str, __dt* out) {
     out->hour = values[3];
     out->minute = values[4];
     out->second = values[5];
-    LOG_DEBUG("%d %d %d %d %d %d\n", values[0], values[1], values[2], values[3], values[4], values[5]);
 
-    LOG_DEBUG("=> %s, %d", str, fields_read);
-    LOG_DEBUG("=> %d && %d", is_valid_date(out->year, out->month, out->day), is_valid_time(out->hour, out->minute, out->second));
     return is_valid_date(out->year, out->month, out->day) && 
            is_valid_time(out->hour, out->minute, out->second);
   }
@@ -530,8 +528,8 @@ Interval datetime_diff(DateTime start, DateTime end) {
   
   int64_t diff_micros = end_ts.timestamp - start_ts.timestamp;
   
-  result.days = diff_micros / (SECONDS_PER_DAY * MICROS_PER_SECOND);
-  diff_micros %= (SECONDS_PER_DAY * MICROS_PER_SECOND);
+  result.days = diff_micros /  ((int64_t)SECONDS_PER_DAY * (int64_t)MICROS_PER_SECOND);
+  diff_micros %= ((int64_t)SECONDS_PER_DAY * (int64_t)MICROS_PER_SECOND);
   
   result.micros = diff_micros;
   

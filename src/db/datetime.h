@@ -40,6 +40,7 @@ typedef struct {
 typedef struct {
   int year, month, day;
   int hour, minute, second;
+  int tz_offset;
 } __dt;
 
 typedef struct {
