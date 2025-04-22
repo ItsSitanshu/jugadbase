@@ -248,9 +248,9 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   uint8_t success = 0;
 
   for (uint32_t i = 0; i < cmd->row_count; i++) {
-    if (execute_row_insert(cmd->values[i], ctx, schema_idx, 
-      primary_key_cols, primary_key_vals, schema, column_count)) {
-        success += 1;
+    if (execute_row_insert(cmd->values[i], ctx, schema_idx, primary_key_cols,
+        primary_key_vals, schema, column_count, cmd->columns, cmd->col_count)) {
+      success += 1;
     }
   }
 
@@ -264,7 +264,8 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 
 bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx, 
                       ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
-                      TableSchema* schema, uint8_t column_count) {
+                      TableSchema* schema, uint8_t column_count,
+                      char** columns, uint8_t up_col_count) {
   uint8_t primary_key_count = 0;
 
   Row row = {0};
@@ -290,8 +291,14 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
   row.null_bitmap_size = null_bitmap_size;
   row.null_bitmap = null_bitmap;
   row.row_length = sizeof(row.id) + null_bitmap_size;
+  
 
-  for (uint8_t i = 0; i < column_count; i++) {
+  bool un_spec_flag = up_col_count == 0;
+  if (un_spec_flag) up_col_count = column_count;
+
+  for (uint8_t j = 0; j < up_col_count; j++) {
+    int i = un_spec_flag ? j : find_column_index(schema, columns[j]);
+
     Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, ctx, schema_idx);
     bool valid_conversion = infer_and_cast_value(&cur, schema->columns[i].type);
@@ -307,6 +314,10 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
       free(row.values);
       free(row.null_bitmap);
       return false;
+    }
+
+    if (cur.is_null && schema->columns[i].is_not_null) {
+      LOG_ERROR("Column '%s' is bound by NOT NULL constraint, value breaks constraint.", schema->columns[i].name);
     }
 
     if (cur.is_null) {
@@ -1071,7 +1082,7 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
     return true;
   }
 
-  LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
+  // LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
 
   switch (col_val->type) {
     case TOK_T_INT:
@@ -1182,18 +1193,21 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
       }
       break;
     }
-
     case TOK_T_DATE: {
       if (target_type == TOK_T_INT) {
         col_val->int_value = (int64_t)(col_val->date_value); 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", date_to_string(col_val->date_value));
       } else {
         return false;
-      }
+      } 
       break;
     }
     case TOK_T_TIME: {
       if (target_type == TOK_T_INT) {
         col_val->int_value = (int64_t)(col_val->time_value); 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", time_to_string(col_val->time_value));
       } else {
         return false;
       }
@@ -1205,6 +1219,8 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
       } else if (target_type == TOK_T_TIMESTAMP_TZ) {
         col_val->timestamp_tz_value.timestamp = col_val->timestamp_value.timestamp;
         col_val->timestamp_tz_value.time_zone_offset = 0; 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", timestamp_to_string(col_val->timestamp_value));
       } else {
         return false;
       }
@@ -1213,6 +1229,8 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
     case TOK_T_TIMESTAMP_TZ: {
       if (target_type == TOK_T_TIMESTAMP) {
         col_val->timestamp_value.timestamp = col_val->timestamp_tz_value.timestamp;
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", timestamp_tz_to_string(col_val->timestamp_tz_value));
       } else {
         return false;
       }
@@ -1221,6 +1239,8 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
     case TOK_T_TIME_TZ: {
       if (target_type == TOK_T_TIME) {
         col_val->time_value = col_val->timestamp_tz_value.timestamp;
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", time_tz_to_string(col_val->time_tz_value));
       } else {
         return false;
       }
@@ -1229,6 +1249,8 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
     case TOK_T_INTERVAL: {
       if (target_type == TOK_T_INT) {
         col_val->int_value = (int64_t)(col_val->interval.micros); 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", interval_to_string(col_val->interval));
       } else {
         return false;
       }
@@ -1237,6 +1259,8 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
     case TOK_T_DATETIME: {
       if (target_type == TOK_T_TIMESTAMP) {
         col_val->timestamp_value = datetime_to_timestamp(col_val->datetime_value);
+      } else if (target_type == TOK_T_VARCHAR) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", datetime_to_string(col_val->datetime_value));
       } else {
         return false;
       }
@@ -1249,7 +1273,7 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         return false;
       }
       break;
-    }
+    }    
     default:
       return false;
   }
