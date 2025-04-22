@@ -1,4 +1,5 @@
 #include "btree.h"
+#include "datetime.h"
 
 BTree* btree_create(uint8_t key_type) {
   BTree* tree = (BTree*)malloc(sizeof(BTree));
@@ -41,8 +42,6 @@ RowID btree_search(BTree* tree, void* key) {
     }
 
     if (i < node->num_keys && key_compare(key, node->keys[i], tree->key_type) == 0) {
-      LOG_DEBUG("res: %d", key_compare(key, node->keys[i], tree->key_type));
-
       return node->row_pointers[i];
     }
 
@@ -521,14 +520,78 @@ int key_compare(void* key1, void* key2, uint8_t type) {
     case TOK_T_VARCHAR:
     case TOK_T_CHAR:
     case TOK_T_TEXT:
-    case TOK_T_DATE:
-    case TOK_T_TIME:
-    case TOK_T_DATETIME:
-    case TOK_T_TIMESTAMP:
     case TOK_T_JSON: {
       int cmp = strcmp((char*)key1, (char*)key2);
       if (cmp < 0) return -1;
       if (cmp > 0) return 1;
+      return 0;
+    }
+    
+    case TOK_T_DATE: {
+      struct { int year, month, day; } a, b;
+    
+      decode_date(*(Date*)key1, &a.year, &a.month, &a.day);
+      decode_date(*(Date*)key2, &b.year, &b.month, &b.day);
+    
+      if (a.year != b.year) return (a.year < b.year) ? -1 : 1;
+      if (a.month != b.month) return (a.month < b.month) ? -1 : 1;
+      if (a.day != b.day) return (a.day < b.day) ? -1 : 1;
+      return 0;
+    }
+    
+    
+    case TOK_T_TIME: {
+      struct { int hour, minute, second; } a, b;
+
+      decode_time(*(TimeStored*)key1, &a.hour, &a.minute, &a.second);
+      decode_time(*(TimeStored*)key2, &b.hour, &b.minute, &b.second);
+      
+      if (a.hour != b.hour) return (a.hour < b.hour) ? -1 : 1;
+      if (a.minute != b.minute) return (a.minute < b.minute) ? -1 : 1;
+      if (a.second != b.second) return (a.second < b.second) ? -1 : 1;
+      return 0;
+    }
+    
+    case TOK_T_DATETIME: {
+      DateTime a = *(DateTime*)key1;
+      DateTime b = *(DateTime*)key2;
+      
+      if (a.year != b.year) return (a.year < b.year) ? -1 : 1;
+      if (a.month != b.month) return (a.month < b.month) ? -1 : 1;
+      if (a.day != b.day) return (a.day < b.day) ? -1 : 1;
+      if (a.hour != b.hour) return (a.hour < b.hour) ? -1 : 1;
+      if (a.minute != b.minute) return (a.minute < b.minute) ? -1 : 1;
+      if (a.second != b.second) return (a.second < b.second) ? -1 : 1;
+      return 0;
+    }
+    
+    case TOK_T_TIMESTAMP: {
+      __dt* a;
+      __dt* b;
+
+      decode_timestamp(*(Timestamp*)key1, a);
+      decode_timestamp(*(Timestamp*)key2, b);
+
+      if (a->year != b->year) return (a->year < b->year) ? -1 : 1;
+      if (a->month != b->month) return (a->month < b->month) ? -1 : 1;
+      if (a->day != b->day) return (a->day < b->day) ? -1 : 1;
+      if (a->hour != b->hour) return (a->hour < b->hour) ? -1 : 1;
+      if (a->minute != b->minute) return (a->minute < b->minute) ? -1 : 1;
+      if (a->second != b->second) return (a->second < b->second) ? -1 : 1;
+      return 0;
+    }
+    case TOK_T_TIMESTAMP_TZ: {
+      __dt* a;
+      __dt* b;
+      decode_timestamp_TZ(*(Timestamp_TZ*)key1, a);
+      decode_timestamp_TZ(*(Timestamp_TZ*)key2, b);
+
+      if (a->year != b->year) return (a->year < b->year) ? -1 : 1;
+      if (a->month != b->month) return (a->month < b->month) ? -1 : 1;
+      if (a->day != b->day) return (a->day < b->day) ? -1 : 1;
+      if (a->hour != b->hour) return (a->hour < b->hour) ? -1 : 1;
+      if (a->minute != b->minute) return (a->minute < b->minute) ? -1 : 1;
+      if (a->second != b->second) return (a->second < b->second) ? -1 : 1;
       return 0;
     }
 

@@ -296,6 +296,17 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
   bool un_spec_flag = up_col_count == 0;
   if (un_spec_flag) up_col_count = column_count;
 
+
+  // Initialize all columns as NULL
+  for (uint8_t i = 0; i < column_count; i++) {
+    row.values[i].type = schema->columns[i].type;
+    row.values[i].is_null = true;
+
+    null_bitmap[i / 8] |= (1 << (i % 8));
+
+    row.row_length += size_from_type(schema->columns[i].type);
+  }
+
   for (uint8_t j = 0; j < up_col_count; j++) {
     int i = un_spec_flag ? j : find_column_index(schema, columns[j]);
 
@@ -320,11 +331,10 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
       LOG_ERROR("Column '%s' is bound by NOT NULL constraint, value breaks constraint.", schema->columns[i].name);
     }
 
-    if (cur.is_null) {
-      null_bitmap[i / 8] |= (1 << (i % 8));
+    if (!cur.is_null) {
+      null_bitmap[i / 8] &= ~(1 << (i % 8));
+      row.values[i].is_null = false;
     }
-
-    row.row_length += size_from_type(schema->columns[i].type); 
 
     if (schema->columns[i].is_primary_key) {
       primary_key_cols[primary_key_count] = schema->columns[i];
@@ -407,7 +417,10 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
       }
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx))
         continue;
-      collected_rows[total_found++] = *row;
+
+      collected_rows[total_found] = *row;
+      total_found++;
+      
       if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0)
         break;
     }
@@ -705,6 +718,14 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
         return result;
       }
 
+      if (expr->binary.op == TOK_EQ &&
+        expr->binary.left->type == EXPR_COLUMN &&
+        expr->binary.right->type == EXPR_LITERAL &&
+        expr->binary.right->literal.is_null) {
+          result.type = TOK_T_BOOL;
+          result.bool_value = left.is_null;
+          return result;
+      }
 
       bool valid_conversion = infer_and_cast_va(2,
         (__c){&left, type},
@@ -730,6 +751,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
         default: result.bool_value = false; break;
       }
       
+
       return result;
     }
     case EXPR_LIKE: {
@@ -1227,15 +1249,36 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
       break;
     }
     case TOK_T_TIMESTAMP_TZ: {
+      __dt dt;
+      decode_timestamp_TZ(col_val->timestamp_tz_value, &dt);
+
       if (target_type == TOK_T_TIMESTAMP) {
         col_val->timestamp_value.timestamp = col_val->timestamp_tz_value.timestamp;
+        col_val->type = TOK_T_TIMESTAMP;
+      } else if (target_type == TOK_T_DATE) {
+        col_val->date_value = encode_date(dt.year, dt.month, dt.day);
+        col_val->type = TOK_T_DATE;
+      } else if (target_type == TOK_T_TIME) {
+        col_val->time_value = encode_time(dt.hour, dt.minute, dt.second); 
+        col_val->type = TOK_T_TIME;
+      } else if (target_type == TOK_T_TIME_TZ) {
+        col_val->time_tz_value = encode_time_TZ(dt.hour, dt.minute, dt.second, dt.tz_offset);
+        col_val->type = TOK_T_TIME_TZ;
+      } else if (target_type == TOK_T_DATETIME) {
+        col_val->datetime_value = create_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+        col_val->time_tz_value.time_zone_offset = col_val->timestamp_tz_value.time_zone_offset;
+        col_val->type = TOK_T_DATETIME;
+      } else if (target_type == TOK_T_DATETIME_TZ) {
+        col_val->datetime_tz_value = create_datetime_TZ(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.tz_offset);        
+        col_val->type = TOK_T_DATETIME_TZ;
       } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
         snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", timestamp_tz_to_string(col_val->timestamp_tz_value));
+        col_val->type = target_type;
       } else {
         return false;
       }
       break;
-    }
+    }    
     case TOK_T_TIME_TZ: {
       if (target_type == TOK_T_TIME) {
         col_val->time_value = col_val->timestamp_tz_value.timestamp;
