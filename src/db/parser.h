@@ -186,6 +186,7 @@ typedef struct {
   uint8_t value_counts[MAX_OPERATIONS];
   ExprNode** (*values);
   uint8_t row_count;
+  uint8_t col_count;
   char** columns;
 
   SelectColumn* sel_columns;

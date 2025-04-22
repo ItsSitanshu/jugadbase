@@ -99,8 +99,12 @@ JQLCommand parser_parse(Context* ctx) {
       return command;
   }
 
-  if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF) {
-    REPORT_ERROR(ctx->parser->lexer, "SYE_E_MISSING_SEMICOLON");
+  if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF && command.is_invalid) {
+    while (ctx->parser->cur->type != TOK_SC || ctx->parser->cur->type != TOK_EOF) {      
+      parser_consume(ctx->parser);
+    }
+  } else if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF && !command.is_invalid) {
+    REPORT_ERROR(ctx->parser->lexer, "SYE_UE_SEMICOLON");
     command.is_invalid = true;
   } else if (ctx->parser->cur->type == TOK_SC) {
     parser_consume(ctx->parser);
@@ -334,7 +338,6 @@ JQLCommand parser_parse_create_table(Parser* parser, Context* ctx) {
     if (!if_not_exists) {
       LOG_ERROR("Table `%s` already exists", command.schema->table_name);
     }
-
     return command;
   }
 
@@ -400,35 +403,35 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
   parser_consume(parser); 
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
 
-  // if (parser->cur->type == TOK_LP) { // TODO: Implement specified order inserts
-  //   parser_consume(parser);
+  if (parser->cur->type == TOK_LP) { 
+    parser_consume(parser);
     
-  //   command.insert.column_count = 0;
-  //   command.insert.columns = calloc(MAX_COLUMNS, sizeof(char *));
+    command.col_count = 0;
+    command.columns = calloc(MAX_COLUMNS, sizeof(char *));
 
-  //   while (parser->cur->type == TOK_ID) {
-  //     command.insert.columns[command.insert.column_count] = strdup(parser->cur->value);
-  //     command.insert.column_count++;
+    while (parser->cur->type == TOK_ID) {
+      command.columns[command.col_count] = strdup(parser->cur->value);
+      command.col_count++;
 
-  //     parser_consume(parser);
+      parser_consume(parser);
 
-  //     if (parser->cur->type == TOK_COM) {
-  //       parser_consume(parser); // Consume ','
-  //     } else if (parser->cur->type == TOK_RP) {
-  //       break;
-  //     } else {
-  //       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_COLUMN_LIST");
-  //       return command;
-  //     }
-  //   }
+      if (parser->cur->type == TOK_COM) {
+        parser_consume(parser);
+      } else if (parser->cur->type == TOK_RP) {
+        break;
+      } else {
+        REPORT_ERROR(parser->lexer, "SYE_E_INVALID_COLUMN_LIST");
+        return command;
+      }
+    }
 
-  //   if (parser->cur->type != TOK_RP) {
-  //     REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
-  //     return command;
-  //   }
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
+      return command;
+    }
 
-  //   parser_consume(parser);
-  // }
+    parser_consume(parser);
+  }
 
   if (parser->cur->type != TOK_VAL) {
     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_VALUES");
@@ -458,11 +461,12 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
         REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUES");
         return command;
       }
-    }
 
-    if (value_count != ctx->tc[idx].schema->column_count) {
-      REPORT_ERROR(parser->lexer, "SYE_E_MISMATCHED_VALUES_COUNT");
-      return command;
+      if (command.col_count != 0 && value_count > command.col_count) {
+        LOG_ERROR("Mismatch in number of expected attributes %d and actual attributes %d",
+          command.col_count, value_count);
+        return command;
+      }
     }
 
     if (parser->cur->type != TOK_RP) {
@@ -529,7 +533,6 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   parser_restore_state(parser, state);
   
   uint8_t value_count = 0;
-  command.columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
   
   if (parser->cur->type == TOK_MUL) {
     command.select_all = true;
@@ -1005,8 +1008,6 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       REPORT_ERROR(parser->lexer, "SYE_E_UNSUPPORTED_LITERAL_TYPE");
       return false;
   }
-
-  LOG_DEBUG("%s", token_type_strings[col_val->type]);
 
   parser_consume(parser);
   return true;
