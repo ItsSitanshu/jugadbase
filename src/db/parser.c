@@ -971,8 +971,6 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
           int tz_hours = 0, tz_minutes = 0;
           char tz_sign = '+';
           char* tz_part = strpbrk(time_start, "+-");
-          LOG_DEBUG("! %s", tz_part);
-
           
           if (tz_part) {
             if (sscanf(time_start, "%d:%d:%d", &hours, &minutes, &seconds) >= 2) {
