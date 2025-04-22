@@ -110,7 +110,7 @@ static const char* token_type_strings[] = {
 };
 
 static const char* get_token_type(int type) {
-  if (type >= 0 && type < 18) {
+  if (type >= 0 && type < 22) {
     return token_type_strings[type];
   } else {
     return "UNKNOWN";
