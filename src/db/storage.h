@@ -5,8 +5,8 @@
 #include "fs.h"
 #include "parser.h"
 
-#define PAGE_SIZE 4096
-#define POOL_SIZE 64
+#define PAGE_SIZE 8192
+#define POOL_SIZE 32
 
 typedef struct Row {
   RowID id;
