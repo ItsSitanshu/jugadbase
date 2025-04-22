@@ -87,7 +87,6 @@ Timestamp_TZ datetime_TZ_to_timestamp_TZ(DateTime_TZ dt);
 
 bool parse_to_datetime(const char* str, DateTime* out); 
 bool parse_to_datetime_TZ(const char* str, DateTime_TZ* out);
-char* datetime_to_string(DateTime dt, char* buffer, size_t buffer_size);
 char* datetime_TZ_to_string(DateTime_TZ dt, char* buffer, size_t buffer_size);
 
 int compare_datetime_objs(const DateTime* a, const DateTime* b);
@@ -100,5 +99,15 @@ Interval datetime_diff(DateTime start, DateTime end);
 DateTime_TZ datetime_to_TZ(DateTime dt, int32_t tz_offset);
 DateTime datetime_TZ_to_UTC(DateTime_TZ dt);
 DateTime_TZ datetime_TZ_convert(DateTime_TZ dt, int32_t new_tz_offset);
+
+int get_timezone_offset();
+
+char* date_to_string(Date date);
+char* time_to_string(TimeStored time);
+char* timestamp_to_string(Timestamp time);
+char* datetime_to_string(DateTime dt);
+char* interval_to_string(Interval interval);
+char* time_tz_to_string(Time_TZ tt);
+char* timestamp_tz_to_string(Timestamp_TZ encoded);
 
 #endif // DATETIME_H

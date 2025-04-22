@@ -339,11 +339,11 @@ bool parse_to_datetime_TZ(const char* str, DateTime_TZ* out) {
   return true;
 }
 
-char* datetime_to_string(DateTime dt, char* buffer, size_t buffer_size) {
-  snprintf(buffer, buffer_size, "%04d-%02d-%02d %02d:%02d:%02d",
-           dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
-  return buffer;
-}
+// char* datetime_to_string(DateTime dt, char* buffer, size_t buffer_size) {
+//   snprintf(buffer, buffer_size, "%04d-%02d-%02d %02d:%02d:%02d",
+//            dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+//   return buffer;
+// }
 
 char* datetime_TZ_to_string(DateTime_TZ dt, char* buffer, size_t buffer_size) {
   int abs_offset = abs(dt.time_zone_offset);
@@ -678,4 +678,104 @@ static int days_between_years(int y1, int y2) {
   }
   
   return days;
+}
+
+int get_timezone_offset() {
+  time_t current_time;
+  struct tm local_time, gm_time;
+
+  time(&current_time);
+
+  localtime_r(&current_time, &local_time);
+
+  gmtime_r(&current_time, &gm_time);
+
+  int offset = difftime(mktime(&local_time), mktime(&gm_time));
+
+  return (int) offset;  
+}
+
+char* date_to_string(Date date) {
+  int y, m, d;
+  
+  decode_date(date, &y, &m, &d);
+  char* buffer = malloc(11);  // "YYYY-MM-DD\0"
+  if (!buffer) return NULL;
+  snprintf(buffer, 11, "%04d-%02d-%02d", y, m, d);
+  return buffer;
+}
+
+char* time_to_string(TimeStored time) {
+  int h, m, s;
+  decode_time(time, &h, &m, &s);
+  char* buffer = malloc(9);  // "HH:MM:SS\0"
+  if (!buffer) return NULL;
+  snprintf(buffer, 9, "%02d:%02d:%02d", h, m, s);
+  return buffer;
+}
+
+char* timestamp_to_string(Timestamp time) {
+  __dt decoded_time;
+  decode_timestamp(time, &decoded_time);
+
+  char* time_string = (char*)malloc(20 * sizeof(char));
+
+  if (time_string != NULL) {
+    snprintf(time_string, 20, "%04d-%02d-%02d %02d:%02d:%02d", 
+              decoded_time.year, decoded_time.month, decoded_time.day,
+              decoded_time.hour, decoded_time.minute, decoded_time.second);
+  }
+
+  return time_string; 
+}
+
+char* datetime_to_string(DateTime dt) {
+  char* buffer = malloc(30);  // "YYYY-MM-DD HH:MM:SS\0"
+  if (!buffer) return NULL;
+  snprintf(buffer, 30, "%04d-%02d-%02d %02d:%02d:%02d", dt.year, dt.month, dt.day,
+           dt.hour, dt.minute, dt.second);
+  return buffer;
+}
+
+char* interval_to_string(Interval interval) {
+  char* buffer = malloc(100);  
+  if (!buffer) return NULL;
+  // snprintf(buffer, 100,
+  //          "%d years %d months %d days %d hours %d minutes %d seconds %d microseconds",
+  //          interval.years, interval.months, interval.days,
+  //          interval.hours, interval.minutes, interval.seconds);
+  return buffer;
+}
+
+char* time_tz_to_string(Time_TZ tt) {
+  int h, m, s;
+  int32_t tz_offset;
+  decode_time_TZ(tt, &h, &m, &s, &tz_offset);
+
+  char* buffer = malloc(20);  // "HH:MM:SS+/-TZ\0"
+  if (!buffer) return NULL;
+
+  int tz_hours = tz_offset / 3600;
+  int tz_minutes = (tz_offset % 3600) / 60;
+  snprintf(buffer, 20, "%02d:%02d:%02d%+03d:%02d", h, m, s, tz_hours, tz_minutes);
+
+  return buffer;
+}
+
+char* timestamp_tz_to_string(Timestamp_TZ encoded) {
+  __dt dt;
+  decode_timestamp_TZ(encoded, &dt);
+
+  char* buffer = malloc(30);  // "YYYY-MM-DD HH:MM:SS+/-TZ\0"
+  if (!buffer) return NULL;
+
+  int tz_offset = get_timezone_offset();
+  int tz_hours = tz_offset / 3600;
+  int tz_minutes = (tz_offset % 3600) / 60;
+  
+  snprintf(buffer, 30, "%04d-%02d-%02d %02d:%02d:%02d%+03d:%02d", 
+           dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, 
+           tz_hours, tz_minutes);
+  
+  return buffer;
 }
