@@ -1,6 +1,7 @@
 #include "context.h"
 #include "executor.h"
 #include "uuid.h"
+#include "toast.h"
 
 #include "../utils/log.h"
 #include "../utils/security.h"
@@ -64,6 +65,7 @@ Context* ctx_init(char* dir) {
   LOG_INFO("Successfully loaded %lu table(s) from catalog", ctx->table_count);
   
   register_builtin_functions();
+  toast_create(ctx);
 
   return ctx;
 }
