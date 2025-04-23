@@ -77,8 +77,9 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
   switch (col_def->type) {
     case TOK_T_INT:
     case TOK_T_SERIAL:
-      fread(&col_val->int_value, sizeof(int), 1, file);
+      fread(&col_val->int_value, sizeof(int64_t), 1, file);
       break;
+
     case TOK_T_BOOL:
       {
         uint8_t bool_byte;
@@ -101,29 +102,61 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       fread(col_val->decimal.decimal_value, sizeof(char), MAX_DECIMAL_LEN, file);
       break;
 
-    // case TOK_T_UUID:
-    //   {
-    //     uint8_t binary_uuid[16];
-    //     fread(binary_uuid, 16, 1, file);
-    //     uuid_to_string(binary_uuid, col_val->str_value);  
-    //   }
-    //   break;
+    case TOK_T_UUID:
+      {
+        uint8_t binary_uuid[16];
+        fread(binary_uuid, 16, 1, file);
+
+        for (int i = 0; i < 16; i++) {
+          col_val->str_value[i] = binary_uuid[i];
+        }
+        col_val->str_value[16] = '\0';
+      }
+      break;
+
+    case TOK_T_DATE:
+      fread(&col_val->date_value, sizeof(Date), 1, file);
+      break;
+
+    case TOK_T_TIME:
+      fread(&col_val->time_value, sizeof(TimeStored), 1, file);
+      break;
+
+    case TOK_T_TIME_TZ:
+      fread(&col_val->time_tz_value, sizeof(Time_TZ), 1, file);
+      break;
+
+    case TOK_T_DATETIME:
+      fread(&col_val->datetime_value, sizeof(DateTime), 1, file);
+      break;
+
+    case TOK_T_DATETIME_TZ:
+      fread(&col_val->datetime_tz_value, sizeof(DateTime_TZ), 1, file);
+      break;
 
     case TOK_T_TIMESTAMP:
-    case TOK_T_DATETIME:
-    case TOK_T_TIME:
-    case TOK_T_DATE:
+      fread(&col_val->timestamp_value, sizeof(Timestamp), 1, file);
+      break;
+
+    case TOK_T_TIMESTAMP_TZ:
+      fread(&col_val->timestamp_tz_value, sizeof(Timestamp_TZ), 1, file);
+      break;
+
+    case TOK_T_INTERVAL:
+      fread(&col_val->interval_value, sizeof(Interval), 1, file);
+      break;
+
     case TOK_T_VARCHAR:
     case TOK_T_CHAR:
       fread(&str_len, sizeof(uint8_t), 1, file);
-      fread(col_val->str_value, str_len, 1, file);
+      fread(col_val->str_value, sizeof(char), str_len, file);
       col_val->str_value[str_len] = '\0';
       break;
 
     case TOK_T_TEXT:
     case TOK_T_JSON:
       fread(&text_len, sizeof(uint16_t), 1, file);
-      fread(col_val->str_value, text_len, 1, file);
+      fread(col_val->str_value, sizeof(char), text_len, file);
       col_val->str_value[text_len] = '\0';
       break;
 
@@ -132,7 +165,6 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       break;
   }
 }
-
 
 void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc) {
   fseek(file, page_number * PAGE_SIZE, SEEK_SET);
@@ -175,7 +207,7 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
   switch (col_def->type) {
     case TOK_T_INT:
     case TOK_T_SERIAL:
-      fwrite(&col_val->int_value, sizeof(int), 1, file);
+      fwrite(&col_val->int_value, sizeof(int64_t), 1, file);
       break;
 
     case TOK_T_BOOL:
@@ -218,10 +250,38 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
       }
       break;
 
-    case TOK_T_TIMESTAMP:
-    case TOK_T_DATETIME:
-    case TOK_T_TIME:
     case TOK_T_DATE:
+      fwrite(&col_val->date_value, sizeof(Date), 1, file);
+      break;
+
+    case TOK_T_TIME:
+      fwrite(&col_val->time_value, sizeof(TimeStored), 1, file);
+      break;
+
+    case TOK_T_TIME_TZ:
+      fwrite(&col_val->time_tz_value, sizeof(Time_TZ), 1, file);
+      break;
+
+    case TOK_T_DATETIME:
+      fwrite(&col_val->datetime_value, sizeof(DateTime), 1, file);
+      break;
+
+    case TOK_T_DATETIME_TZ:
+      fwrite(&col_val->datetime_tz_value, sizeof(DateTime_TZ), 1, file);
+      break;
+
+    case TOK_T_TIMESTAMP:
+      fwrite(&col_val->timestamp_value, sizeof(Timestamp), 1, file);
+      break;
+
+    case TOK_T_TIMESTAMP_TZ:
+      fwrite(&col_val->timestamp_tz_value, sizeof(Timestamp_TZ), 1, file);
+      break;
+
+    case TOK_T_INTERVAL:
+      fwrite(&col_val->interval_value, sizeof(Interval), 1, file);
+      break;
+
     case TOK_T_VARCHAR:
     case TOK_T_CHAR:
       str_len = (uint16_t)strlen(col_val->str_value);
