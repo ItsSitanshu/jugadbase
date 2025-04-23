@@ -33,7 +33,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Ordering `ODR` (`ASRT` and `DSRT`)~~
 - ~~FIX BUG: Update command on local variables dont work properly~~
 - Important logic and functions for dynamic types
-  - Datetime
+  - ~~Datetime~~
   - Json
   - Text
   - Blob
@@ -55,3 +55,4 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Implement composite primary keys
 - Custom importable C-written functions with <dlfcn.h>
 - Batch mass inserts
+- PG-LZ compression for TOAST entries
