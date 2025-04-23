@@ -520,6 +520,66 @@ DateTime_TZ add_interval_to_datetime_TZ(DateTime_TZ dt, Interval interval) {
   };
 }
 
+DateTime subtract_interval_from_datetime(DateTime dt, Interval interval) {
+  dt.year -= interval.months / 12;
+  dt.month -= interval.months % 12;
+
+  while (dt.month < 1) {
+    dt.month += 12;
+    dt.year--;
+  }
+  while (dt.month > 12) {
+    dt.month -= 12;
+    dt.year++;
+  }
+
+  int max_days = days_in_month(dt.year, dt.month);
+  if (dt.day > max_days) {
+    dt.day = max_days;
+  }
+
+  Date date_val = encode_date(dt.year, dt.month, dt.day);
+  date_val -= interval.days;
+  decode_date(date_val, &dt.year, &dt.month, &dt.day);
+
+  int64_t total_seconds = (int64_t)dt.hour * 3600 + dt.minute * 60 + dt.second;
+  total_seconds -= interval.micros / MICROS_PER_SECOND;
+
+  while (total_seconds < 0) {
+    total_seconds += SECONDS_PER_DAY;
+    date_val--;
+  }
+
+  while (total_seconds >= SECONDS_PER_DAY) {
+    total_seconds -= SECONDS_PER_DAY;
+    date_val++;
+  }
+
+  if (date_val != encode_date(dt.year, dt.month, dt.day)) {
+    decode_date(date_val, &dt.year, &dt.month, &dt.day);
+  }
+
+  dt.hour = total_seconds / 3600;
+  total_seconds %= 3600;
+  dt.minute = total_seconds / 60;
+  dt.second = total_seconds % 60;
+
+  return dt;
+}
+
+DateTime_TZ subtract_interval_from_datetime_TZ(DateTime_TZ dt, Interval interval) {
+  DateTime temp = subtract_interval_from_datetime(
+    (DateTime){dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second},
+    interval
+  );
+
+  return (DateTime_TZ){
+    temp.year, temp.month, temp.day,
+    temp.hour, temp.minute, temp.second,
+    dt.time_zone_offset
+  };
+}
+
 Interval datetime_diff(DateTime start, DateTime end) {
   Interval result = {0};
   
@@ -538,6 +598,195 @@ Interval datetime_diff(DateTime start, DateTime end) {
   
   return result;
 }
+
+bool parse_iso8601_interval(const char* input, Interval* interval) {
+  const char* ptr = input;
+  if (*ptr++ != 'P') return false;
+  
+  int years = 0, months = 0, days = 0;
+  int hours = 0, minutes = 0;
+  double seconds = 0.0;
+  
+  while (*ptr && *ptr != 'T') {
+    char* endptr;
+    long value = strtol(ptr, &endptr, 10);
+    
+    if (endptr == ptr) return false; 
+    
+    ptr = endptr;
+    switch (*ptr) {
+      case 'Y':
+        years = value;
+        ptr++;
+        break;
+      case 'M':
+        months = value;
+        ptr++;
+        break;
+      case 'D':
+        days = value;
+        ptr++;
+        break;
+      default:
+        return false; 
+    }
+  }
+  
+  if (*ptr == 'T') {
+    ptr++; 
+    
+    while (*ptr) {
+      char* endptr;
+      double value = strtod(ptr, &endptr);
+      
+      if (endptr == ptr) return false;
+      
+      ptr = endptr;
+      switch (*ptr) {
+        case 'H':
+          hours = value;
+          ptr++;
+          break;
+        case 'M':
+          minutes = value;
+          ptr++;
+          break;
+        case 'S':
+          seconds = value;
+          ptr++;
+          break;
+        default:
+          return false;
+      }
+    }
+  }
+  
+  interval->months = years * 12 + months;
+  interval->days = days;
+  interval->micros = ((int64_t)hours * 3600 + (int64_t)minutes * 60) * 1000000 + (int64_t)(seconds * 1000000);
+  
+  return true;
+}
+
+bool parse_interval(const char* input, Interval* interval) {
+  const char* ptr = input;
+  int years = 0, months = 0, days = 0;
+  int hours = 0, minutes = 0;
+  double seconds = 0.0;
+  
+  while (*ptr) {
+    while (isspace(*ptr)) ptr++;
+    if (!*ptr) break;
+    
+    char* endptr;
+    double value = strtod(ptr, &endptr);
+    
+    if (endptr == ptr) return false;
+    
+    ptr = endptr;
+    
+    while (isspace(*ptr)) ptr++;
+    if (!*ptr) return false; 
+    
+    if (strncasecmp(ptr, "year", 4) == 0) {
+        years += (int)value;
+        ptr += 4;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "month", 5) == 0) {
+        months += (int)value;
+        ptr += 5;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "day", 3) == 0) {
+        days += (int)value;
+        ptr += 3;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "hour", 4) == 0) {
+        hours += (int)value;
+        ptr += 4;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "minute", 6) == 0) {
+        minutes += (int)value;
+        ptr += 6;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "second", 6) == 0) {
+        seconds += value;
+        ptr += 6;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "yr", 2) == 0) {
+        years += (int)value;
+        ptr += 2;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "mon", 3) == 0) {
+        months += (int)value;
+        ptr += 3;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "hr", 2) == 0) {
+        hours += (int)value;
+        ptr += 2;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "min", 3) == 0) {
+        minutes += (int)value;
+        ptr += 3;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "sec", 3) == 0) {
+        seconds += value;
+        ptr += 3;
+        if (*ptr == 's') ptr++;
+    } else if (strncasecmp(ptr, "h", 1) == 0) {
+        hours += (int)value;
+        ptr += 1;
+    } else if (strncasecmp(ptr, "m", 1) == 0) {
+        minutes += (int)value;
+        ptr += 1;
+    } else if (strncasecmp(ptr, "s", 1) == 0) {
+        seconds += value;
+        ptr += 1;
+    } else if (strncasecmp(ptr, "d", 1) == 0) {
+        days += (int)value;
+        ptr += 1;
+    } else {
+        return false; 
+    }
+  }
+  
+  // Convert to interval components
+  interval->months = years * 12 + months;
+  interval->days = days;
+  interval->micros = ((int64_t)hours * 3600 + (int64_t)minutes * 60) * 1000000 + (int64_t)(seconds * 1000000);
+  
+  return true;
+}
+
+DateTime convert_tz_to_local(DateTime_TZ dtz) {
+  int offset_seconds = dtz.time_zone_offset;
+
+  int64_t total_seconds = (int64_t)dtz.hour * 3600 + dtz.minute * 60 + dtz.second;
+
+  total_seconds -= offset_seconds;
+
+  Date date_val = encode_date(dtz.year, dtz.month, dtz.day);
+
+  while (total_seconds < 0) {
+    total_seconds += SECONDS_PER_DAY;
+    date_val--;
+  }
+
+  while (total_seconds >= SECONDS_PER_DAY) {
+    total_seconds -= SECONDS_PER_DAY;
+    date_val++;
+  }
+
+  DateTime result;
+  decode_date(date_val, &result.year, &result.month, &result.day);
+
+  result.hour = total_seconds / 3600;
+  total_seconds %= 3600;
+  result.minute = total_seconds / 60;
+  result.second = total_seconds % 60;
+
+  return result;
+}
+
 
 DateTime_TZ datetime_to_TZ(DateTime dt, int32_t tz_offset) {
   return (DateTime_TZ){
@@ -735,13 +984,58 @@ char* datetime_to_string(DateTime dt) {
   return buffer;
 }
 
-char* interval_to_string(Interval interval) {
-  char* buffer = malloc(100);  
-  if (!buffer) return NULL;
-  // snprintf(buffer, 100,
-  //          "%d years %d months %d days %d hours %d minutes %d seconds %d microseconds",
-  //          interval.years, interval.months, interval.days,
-  //          interval.hours, interval.minutes, interval.seconds);
+char* interval_to_string(Interval* interval) {
+  int years = interval->months / 12;
+  int months = interval->months % 12;
+  int days = interval->days;
+
+  int64_t total_seconds = interval->micros / MICROS_PER_SECOND;
+  int micros_remainder = interval->micros % MICROS_PER_SECOND;
+
+  int hours = total_seconds / SECONDS_PER_HOUR;
+  total_seconds %= SECONDS_PER_HOUR;
+
+  int minutes = total_seconds / SECONDS_PER_MINUTE;
+  int seconds = total_seconds % SECONDS_PER_MINUTE;
+
+  char* buffer = malloc(256);
+  char temp[32] = {0};
+  size_t offset = 0;
+  
+  if (years > 0) {
+    snprintf(temp, sizeof(temp), "%d year%s ", years, years != 1 ? "s" : "");
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", temp);
+  }
+  
+  if (months > 0) {
+    snprintf(temp, sizeof(temp), "%d month%s ", months, months != 1 ? "s" : "");
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", temp);
+  }
+  
+  if (days > 0) {
+    snprintf(temp, sizeof(temp), "%d day%s ", days, days != 1 ? "s" : "");
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", temp);
+  }
+  
+  if (hours > 0) {
+    snprintf(temp, sizeof(temp), "%d hour%s ", hours, hours != 1 ? "s" : "");
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", temp);
+  }
+  
+  if (minutes > 0) {
+    snprintf(temp, sizeof(temp), "%d minute%s ", minutes, minutes != 1 ? "s" : "");
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", temp);
+  }
+  
+  if (seconds > 0 || micros_remainder > 0) {
+    snprintf(temp, sizeof(temp), "%d.%06d second%s ", seconds, micros_remainder, 
+             (seconds != 1 || micros_remainder > 0) ? "s" : "");
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", temp);
+  }
+
+  size_t len = strlen(buffer);
+  if (len > 0 && buffer[len - 1] == ' ') buffer[len - 1] = '\0';
+
   return buffer;
 }
 
@@ -776,4 +1070,59 @@ char* timestamp_tz_to_string(Timestamp_TZ encoded) {
            tz_hours, tz_minutes);
   
   return buffer;
+}
+
+int calculate_day_of_week(int year, int month, int day) {
+  if (month < 3) {
+    month += 12;
+    year--;
+  }
+  
+  int k = year % 100;
+  int j = year / 100;
+  
+  int h = (day + (13 * (month + 1)) / 5 + k + k / 4 + j / 4 + 5 * j) % 7;
+  
+  return (h + 6) % 7;
+}
+
+int calculate_day_of_year(int year, int month, int day) {
+  static const int days_before_month[] = {0, 0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334};
+  
+  int result = days_before_month[month] + day;
+  
+  if (month > 2 && ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0)) {
+    result++;
+  }
+  
+  return result;
+}
+
+int calculate_week_of_year(int year, int month, int day) {
+  // ISO 8601 week definition
+  
+  int doy = calculate_day_of_year(year, month, day);
+  
+  int jan1_dow = calculate_day_of_week(year, 1, 1);
+  
+  int offset = (jan1_dow + 6) % 7;
+  
+  int week = (doy + offset - 1) / 7 + 1;
+  
+  if (week > 52) {
+    int days_in_year = ((year % 4 == 0 && year % 100 != 0) || year % 400 == 0) ? 366 : 365;
+    if (doy >= days_in_year - 3) {
+      int dec31_dow = (jan1_dow + days_in_year - 1) % 7;
+      if (dec31_dow < 3) {
+        week = 1;
+      }
+    }
+  } else if (week == 0) {
+    int prev_year = year - 1;
+    int prev_days_in_year = ((prev_year % 4 == 0 && prev_year % 100 != 0) || prev_year % 400 == 0) ? 366 : 365;
+    int prev_jan1_dow = (jan1_dow + 7 - (prev_days_in_year % 7)) % 7;
+    week = (prev_days_in_year + (prev_jan1_dow + 6) % 7 - 1) / 7 + 1;
+  }
+  
+  return week;
 }

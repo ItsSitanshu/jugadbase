@@ -95,7 +95,12 @@ int compare_datetime_TZ(const DateTime_TZ* a, const DateTime_TZ* b);
 
 DateTime add_interval_to_datetime(DateTime dt, Interval interval);
 DateTime_TZ add_interval_to_datetime_TZ(DateTime_TZ dt, Interval interval);
+DateTime subtract_interval_from_datetime(DateTime dt, Interval interval);
+DateTime_TZ subtract_interval_from_datetime_TZ(DateTime_TZ dt, Interval interval);
 Interval datetime_diff(DateTime start, DateTime end);
+bool parse_iso8601_interval(const char* input, Interval* interval);
+bool parse_interval(const char* input, Interval* interval);
+DateTime convert_tz_to_local(DateTime_TZ dtz);
 
 DateTime_TZ datetime_to_TZ(DateTime dt, int32_t tz_offset);
 DateTime datetime_TZ_to_UTC(DateTime_TZ dt);
@@ -107,8 +112,11 @@ char* date_to_string(Date date);
 char* time_to_string(TimeStored time);
 char* timestamp_to_string(Timestamp time);
 char* datetime_to_string(DateTime dt);
-char* interval_to_string(Interval interval);
+char* interval_to_string(Interval* interval);
 char* time_tz_to_string(Time_TZ tt);
 char* timestamp_tz_to_string(Timestamp_TZ encoded);
+
+int calculate_day_of_week(int year, int month, int day);
+int calculate_week_of_year(int year, int month, int day);
 
 #endif // DATETIME_H
