@@ -6,7 +6,7 @@
 #define NO_OF_KEYWORDS 72
 #define KEYWORDS keywords
 
-#define MAX_KEYWORD_LEN 9
+#define MAX_KEYWORD_LEN 11
 #define MAX_IDENTIFIER_LEN 256
 #define MAX_FLOAT_LIT_DIGITS 7
 #define MAX_DOUBLE_LIT_DIGITS 15
@@ -154,6 +154,7 @@ typedef struct Token {
   (1 << TOK_T_DATETIME_TZ) |   \
   (1 << TOK_T_TIMESTAMP) |     \
   (1 << TOK_T_TIMESTAMP_TZ) |  \
+  (1 << TOK_T_INTERVAL) |      \
   (1 << TOK_T_BLOB) |          \
   (1 << TOK_T_JSON) |          \
   (1 << TOK_T_UUID) |          \
