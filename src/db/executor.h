@@ -33,7 +33,21 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd);
 
 ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx, uint8_t* out_type);
+
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_literal_expression(ExprNode* expr);
+ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema);
+ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
+ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int op);
+
 bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 
 void swap_rows(Row* r1, Row* r2);
