@@ -53,6 +53,7 @@ void register_builtin_functions() {
   register_function("COALESCE", fn_coalesce);
   register_function("CAST", fn_cast);
   register_function("DATE", fn_date);
+  register_function("EXTRACT", fn_extract);
   register_function("TIME", fn_time);
   register_function("IFNULL", fn_ifnull);
   register_function("GREATEST", fn_greatest);
@@ -63,8 +64,6 @@ void register_builtin_functions() {
   register_function("PI", fn_pi);
   register_function("DEGREES", fn_degrees);
   register_function("RADIANS", fn_radians);
-  register_function("EXTRACT", fn_extract);
-  register_function("STR_TO_DATE", fn_str_to_date);
 }
 
 ColumnValue evaluate_function(const char* name, ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
@@ -475,6 +474,142 @@ ColumnValue fn_date(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
   return result;
 }
 
+ColumnValue fn_extract(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+  ColumnValue result = { .type = TOK_T_INT };
+  result.is_null = true;
+
+  if (arg_count != 2) {
+    LOG_WARN("EXTRACT() requires exactly 2 arguments");
+    return result;
+  }
+
+  ColumnValue field_arg = resolve_expr_value(args[0], row, schema, ctx, schema_idx, NULL);
+  if (field_arg.is_null || (field_arg.type != TOK_T_STRING && field_arg.type != TOK_T_VARCHAR)) {
+    LOG_WARN("First argument of EXTRACT() must be a non-null string");
+    return result;
+  }
+
+  ColumnValue time_arg = resolve_expr_value(args[1], row, schema, ctx, schema_idx, NULL);
+  if (time_arg.is_null) {
+    LOG_WARN("Second argument of EXTRACT() cannot be NULL");
+    return result;
+  }
+
+  char field[64] = {0};
+  size_t field_len = strlen(field_arg.str_value);
+  if (field_len >= sizeof(field)) {
+    LOG_WARN("Field name too long in EXTRACT()");
+    return result;
+  }
+  
+  for (size_t i = 0; i < field_len; i++) {
+    field[i] = toupper(field_arg.str_value[i]);
+  }
+
+  int year, month, day, hour = 0, minute = 0, second = 0, ms = 0;
+  
+  switch (time_arg.type) {
+    case TOK_T_DATE:
+      decode_date(time_arg.date_value, &year, &month, &day);
+      break;
+      
+    case TOK_T_TIME:
+      decode_time(time_arg.time_value, &hour, &minute, &second);
+      break;
+      
+    case TOK_T_DATETIME_TZ: {
+      DateTime dt = convert_tz_to_local(time_arg.datetime_tz_value);
+      break;
+    }
+      
+    default:
+      LOG_WARN("EXTRACT() requires a date, time, or datetime value as second argument");
+      return result;
+  }
+
+  result.is_null = false;
+  
+  if (strcmp(field, "YEAR") == 0) {
+    if (time_arg.type == TOK_T_TIME) {
+      result.is_null = true;
+      LOG_WARN("Cannot extract YEAR from TIME value");
+    } else {
+      result.int_value = year;
+    }
+  } else if (strcmp(field, "MONTH") == 0) {
+    if (time_arg.type == TOK_T_TIME) {
+      result.is_null = true;
+      LOG_WARN("Cannot extract MONTH from TIME value");
+    } else {
+      result.int_value = month;
+    }
+  } else if (strcmp(field, "DAY") == 0) {
+    if (time_arg.type == TOK_T_TIME) {
+      result.is_null = true;
+      LOG_WARN("Cannot extract DAY from TIME value");
+    } else {
+      result.int_value = day;
+    }
+  } else if (strcmp(field, "HOUR") == 0) {
+    if (time_arg.type == TOK_T_DATE) {
+      result.int_value = 0; 
+    } else {
+      result.int_value = hour;
+    }
+  } else if (strcmp(field, "MINUTE") == 0) {
+    if (time_arg.type == TOK_T_DATE) {
+      result.int_value = 0;
+    } else {
+      result.int_value = minute;
+    }
+  } else if (strcmp(field, "SECOND") == 0) {
+    if (time_arg.type == TOK_T_DATE) {
+      result.int_value = 0; 
+    } else {
+      result.int_value = second;
+    }
+  } else if (strcmp(field, "MILLISECOND") == 0) {
+    if (time_arg.type == TOK_T_DATE) {
+      result.int_value = 0;
+    } else {
+      result.int_value = ms;
+    }
+  } else if (strcmp(field, "DOW") == 0 || strcmp(field, "DAYOFWEEK") == 0) {
+    if (time_arg.type == TOK_T_TIME) {
+      result.is_null = true;
+      LOG_WARN("Cannot extract DAY OF WEEK from TIME value");
+    } else {
+      result.int_value = calculate_day_of_week(year, month, day);
+    }
+  } else if (strcmp(field, "DOY") == 0 || strcmp(field, "DAYOFYEAR") == 0) {
+    if (time_arg.type == TOK_T_TIME) {
+      result.is_null = true;
+      LOG_WARN("Cannot extract DAY OF YEAR from TIME value");
+    } else {
+      // result.int_value = calculate_day_of_year(year, month, day);
+    }
+  } else if (strcmp(field, "QUARTER") == 0) {
+    if (time_arg.type == TOK_T_TIME) {
+      result.is_null = true;
+      LOG_WARN("Cannot extract QUARTER from TIME value");
+    } else {
+      result.int_value = (month - 1) / 3 + 1;
+    }
+  } else if (strcmp(field, "WEEK") == 0 || strcmp(field, "WEEKOFYEAR") == 0) {
+    if (time_arg.type == TOK_T_TIME) {
+      result.is_null = true;
+      LOG_WARN("Cannot extract WEEK from TIME value");
+    } else {
+      result.int_value = calculate_week_of_year(year, month, day);
+    }
+  } else {
+    result.is_null = true;
+    LOG_WARN("Unknown field '%s' in EXTRACT()", field);
+  }
+
+  return result;
+}
+
 ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
   ColumnValue result = { .type = TOK_T_TIME };
 
@@ -605,17 +740,5 @@ ColumnValue fn_radians(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   result.double_value = input.double_value * (M_PI / 180.0);
   result.is_null = false;
 
-  return result;
-}
-
-ColumnValue fn_extract(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-  ColumnValue result = { .is_null = true, .type = TOK_T_INT };
-  result.is_null = false;
-  return result;
-}
-
-ColumnValue fn_str_to_date(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-  ColumnValue result = { .type = TOK_T_DATETIME };
-  result.is_null = false;
   return result;
 }

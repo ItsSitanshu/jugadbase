@@ -33,6 +33,7 @@ typedef struct {
 } FunctionRegistry;
 
 extern FunctionRegistry global_function_registry;
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx, uint8_t* out_type);
 
 void register_function(const char* name, BuiltinFunction func);
 BuiltinFunction find_function(const char* name);
