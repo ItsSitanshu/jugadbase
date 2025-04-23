@@ -99,8 +99,8 @@ JQLCommand parser_parse(Context* ctx) {
       return command;
   }
 
-  if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF && command.is_invalid) {
-    while (ctx->parser->cur->type != TOK_SC || ctx->parser->cur->type != TOK_EOF) {      
+  if (command.is_invalid) {
+    while (ctx->parser->cur->type != TOK_SC) {      
       parser_consume(ctx->parser);
     }
   } else if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF && !command.is_invalid) {
@@ -398,6 +398,7 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
     return command;
   }
 
+  command.col_count = 0;
   command.schema = malloc(sizeof(TableSchema));
   strcpy(command.schema->table_name, parser->cur->value);
   parser_consume(parser); 
@@ -406,7 +407,6 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
   if (parser->cur->type == TOK_LP) { 
     parser_consume(parser);
     
-    command.col_count = 0;
     command.columns = calloc(MAX_COLUMNS, sizeof(char *));
 
     while (parser->cur->type == TOK_ID) {
@@ -443,16 +443,27 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
   command.values = calloc(MAX_OPERATIONS, sizeof(ExprNode*));
   command.row_count = 0;
 
+  bool un_spec_flag = command.col_count == 0;
+  command.col_count = command.col_count == 0 ? 
+    ctx->tc[idx].schema->column_count 
+    : command.col_count;
+
   while (parser->cur->type == TOK_LP) {
     ExprNode** row = calloc(ctx->tc[idx].schema->column_count, sizeof(ExprNode*));
-    uint8_t value_count = 0; 
 
     parser_consume(parser); 
 
-    while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
-      row[value_count] = parser_parse_expression(parser, ctx->tc[idx].schema);
+    uint8_t value_count = 0; 
 
-      if (!row[value_count]) return command;
+    while (value_count < command.col_count) {
+
+      int row_idx = un_spec_flag ? 
+        value_count 
+        : find_column_index(ctx->tc[idx].schema, command.columns[value_count]);
+      
+      row[row_idx] = parser_parse_expression(parser, ctx->tc[idx].schema);
+
+      if (!row[row_idx]) return command;
       value_count++;
 
       if (parser->cur->type == TOK_COM) {
@@ -462,15 +473,15 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
         return command;
       }
 
-      if (command.col_count != 0 && value_count > command.col_count) {
-        LOG_ERROR("Mismatch in number of expected attributes %d and actual attributes %d",
-          command.col_count, value_count);
-        return command;
+      if (parser->cur->type == TOK_EOF) {
+        REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP_VALUES");
+        return command;  
       }
     }
 
     if (parser->cur->type != TOK_RP) {
-      REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP_VALUES");
+      LOG_ERROR("Mismatch in number of expected attributes %d and actual attributes %d",
+        command.col_count, value_count);
       return command;
     }
 
@@ -486,7 +497,7 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
     } else {
       break;
     }
-
+    
     if (command.row_count >= MAX_OPERATIONS) {
       LOG_ERROR("Too many rows in INSERT");
       return command;
@@ -826,7 +837,7 @@ JQLCommand parser_parse_delete(Parser* parser, Context* ctx) {
 
 void parser_consume(Parser* parser) {
   if (parser->cur->type == TOK_EOF) {
-    exit(0);
+    return;
   }
 
   token_free(parser->cur);
@@ -986,7 +997,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
                 offset = -offset;
               }
               
-              col_val->type = TOK_T_TIME_TZ;
+              col_val->type = col_val->type == TOK_T_TIMESTAMP ? TOK_T_TIMESTAMP_TZ : TOK_T_TIME_TZ;
               col_val->time_tz_value = encode_time_TZ(hours, minutes, seconds, offset);
             }
           }
@@ -1479,6 +1490,11 @@ void print_column_value(ColumnValue* val) {
              dt.hour, dt.minute, dt.second,
              (dt.time_zone_offset >= 0 ? '+' : '-'),
              offset_hours, offset_min);
+      break;
+    }
+
+    case TOK_T_INTERVAL: {
+      printf("%s", interval_to_string(&val->interval_value));
       break;
     }
 

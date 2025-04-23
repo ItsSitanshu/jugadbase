@@ -61,7 +61,7 @@ typedef struct {
     DateTime_TZ datetime_tz_value;
     Timestamp timestamp_value;
     Timestamp_TZ timestamp_tz_value;
-    Interval interval;
+    Interval interval_value;
   };
 } ColumnValue;
 
