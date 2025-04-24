@@ -103,12 +103,16 @@ JQLCommand parser_parse(Context* ctx) {
     while (ctx->parser->cur->type != TOK_SC) {      
       parser_consume(ctx->parser);
     }
-  } else if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF && !command.is_invalid) {
+  } 
+  
+  if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF && !command.is_invalid) {
     REPORT_ERROR(ctx->parser->lexer, "SYE_UE_SEMICOLON");
     command.is_invalid = true;
-  } else if (ctx->parser->cur->type == TOK_SC) {
-    parser_consume(ctx->parser);
   }
+
+  parser_consume(ctx->parser);
+
+  LOG_DEBUG("%s %d == %d", ctx->parser->cur->value, ctx->parser->cur->type, TOK_EOF);
 
   return command;
 }
@@ -443,7 +447,7 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
   command.values = calloc(MAX_OPERATIONS, sizeof(ExprNode*));
   command.row_count = 0;
 
-  bool un_spec_flag = command.col_count == 0;
+  command.specified_order = command.col_count == 0;
   command.col_count = command.col_count == 0 ? 
     ctx->tc[idx].schema->column_count 
     : command.col_count;
@@ -457,7 +461,7 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
 
     while (value_count < command.col_count) {
 
-      int row_idx = un_spec_flag ? 
+      int row_idx = command.specified_order ? 
         value_count 
         : find_column_index(ctx->tc[idx].schema, command.columns[value_count]);
       
@@ -490,8 +494,6 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
 
     command.value_counts[command.row_count] = value_count;
     command.values[command.row_count] = row;
-
-
     command.row_count++;
 
     if (parser->cur->type == TOK_COM) {
@@ -1509,15 +1511,14 @@ void print_column_value(ColumnValue* val) {
         size_t len = strlen(s);
       
         if (len <= 8) {
-          LOG_DEBUG("\"%s\"", s);
+          printf("\"%s\"", s);
           return;
         }
       
         char preview[12]; 
         memcpy(preview, s, 8);
         strcpy(preview + 8, "...");
-        LOG_DEBUG("\"%s\" (%zu chars)", preview, len - 8);
-        printf("(some text)");
+        printf("\"%s\" (%zu chars)", preview, len - 8);
         return;
       }      
       break;

@@ -189,6 +189,7 @@ typedef struct {
   uint8_t row_count;
   uint8_t col_count;
   char** columns;
+  bool specified_order;
 
   SelectColumn* sel_columns;
   bool select_all;
