@@ -462,9 +462,9 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
         : find_column_index(ctx->tc[idx].schema, command.columns[value_count]);
       
       row[row_idx] = parser_parse_expression(parser, ctx->tc[idx].schema);
-
       if (!row[row_idx]) return command;
       value_count++;
+      LOG_DEBUG("value type @ idx %d is %d", value_count, row[row_idx]->type);
 
       if (parser->cur->type == TOK_COM) {
         parser_consume(parser);
@@ -477,6 +477,7 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
         REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP_VALUES");
         return command;  
       }
+
     }
 
     if (parser->cur->type != TOK_RP) {
@@ -489,6 +490,7 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
 
     command.value_counts[command.row_count] = value_count;
     command.values[command.row_count] = row;
+
 
     command.row_count++;
 
@@ -1004,8 +1006,9 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         }
       } else {
         col_val->type = TOK_T_STRING;
-        strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
-        col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';
+        col_val->str_value = malloc(strlen(parser->cur->value) + 1);
+        strcpy(col_val->str_value, parser->cur->value);
+        col_val->str_value[strlen(col_val->str_value)] = '\0';
       }
       break;
     case TOK_L_CHAR:
@@ -1498,6 +1501,27 @@ void print_column_value(ColumnValue* val) {
       break;
     }
 
+    case TOK_T_TEXT: {
+      if (val->is_toast) {
+        printf("TOAST(%u)", val->toast_object);
+      } else {
+        const char* s = val->str_value;
+        size_t len = strlen(s);
+      
+        if (len <= 8) {
+          LOG_DEBUG("\"%s\"", s);
+          return;
+        }
+      
+        char preview[12]; 
+        memcpy(preview, s, 8);
+        strcpy(preview + 8, "...");
+        LOG_DEBUG("\"%s\" (%zu chars)", preview, len - 8);
+        printf("(some text)");
+        return;
+      }      
+      break;
+    }
     default:
       printf("unprintable type: %d", val->type);
       break;

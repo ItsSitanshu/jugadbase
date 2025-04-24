@@ -44,15 +44,16 @@ typedef struct {
   uint8_t type; 
 
   bool is_null;
+  bool is_toast;
   
   union {  
     int64_t int_value;
     float float_value;
     double double_value;
     bool bool_value;
-    char str_value[MAX_IDENTIFIER_LEN]; 
-    uint8_t blob_value[MAX_BLOB_SIZE]; 
-    uint8_t json_value[MAX_JSON_SIZE]; 
+    char* str_value; 
+    char* toast_object_raw;
+    uint32_t toast_object;
     struct { int precision; int scale; char decimal_value[MAX_DECIMAL_LEN]; } decimal;
     Date date_value;
     TimeStored time_value;
