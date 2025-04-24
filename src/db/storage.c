@@ -64,8 +64,8 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
 }
 
 void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
-  uint16_t text_len, max_len;
-  uint8_t str_len;
+  uint16_t text_len, max_len, str_len;
+  bool is_toast_pointer = false;
 
   if (col_val == NULL || file == NULL || col_def == NULL) {
     LOG_ERROR("Invalid input to read_column_value.\n");
@@ -147,13 +147,31 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       break;
 
     case TOK_T_VARCHAR:
-    case TOK_T_CHAR:
-      fread(&str_len, sizeof(uint8_t), 1, file);
+    case TOK_T_CHAR: {
+      fread(&str_len, sizeof(uint16_t), 1, file);
+      col_val->str_value = malloc(str_len + 1);
       fread(col_val->str_value, sizeof(char), str_len, file);
       col_val->str_value[str_len] = '\0';
       break;
+    }
 
     case TOK_T_TEXT:
+      fread(&is_toast_pointer, sizeof(bool), 1, file);
+      if (!is_toast_pointer) {
+        fread(&str_len, sizeof(uint16_t), 1, file);
+        col_val->str_value = malloc(str_len);
+        if (!col_val->str_value) {
+          perror("malloc failed");
+          abort();
+        }
+        fread(col_val->str_value, str_len, 1, file);
+      } else {
+        fread(&col_val->toast_object, sizeof(uint32_t), 1, file);
+      }
+
+      col_val->is_toast = is_toast_pointer;
+      break;
+
     case TOK_T_JSON:
       fread(&text_len, sizeof(uint16_t), 1, file);
       fread(col_val->str_value, sizeof(char), text_len, file);
@@ -198,6 +216,7 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
 
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
   uint16_t text_len, str_len, max_len;
+  bool is_toast_pointer = false;
 
   if (col_val == NULL || file == NULL) {
     LOG_ERROR("Invalid column value or file pointer.\n");
@@ -291,11 +310,22 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
         str_len = max_len;
       }
 
-      fwrite(&str_len, sizeof(uint8_t), 1, file);
+      fwrite(&str_len, sizeof(uint16_t), 1, file);
       fwrite(col_val->str_value, str_len, 1, file);
       break;
-
-    case TOK_T_TEXT:
+          
+    case TOK_T_TEXT: {
+      is_toast_pointer = col_val->is_toast;
+      fwrite(&is_toast_pointer, sizeof(bool), 1, file);
+      if (!is_toast_pointer) {
+        str_len = (uint16_t)strlen(col_val->str_value);
+        fwrite(&str_len, sizeof(uint16_t), 1, file);
+        fwrite(col_val->str_value, str_len, 1, file);
+      } else {
+        fwrite(&col_val->toast_object, sizeof(uint32_t), 1, file); 
+      }
+      break;
+    }
     case TOK_T_JSON:
       text_len = (uint16_t)strlen(col_val->str_value);
       max_len = (col_def->type == TOK_T_JSON) ? MAX_JSON_SIZE : MAX_TEXT_SIZE;
