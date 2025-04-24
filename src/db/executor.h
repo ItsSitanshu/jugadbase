@@ -27,7 +27,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd);
 bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx, 
   ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
   TableSchema* schema, uint8_t column_count,
-  char** columns, uint8_t up_col_count);
+  char** columns, uint8_t up_col_count, bool specified_order);
 ExecutionResult execute_select(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_update(Context* ctx, JQLCommand* cmd);
 ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd);
@@ -35,7 +35,7 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd);
 ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx, uint8_t* out_type);
 
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
-ColumnValue evaluate_literal_expression(ExprNode* expr);
+ColumnValue evaluate_literal_expression(ExprNode* expr, Context* ctx);
 ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema);
 ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);

@@ -249,7 +249,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 
   for (uint32_t i = 0; i < cmd->row_count; i++) {
     if (execute_row_insert(cmd->values[i], ctx, schema_idx, primary_key_cols,
-        primary_key_vals, schema, column_count, cmd->columns, cmd->col_count)) {
+        primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order)) {
       success += 1;
     }
   }
@@ -265,7 +265,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
 bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx, 
                       ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
                       TableSchema* schema, uint8_t column_count,
-                      char** columns, uint8_t up_col_count) {
+                      char** columns, uint8_t up_col_count, bool specified_order) {
   uint8_t primary_key_count = 0;
 
   Row row = {0};
@@ -292,10 +292,7 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
   row.null_bitmap = null_bitmap;
   row.row_length = sizeof(row.id) + null_bitmap_size;
   
-
-  bool un_spec_flag = up_col_count == 0;
-  if (un_spec_flag) up_col_count = column_count;
-
+  if (specified_order) up_col_count = column_count;
 
   // Initialize all columns as NULL
   for (uint8_t i = 0; i < column_count; i++) {
@@ -308,7 +305,7 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
   }
 
   for (uint8_t j = 0; j < up_col_count; j++) {
-    int i = un_spec_flag ? j : find_column_index(schema, columns[j]);
+    int i = specified_order ? j : find_column_index(schema, columns[j]);
 
     Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, ctx, schema_idx);
@@ -604,441 +601,6 @@ ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Co
   return value;
 }
 
-// ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-//   ColumnValue result;
-//   memset(&result, 0, sizeof(ColumnValue));
-  
-//   if (is_struct_zeroed(row, sizeof(Row)) && !(
-//     expr->type == EXPR_LITERAL || 
-//     expr->type == EXPR_FUNCTION ||
-//     expr->type == EXPR_BINARY_OP
-//   )) {
-//     LOG_WARN("Latest query expects literals or functions, not logical comparisons. Query not processed.");
-//   }
-
-//   if (!expr) return result;
-//   switch (expr->type) {
-//     case EXPR_LITERAL:
-//       return expr->literal;
-//     case EXPR_COLUMN: {
-//       result.column_index = expr->column_index;
-
-//       if (row && expr->column_index < schema->column_count) {
-//         ColumnValue col = row->values[expr->column_index];
-//         col.type = schema->columns[expr->column_index].type;
-//         col.column_index = expr->column_index;
-//         return col;
-//       }
-//       result.type = schema->columns[expr->column_index].type;
-//       return result;
-//     }
-//     case EXPR_UNARY_OP: {
-//       ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, schema, ctx, schema_idx, &result.type);
-    
-//       switch (expr->arth_unary.op) {
-//         case TOK_SUB:
-//           if (operand.type == TOK_T_INT || operand.type == TOK_T_UINT) {
-//             result.type = TOK_T_INT;
-//             result.int_value = -operand.int_value;
-//           } else if (operand.type == TOK_T_FLOAT || operand.type == TOK_T_DOUBLE) {
-//             result.type = TOK_T_DOUBLE;
-//             result.double_value = -operand.double_value;
-//           } else {
-//             LOG_ERROR("Unary minus not supported on this type");
-//             result.type = operand.type;
-//           }
-//           return result;
-    
-//         default:
-//           LOG_WARN("Unsupported unary operation: %d", expr->arth_unary.op);
-//           return (ColumnValue){0};
-//       }
-//     }    
-//     case EXPR_BINARY_OP: {
-//       uint8_t type = 0;
-
-//       ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, ctx, schema_idx, &type);
-//       ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, ctx, schema_idx, &type);
-
-//       switch (type) {
-//         case TOK_T_INT:
-//         case TOK_T_UINT:
-//         case TOK_T_SERIAL:
-//         case TOK_T_FLOAT:
-//         case TOK_T_DOUBLE: {
-//           bool valid_conversion = infer_and_cast_va(2,
-//             (__c){&left, TOK_T_DOUBLE},
-//             (__c){&right, TOK_T_DOUBLE}  
-//           );
-
-//           if (!valid_conversion) {          
-//             return (ColumnValue){0};
-//           }
-          
-//           result.type = TOK_T_DOUBLE;
-//           switch (expr->binary.op) {
-//             case TOK_ADD: result.double_value = left.double_value + right.double_value; break;
-//             case TOK_SUB: result.double_value = left.double_value - right.double_value; break;
-//             case TOK_MUL: result.double_value = left.double_value * right.double_value; break;
-//             case TOK_DIV: result.double_value = left.double_value / right.double_value; break;
-//             default: LOG_WARN("Invalid binary-operation found, will produce incorrect results");
-//           }
-//           break;
-//         }
-//         case TOK_T_INTERVAL:
-//         case TOK_T_DATETIME:
-//         case TOK_T_TIMESTAMP:
-//         case TOK_T_DATETIME_TZ:
-//         case TOK_T_TIMESTAMP_TZ: {
-//           LOG_DEBUG("type: %d", type);
-//           if (left.type == TOK_T_INTERVAL) {
-//             if (right.type == TOK_T_DATETIME   ||
-//                 right.type == TOK_T_TIMESTAMP  ||
-//                 right.type == TOK_T_DATETIME_TZ||
-//                 right.type == TOK_T_TIMESTAMP_TZ) {
-//               ColumnValue tmp = left; left = right; right = tmp;
-//             }
-//           }
-//           switch (left.type) {
-//             case TOK_T_DATETIME: {
-//               if (right.type == TOK_T_INTERVAL) {
-//                 if (expr->binary.op == TOK_ADD) {
-//                   result.type = TOK_T_DATETIME;
-//                   result.datetime_value = add_interval_to_datetime(
-//                       left.datetime_value, right.interval_value);
-//                 }
-//                 else if (expr->binary.op == TOK_SUB) {
-//                   result.type = TOK_T_DATETIME;
-//                   result.datetime_value = subtract_interval_from_datetime(
-//                       left.datetime_value, right.interval_value);
-//                 }
-//                 else {
-//                   LOG_WARN("Unsupported DATETIME op: %d", expr->binary.op);
-//                   return (ColumnValue){0};
-//                 }
-//               }
-//               else if (right.type == TOK_T_DATETIME && expr->binary.op == TOK_SUB) {
-//                 result.type = TOK_T_INTERVAL;
-//                 result.interval_value = datetime_diff(
-//                     left.datetime_value, right.datetime_value);
-//               }
-//               else {
-//                 LOG_WARN("Invalid DATETIME op: %d with right type: %d",
-//                         expr->binary.op, right.type);
-//                 return (ColumnValue){0};
-//               }
-//               break;
-//             }
-          
-//             // ───── TIMESTAMP ─────
-//             case TOK_T_TIMESTAMP: {
-//               if (right.type == TOK_T_INTERVAL) {
-//                 DateTime dt = timestamp_to_datetime(left.timestamp_value);
-          
-//                 if (expr->binary.op == TOK_ADD) {
-//                   dt = add_interval_to_datetime(dt, right.interval_value);
-//                 }
-//                 else if (expr->binary.op == TOK_SUB) {
-//                   dt = subtract_interval_from_datetime(dt, right.interval_value);
-//                 }
-//                 else {
-//                   LOG_WARN("Unsupported TIMESTAMP op: %d", expr->binary.op);
-//                   return (ColumnValue){0};
-//                 }
-          
-//                 result.type = TOK_T_TIMESTAMP;
-//                 result.timestamp_value = datetime_to_timestamp(dt);
-//               }
-//               else if (right.type == TOK_T_TIMESTAMP && expr->binary.op == TOK_SUB) {
-//                 DateTime a = timestamp_to_datetime(left.timestamp_value);
-//                 DateTime b = timestamp_to_datetime(right.timestamp_value);
-//                 result.type = TOK_T_INTERVAL;
-//                 result.interval_value = datetime_diff(a, b);
-//               }
-//               else {
-//                 LOG_WARN("Invalid TIMESTAMP op: %d with right type: %d",
-//                         expr->binary.op, right.type);
-//                 return (ColumnValue){0};
-//               }
-//               break;
-//             }
-          
-//             // ───── DATETIME_TZ ─────
-//             case TOK_T_DATETIME_TZ: {
-//               if (right.type == TOK_T_INTERVAL) {
-//                 if (expr->binary.op == TOK_ADD) {
-//                   result.type = TOK_T_DATETIME_TZ;
-//                   result.datetime_tz_value = add_interval_to_datetime_TZ(
-//                       left.datetime_tz_value, right.interval_value);
-//                 }
-//                 else if (expr->binary.op == TOK_SUB) {
-//                   result.type = TOK_T_DATETIME_TZ;
-//                   result.datetime_tz_value = subtract_interval_from_datetime_TZ(
-//                       left.datetime_tz_value, right.interval_value);
-//                 }
-//                 else {
-//                   LOG_WARN("Unsupported DATETIME_TZ op: %d", expr->binary.op);
-//                   return (ColumnValue){0};
-//                 }
-//               }
-//               else if (right.type == TOK_T_DATETIME_TZ && expr->binary.op == TOK_SUB) {
-//                 DateTime a = convert_tz_to_local(left.datetime_tz_value);
-//                 DateTime b = convert_tz_to_local(right.datetime_tz_value);
-//                 result.type = TOK_T_INTERVAL;
-//                 result.interval_value = datetime_diff(a, b);
-//               }
-//               else {
-//                 LOG_WARN("Invalid DATETIME_TZ op: %d with right type: %d",
-//                         expr->binary.op, right.type);
-//                 return (ColumnValue){0};
-//               }
-//               break;
-//             }
-          
-//             case TOK_T_TIMESTAMP_TZ: {
-//               if (right.type == TOK_T_INTERVAL) {
-//                 Timestamp_TZ tz = left.timestamp_tz_value;
-//                 DateTime_TZ dt = timestamp_TZ_to_datetime_TZ(tz);
-//                 Timestamp_TZ tmp = left.timestamp_tz_value;
-//                 DateTime_TZ base = timestamp_TZ_to_datetime_TZ(left.timestamp_tz_value);
-//                 DateTime  local = (DateTime){
-//                   base.year, base.month, base.day,
-//                   base.hour, base.minute, base.second
-//                 };
-//                 if (expr->binary.op == TOK_ADD) {
-//                   local = add_interval_to_datetime(local, right.interval_value);
-//                 } else if (expr->binary.op == TOK_SUB) {
-//                   local = subtract_interval_from_datetime(local, right.interval_value);
-//                 } else {
-//                   LOG_WARN("Unsupported TIMESTAMP_TZ op: %d", expr->binary.op);
-//                   return (ColumnValue){0};
-//                 }
-//                 result.type = TOK_T_TIMESTAMP_TZ;
-//                 result.timestamp_tz_value = datetime_TZ_to_timestamp_TZ((DateTime_TZ){
-//                   local.year, local.month, local.day,
-//                   local.hour, local.minute, local.second,
-//                   left.timestamp_tz_value.time_zone_offset
-//                 });
-//               }
-//               else if (right.type == TOK_T_TIMESTAMP_TZ && expr->binary.op == TOK_SUB) {
-//                 DateTime_TZ a = timestamp_TZ_to_datetime_TZ(left.timestamp_tz_value);
-//                 DateTime_TZ b = timestamp_TZ_to_datetime_TZ(right.timestamp_tz_value);
-//                 DateTime da = convert_tz_to_local(a);
-//                 DateTime db = convert_tz_to_local(b);
-//                 result.type = TOK_T_INTERVAL;
-//                 result.interval_value = datetime_diff(da, db);
-//               }
-//               else {
-//                 LOG_WARN("Invalid TIMESTAMP_TZ op: %d with right type: %d",
-//                         expr->binary.op, right.type);
-//                 return (ColumnValue){0};
-//               }
-//               break;
-//             }
-          
-//             case TOK_T_INTERVAL: {
-//               if (right.type == TOK_T_INTERVAL) {
-//                 // if (expr->binary.op == TOK_ADD) {
-//                 //   result.type = TOK_T_INTERVAL;
-//                 //   result.interval_value = add_intervals(left.interval_value, right.interval_value);
-//                 // }
-//                 // else if (expr->binary.op == TOK_SUB) {
-//                 //   result.type = TOK_T_INTERVAL;
-//                 //   result.interval_value = subtract_intervals(left.interval_value, right.interval_value);
-//                 // }
-//                 // else {
-//                 //   LOG_WARN("Unsupported INTERVAL op: %d", expr->binary.op);
-//                 //   return (ColumnValue){0};
-//                 // }
-//               }
-//               else {
-//                 LOG_WARN("Invalid INTERVAL op: %d with right type: %d",
-//                         expr->binary.op, right.type);
-//                 return (ColumnValue){0};
-//               }
-//               break;
-//             }
-//             default:
-//               LOG_WARN("Unsupported left operand type: %d", left.type);
-//               return (ColumnValue){0};
-//           }        
-//           break;
-//         }
-//         default:  
-//           LOG_DEBUG("SYE_E_UNSUPPORTED_BINARY_EXPR_TYPE: %d", type);
-//           break;
-//       }
-//       return result;
-//     }
-//     case EXPR_FUNCTION:
-//       return evaluate_function(expr->fn.name,
-//                                expr->fn.args,
-//                                expr->fn.arg_count,
-//                                row, schema, ctx, schema_idx);
-
-//     case EXPR_COMPARISON: {
-//       uint8_t type = 0;
-
-//       ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, ctx, schema_idx, &type);
-//       ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, ctx, schema_idx, &type);
-      
-//       if (expr->binary.op == TOK_EQ &&
-//           expr->binary.left->type == EXPR_COLUMN &&
-//           expr->binary.right->type == EXPR_LITERAL &&
-//           schema->columns[expr->binary.left->column_index].is_primary_key && ctx) {
-        
-//         void* key = get_column_value_as_pointer(&right);
-//         uint8_t btree_idx = hash_fnv1a(schema->columns[expr->binary.left->column_index].name, MAX_COLUMNS);
-//         RowID rid = btree_search(ctx->tc[schema_idx].btree[btree_idx], key);
-
-//         result.type = TOK_T_BOOL;
-//         result.bool_value = (!is_struct_zeroed(&rid, sizeof(RowID)) &&
-//                              row->id.page_id == rid.page_id &&
-//                              row->id.row_id == rid.row_id);
-//         return result;
-//       }
-
-//       if (expr->binary.op == TOK_EQ &&
-//         expr->binary.left->type == EXPR_COLUMN &&
-//         expr->binary.right->type == EXPR_LITERAL &&
-//         expr->binary.right->literal.is_null) {
-//           result.type = TOK_T_BOOL;
-//           result.bool_value = left.is_null;
-//           return result;
-//       }
-
-//       bool valid_conversion = infer_and_cast_va(2,
-//         (__c){&left, type},
-//         (__c){&right, type}
-//       );
-
-//       if (!valid_conversion) {
-//         LOG_ERROR("Invalid conversion whilst trying to evaluate conditions");
-//         return (ColumnValue){0};
-//       }
-
-//       int cmp = key_compare(get_column_value_as_pointer(&left), get_column_value_as_pointer(&right), type);
-
-//       result.type = TOK_T_BOOL;
-
-//       switch (expr->binary.op) {
-//         case TOK_EQ: result.bool_value = (cmp == 0); break;
-//         case TOK_NE: result.bool_value = (cmp != 0); break;
-//         case TOK_LT: result.bool_value = (cmp == -1); break;
-//         case TOK_GT: result.bool_value = (cmp == 1); break;
-//         case TOK_LE: result.bool_value = (cmp == 0 || cmp == -1); break;
-//         case TOK_GE: result.bool_value = (cmp == 0 || cmp == 1); break;
-//         default: result.bool_value = false; break;
-//       }
-      
-
-//       return result;
-//     }
-//     case EXPR_LIKE: {
-//       uint8_t type = 0;
-    
-//       ColumnValue left = resolve_expr_value(expr->like.left, row, schema, ctx, schema_idx, &type);
-//       if (left.type != TOK_T_VARCHAR || left.str_value == NULL) {
-//         LOG_ERROR("LIKE can only be applied to VARCHAR values");
-//         return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
-//       }
-          
-//       bool res = like_match(left.str_value, expr->like.pattern);
-//       if (res) {
-//         return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = true };
-//       }
-
-//       return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
-//     }
-//     case EXPR_BETWEEN: {
-//       uint8_t type = 0;
-    
-//       ColumnValue value = resolve_expr_value(expr->between.value, row, schema, ctx, schema_idx, &type);
-//       ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, ctx, schema_idx, &type);
-//       ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, ctx, schema_idx, &type);
-      
-//       bool valid_conversion = infer_and_cast_va(3,
-//         (__c){&lower, TOK_T_DOUBLE},
-//         (__c){&upper, TOK_T_DOUBLE},
-//         (__c){&value, TOK_T_DOUBLE}
-//       );
-
-//       if (!valid_conversion) {
-//         LOG_ERROR("BETWEEN only supports NUMERIC or DATE values");        
-//         return (ColumnValue){0};
-//       }
-
-//       ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
-      
-//       result.bool_value = (value.double_value >= lower.double_value) && (value.double_value <= upper.double_value);
-    
-//       return result;
-//     }
-//     case EXPR_IN: {
-//       uint8_t type = 0;
-//       ColumnValue value = resolve_expr_value(expr->in.value, row, schema, ctx, schema_idx, &type);
-//       ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
-    
-//       for (size_t i = 0; i < expr->in.count; ++i) {
-//         ColumnValue val = resolve_expr_value(expr->in.list[i], row, schema, ctx, schema_idx, &type);
-    
-//         bool match = false;
-//         if (value.type == TOK_T_INT || value.type == TOK_T_UINT || value.type == TOK_T_SERIAL) {
-//           match = (value.int_value == val.int_value);
-//         } else if (value.type == TOK_T_VARCHAR) {
-//           match = (strcmp(value.str_value, val.str_value) == 0);
-//         } /* else if (value.type == TOK_T_DATE) {
-//           match = (value.date_value == val.date_value);
-//         } */
-    
-//         if (match) {
-//           result.bool_value = true;
-//           return result;
-//         }
-//       }
-    
-//       return result;
-//     }        
-//     case EXPR_LOGICAL_AND: {
-//       ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
-//       if (!left.bool_value) {
-//         result.type = TOK_T_BOOL;
-//         result.bool_value = false;
-//         return result;
-//       }
-//       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
-//       result.type = TOK_T_BOOL;
-//       result.bool_value = left.bool_value && right.bool_value;
-
-//       return result;
-//     }
-//     case EXPR_LOGICAL_OR: {
-//       ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
-//       if (left.bool_value) {
-//         result.type = TOK_T_BOOL;
-//         result.bool_value = true;
-//         return result;
-//       }
-//       ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
-//       result.type = TOK_T_BOOL;
-//       result.bool_value = left.bool_value || right.bool_value;
-//       return result;
-//     }
-
-//     case EXPR_LOGICAL_NOT: {
-//       ColumnValue operand = evaluate_expression(expr->unary, row, schema, ctx, schema_idx);
-            
-//       result.type = TOK_T_BOOL;
-//       result.bool_value = !operand.bool_value;
-//       return result;
-//     }
-//     default:
-//       return result;
-//   }
-// }
-
-// Forward declarations
-
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
@@ -1055,7 +617,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
   
   switch (expr->type) {
     case EXPR_LITERAL:
-      return evaluate_literal_expression(expr);
+      return evaluate_literal_expression(expr, ctx);
     case EXPR_COLUMN:
       return evaluate_column_expression(expr, row, schema);
     case EXPR_UNARY_OP:
@@ -1083,8 +645,19 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
   }
 }
 
-ColumnValue evaluate_literal_expression(ExprNode* expr) {
-  return expr->literal;
+ColumnValue evaluate_literal_expression(ExprNode* expr, Context* ctx) {
+  ColumnValue* value = &expr->literal;
+
+  if (value->type == TOK_T_STRING) {
+    if (value->str_value && strlen(value->str_value) > TOAST_CHUNK_SIZE) {
+      uint32_t toast_id = toast_new_entry(ctx, value->str_value);
+      value->is_toast = true;
+      value->type = TOK_T_TEXT;
+      value->toast_object = toast_id;
+    }
+  }
+
+  return *value;
 }
 
 ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema) {
@@ -1679,9 +1252,9 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
     case TOK_T_VARCHAR:
       return col_val->str_value;
     case TOK_T_BLOB:
-      return &(col_val->blob_value);
     case TOK_T_JSON:
-      return &(col_val->json_value);
+    case TOK_T_TEXT:
+      return &(col_val->toast_object);
     case TOK_T_DECIMAL:
       return &(col_val->decimal.decimal_value);
     case TOK_T_DATE:
@@ -1811,6 +1384,8 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         if (!(col_val->str_value && strlen(col_val->str_value) > 0)) {
           return false;
         }
+      } else if (target_type == TOK_T_TEXT) {
+        return true;
       } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
         char* endptr;
         col_val->int_value = strtoll(col_val->str_value, &endptr, 10);

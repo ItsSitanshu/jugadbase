@@ -6,6 +6,7 @@
 #include "btree.h"
 #include "parser.h"
 #include "storage.h"
+#include "toast.h"
 
 #define MAX_COMMANDS 1024
 #define MAX_TABLES 256 // Prime to avoid hash collisons
