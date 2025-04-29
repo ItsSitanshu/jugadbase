@@ -32,20 +32,23 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~`LIM` and `OFFSET`~~
   - ~~Ordering `ODR` (`ASRT` and `DSRT`)~~
 - ~~FIX BUG: Update command on local variables dont work properly~~
-- Important logic and functions for dynamic types
+- Important logic for dynamic types
   - ~~Datetime~~
   - Json
-  - Text
+  - ~~Text~~
   - Blob
 - Compacting in actual storage of rows (storage.c)
 - Implement foreign constraints
 - Design casading  
+- FIX BUG: Multiple inserts statements in same file when large contents are present
+- Introduce lists <type>[]
 - Implement `$variables` for cleaner SDK support
 - Implement `DROP` to remove tables
 - Add indexing for performance optimization  
 - Implement `JOIN` operations  
 - Support transactions (`BEGIN`, `COMMIT`, `ROLLBACK`)  
 - Optimize `JOIN` performance  
+- Implement functions for dynamic types (DATETIME/JSON/BLOB/TEXT)
 - Benchmark query execution speed  
 - Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
 - Add support for stored procedures  
