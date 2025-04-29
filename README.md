@@ -32,11 +32,11 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~`LIM` and `OFFSET`~~
   - ~~Ordering `ODR` (`ASRT` and `DSRT`)~~
 - ~~FIX BUG: Update command on local variables dont work properly~~
-- Important logic for dynamic types
+- ~~Important logic for dynamic types~~
   - ~~Datetime~~
-  - Json
+  - ~~Json~~
   - ~~Text~~
-  - Blob
+  - ~~Blob~~
 - Compacting in actual storage of rows (storage.c)
 - Implement foreign constraints
 - Design casading  
