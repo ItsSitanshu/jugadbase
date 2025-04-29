@@ -36,7 +36,7 @@ ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Co
 
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue evaluate_literal_expression(ExprNode* expr, Context* ctx);
-ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema);
+ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx);
 ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
 ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx);
@@ -61,6 +61,7 @@ void* get_column_value_as_pointer(ColumnValue* col_val);
 size_t size_from_type(uint8_t column_type);
 uint32_t get_table_offset(Context* ctx, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);
+void check_and_concat_toast(Context* ctx, ColumnValue* value);
 
 ExecutionOrder* generate_execution_plan(JQLCommand* command);
 

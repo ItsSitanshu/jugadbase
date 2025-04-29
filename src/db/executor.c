@@ -440,31 +440,39 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
     return (ExecutionResult){1, "Memory allocation failed for limited result rows"};
   }
 
-  if (cmd->select_all && cmd->value_counts[0] == 1) {
-    for (uint32_t i = 0; i < out_count; i++) {
-      result_rows[i] = collected_rows[start + i];
+  for (uint32_t i = 0; i < out_count; i++) {
+    Row* src = &collected_rows[start + i];
+    Row* dst = &result_rows[i];
+  
+    memset(dst, 0, sizeof(Row));
+    dst->id = src->id;
+    dst->values = calloc(schema->column_count, sizeof(ColumnValue));
+    if (!dst->values) {
+      free(collected_rows);
+      free(result_rows);
+      return (ExecutionResult){1, "Memory allocation failed for projected values"};
     }
-  } else {
-    for (uint32_t i = 0; i < out_count; i++) {
-      Row* src = &collected_rows[start + i];
-      Row* dst = &result_rows[i];
-      memset(dst, 0, sizeof(Row));
-      dst->id = src->id;
-      dst->values = calloc(schema->column_count, sizeof(ColumnValue));
-      if (!dst->values) {
-        free(collected_rows);
-        free(result_rows);
-        return (ExecutionResult){1, "Memory allocation failed for projected values"};
-      }
-      for (int k = 0; k < schema->column_count; k++) {
-        dst->values[k].is_null = true;
-      }
-      for (int j = 0; j < cmd->value_counts[0]; j++) {
-        ColumnValue val = evaluate_expression(cmd->sel_columns[j].expr, src, schema, ctx, schema_idx);
+  
+    for (int k = 0; k < schema->column_count; k++) {
+      dst->values[k].is_null = true;
+    }
+  
+    int col_count = cmd->value_counts[0];
+  
+    for (int j = 0; j < col_count; j++) {
+      ExprNode* expr = cmd->sel_columns[j].expr;
+  
+      if (!expr) {
+        ColumnValue raw = src->values[j];
+        dst->values[j] = raw; 
+        dst->values[j].column_index = j;
+      } else {
+        ColumnValue val = evaluate_expression(expr, src, schema, ctx, schema_idx);
         dst->values[val.column_index] = val;
       }
     }
   }
+  
 
   free(collected_rows);
 
@@ -619,7 +627,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
     case EXPR_LITERAL:
       return evaluate_literal_expression(expr, ctx);
     case EXPR_COLUMN:
-      return evaluate_column_expression(expr, row, schema);
+      return evaluate_column_expression(expr, row, schema, ctx);
     case EXPR_UNARY_OP:
       return evaluate_unary_op_expression(expr, row, schema, ctx, schema_idx);
     case EXPR_BINARY_OP:
@@ -655,12 +663,14 @@ ColumnValue evaluate_literal_expression(ExprNode* expr, Context* ctx) {
       value->type = TOK_T_TEXT;
       value->toast_object = toast_id;
     }
+  } else if (value->is_toast) { 
+    check_and_concat_toast(ctx, value);
   }
 
   return *value;
 }
 
-ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema) {
+ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   
@@ -668,6 +678,12 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
 
   if (row && expr->column_index < schema->column_count) {
     ColumnValue col = row->values[expr->column_index];
+    
+    if (col.is_toast) {
+      check_and_concat_toast(ctx, &col);
+      printf("toast: "); print_column_value(&col); printf("\n");
+    }
+    
     col.type = schema->columns[expr->column_index].type;
     col.column_index = expr->column_index;
     return col;
@@ -1609,6 +1625,14 @@ bool column_name_in_list(const char* name, char** list, uint8_t list_len) {
     if (strcmp(name, list[i]) == 0) return true;
   }
   return false;
+}
+
+void check_and_concat_toast(Context* ctx, ColumnValue* value) {
+  char* result = toast_concat(ctx, value->toast_object);
+
+
+  value->str_value = strdup(result);
+  value->is_toast = false;
 }
 
 // ExecutionOrder* generate_execution_plan(JQLCommand* command) {

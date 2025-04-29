@@ -48,6 +48,47 @@ uint32_t toast_new_entry(Context* ctx, const char* data) {
   return id;
 }
 
+char* toast_concat(Context* ctx, uint32_t toast_id) {
+  char query[128];
+  snprintf(query, sizeof(query),
+           "SELECT data FROM jb_toast WHERE id = %u ORDER BY seq;", toast_id);
+    
+  Result res = process(ctx, query);
+  if (res.exec.code != 0 || res.exec.row_count == 0) {
+    return NULL;
+  }
+
+  size_t total_len = 0;
+  for (size_t i = 0; i < res.exec.row_count; ++i) {
+    total_len += strlen(res.exec.rows[i].values[2].str_value);
+  }
+
+  char* full_text = malloc(total_len + 1);
+  if (!full_text) return NULL;
+
+  full_text[0] = '\0';
+  for (size_t i = 0; i < res.exec.row_count; ++i) {
+    strcat(full_text, res.exec.rows[i].values[2].str_value);
+  }
+
+  return full_text;
+}
+
+bool toast_delete(Context* ctx, uint32_t toast_id) {
+  char query[128];
+  snprintf(query, sizeof(query),
+           "DELETE FROM jb_toast WHERE id = %u;", toast_id);
+
+  Result res = process(ctx, query);
+  if (res.exec.code != 0) {
+    LOG_ERROR("Failed to delete TOAST entry with id %u", toast_id);
+    return false;
+  }
+
+  LOG_INFO("Deleted TOAST entry with id %u", toast_id);
+  return true;
+}
+
 ToastChunks* toast_split_entry(const char* data) {
   if (!data) return NULL;
 
