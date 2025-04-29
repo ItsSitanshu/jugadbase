@@ -112,8 +112,6 @@ JQLCommand parser_parse(Context* ctx) {
 
   parser_consume(ctx->parser);
 
-  LOG_DEBUG("%s %d == %d", ctx->parser->cur->value, ctx->parser->cur->type, TOK_EOF);
-
   return command;
 }
 
@@ -468,7 +466,6 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
       row[row_idx] = parser_parse_expression(parser, ctx->tc[idx].schema);
       if (!row[row_idx]) return command;
       value_count++;
-      LOG_DEBUG("value type @ idx %d is %d", value_count, row[row_idx]->type);
 
       if (parser->cur->type == TOK_COM) {
         parser_consume(parser);
@@ -550,8 +547,18 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   uint8_t value_count = 0;
   
   if (parser->cur->type == TOK_MUL) {
-    command.select_all = true;
-    value_count++;
+    value_count = ctx->tc[idx].schema->column_count;
+    command.sel_columns = calloc(value_count, sizeof(SelectColumn));
+    
+    for (int j = 0; j < ctx->tc[idx].schema->column_count; j++) {
+      ExprNode* id_expr = malloc(sizeof(ExprNode));
+      id_expr->type = EXPR_COLUMN;
+      id_expr->column_index = j;
+      
+      command.sel_columns[j].expr = id_expr;
+      // strncpy(cmd->sel_columns[j].alias, schema->columns[j].name, MAX_COLUMN_NAME);
+    }
+    
     parser_consume(parser);
   } else {
     int column_count = 0;
@@ -1512,14 +1519,12 @@ void print_column_value(ColumnValue* val) {
       
         if (len <= 8) {
           printf("\"%s\"", s);
-          return;
         }
       
         char preview[12]; 
         memcpy(preview, s, 8);
         strcpy(preview + 8, "...");
-        printf("\"%s\" (%zu chars)", preview, len - 8);
-        return;
+        printf("\"%s (%zu chars)\"", preview, len - 8);
       }      
       break;
     }

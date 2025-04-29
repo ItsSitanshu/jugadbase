@@ -52,7 +52,6 @@ typedef struct {
     double double_value;
     bool bool_value;
     char* str_value; 
-    char* toast_object_raw;
     uint32_t toast_object;
     struct { int precision; int scale; char decimal_value[MAX_DECIMAL_LEN]; } decimal;
     Date date_value;
@@ -293,5 +292,5 @@ bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
 
 bool infer_and_cast_va(size_t count, ...);
 bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type);
-
+ 
 #endif // JQL_COMMAND_H
