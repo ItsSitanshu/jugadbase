@@ -452,6 +452,9 @@ Token* lexer_handle_1char(Lexer* lexer) {
     case '-':
       return lexer_process_minus_op(lexer, next_char);
       break;
+    case '\'':
+      return lexer_process_single_quote(lexer);
+      break;
     case '\"':
       return lexer_process_double_quote(lexer);
       break;
@@ -567,33 +570,38 @@ Token* lexer_process_minus_op(Lexer* lexer, char next_char) {
   return lexer_token_init(lexer, "-", TOK_SUB);
 }
 
-Token* lexer_process_double_quote(Lexer* lexer) {
-  lexer_advance(lexer, 1); // consume "
+Token* lexer_process_single_quote(Lexer* lexer) {
+  lexer_advance(lexer, 1);
 
   char* value = calloc(1, sizeof(char));
+  if (!value) exit(EXIT_FAILURE);
 
-  if (!value) {
-    exit(EXIT_FAILURE);
-  }
+  while (lexer->c != '\0') {
+    if (lexer->c == '\'') {
+      if (lexer_peek(lexer, 2)[1] == '\'') {
+        lexer_advance(lexer, 1); 
+        lexer_advance(lexer, 1);
 
-  while (lexer->c != '"' && lexer->c != '\0') {
-    size_t len = strlen(value);
-    value = realloc(value, (len + 2) * sizeof(char));
-
-    if (!value) {
-      exit(EXIT_FAILURE);
+        size_t len = strlen(value);
+        value = realloc(value, len + 2);
+        if (!value) exit(EXIT_FAILURE);
+        value[len] = '\'';
+        value[len + 1] = '\0';
+        continue;
+      } else {
+        lexer_advance(lexer, 1);
+        Token* token = lexer_token_init(lexer, value, TOK_L_STRING);
+        free(value);
+        return token;
+      }
     }
 
+    size_t len = strlen(value);
+    value = realloc(value, len + 2);
+    if (!value) exit(EXIT_FAILURE);
     value[len] = lexer->c;
     value[len + 1] = '\0';
-    lexer_advance(lexer, 1); // consume char
-  }
-
-  if (lexer->c == '"') {
     lexer_advance(lexer, 1);
-    Token* token = lexer_token_init(lexer, value, TOK_L_STRING);
-    free(value);
-    return token;
   }
 
   REPORT_ERROR(lexer, "E_STRING_TERMINATOR");
@@ -602,6 +610,45 @@ Token* lexer_process_double_quote(Lexer* lexer) {
   return lexer_next_token(lexer);
 }
 
+Token* lexer_process_double_quote(Lexer* lexer) {
+  lexer_advance(lexer, 1);
+
+  char* value = calloc(1, sizeof(char));
+  if (!value) exit(EXIT_FAILURE);
+
+  while (lexer->c != '\0') {
+    if (lexer->c == '"') {
+      if (lexer_peek(lexer, 2)[1] == '"') {
+        lexer_advance(lexer, 1); 
+        lexer_advance(lexer, 1);
+
+        size_t len = strlen(value);
+        value = realloc(value, len + 2);
+        if (!value) exit(EXIT_FAILURE);
+        value[len] = '"';
+        value[len + 1] = '\0';
+        continue;
+      } else {
+        lexer_advance(lexer, 1);
+        Token* token = lexer_token_init(lexer, value, TOK_L_STRING);
+        free(value);
+        return token;
+      }
+    }
+
+    size_t len = strlen(value);
+    value = realloc(value, len + 2);
+    if (!value) exit(EXIT_FAILURE);
+    value[len] = lexer->c;
+    value[len + 1] = '\0';
+    lexer_advance(lexer, 1);
+  }
+
+  REPORT_ERROR(lexer, "E_STRING_TERMINATOR");
+  lexer_handle_error(lexer);
+  free(value);
+  return lexer_next_token(lexer);
+}
 
 struct ErrorTemplate templates[] = {
   {"SYE_UNSUPPORTED", "Unsupported syntax"},

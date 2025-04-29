@@ -60,6 +60,7 @@ Token* lexer_process_pos_singlechar(Lexer* lexer, char next_char,
   char c_pos1, uint8_t t_pos0, uint8_t t_pos1);
 Token* lexer_process_minus_op(Lexer* lexer, char next_char);
 
+Token* lexer_process_single_quote(Lexer* lexer);
 Token* lexer_process_double_quote(Lexer* lexer);
 
 #ifndef REPORT_ERROR

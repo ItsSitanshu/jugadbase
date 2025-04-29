@@ -881,6 +881,7 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type) {
     case TOK_T_VARCHAR:
     case TOK_T_CHAR:
     case TOK_T_TEXT:
+    case TOK_T_BLOB:
     case TOK_T_JSON:
     case TOK_T_UUID:
       return (literal_type == TOK_L_STRING);
@@ -890,10 +891,6 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type) {
     case TOK_T_DATETIME:
     case TOK_T_TIMESTAMP:
       return (literal_type == TOK_L_STRING); 
-
-    case TOK_T_BLOB:
-      REPORT_ERROR(parser->lexer, "INV_BLOB_DEFVAL");
-      return false; 
     default:
       return false;
   }
@@ -1510,9 +1507,11 @@ void print_column_value(ColumnValue* val) {
       break;
     }
 
-    case TOK_T_TEXT: {
+    case TOK_T_TEXT:
+    case TOK_T_BLOB:
+    case TOK_T_JSON: {
       if (val->is_toast) {
-        printf("TOAST(%u)", val->toast_object);
+        printf("<%s>(%u)", token_type_strings[val->type], val->toast_object);
       } else {
         const char* s = val->str_value;
         size_t len = strlen(s);

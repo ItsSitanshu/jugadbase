@@ -156,6 +156,8 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
     }
 
     case TOK_T_TEXT:
+    case TOK_T_JSON:
+    case TOK_T_BLOB: {
       fread(&is_toast_pointer, sizeof(bool), 1, file);
       if (!is_toast_pointer) {
         fread(&str_len, sizeof(uint16_t), 1, file);
@@ -171,13 +173,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
 
       col_val->is_toast = is_toast_pointer;
       break;
-
-    case TOK_T_JSON:
-      fread(&text_len, sizeof(uint16_t), 1, file);
-      fread(col_val->str_value, sizeof(char), text_len, file);
-      col_val->str_value[text_len] = '\0';
-      break;
-
+    }
     default:
       LOG_ERROR("Unsupported data type in read_column_value.\n");
       break;
@@ -314,7 +310,9 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
       fwrite(col_val->str_value, str_len, 1, file);
       break;
           
-    case TOK_T_TEXT: {
+    case TOK_T_TEXT:
+    case TOK_T_JSON:
+    case TOK_T_BLOB: {
       is_toast_pointer = col_val->is_toast;
       fwrite(&is_toast_pointer, sizeof(bool), 1, file);
       if (!is_toast_pointer) {
@@ -326,17 +324,6 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
       }
       break;
     }
-    case TOK_T_JSON:
-      text_len = (uint16_t)strlen(col_val->str_value);
-      max_len = (col_def->type == TOK_T_JSON) ? MAX_JSON_SIZE : MAX_TEXT_SIZE;
-
-      if (text_len > max_len) {
-        text_len = max_len;
-      }
-
-      fwrite(&text_len, sizeof(uint16_t), 1, file);
-      fwrite(col_val->str_value, sizeof(char), text_len, file);
-      break;
 
     default:
       LOG_ERROR("Error: Unsupported data type.\n");

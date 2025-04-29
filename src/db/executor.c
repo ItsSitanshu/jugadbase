@@ -1400,7 +1400,7 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         if (!(col_val->str_value && strlen(col_val->str_value) > 0)) {
           return false;
         }
-      } else if (target_type == TOK_T_TEXT) {
+      } else if (target_type == TOK_T_TEXT || target_type == TOK_T_JSON || target_type == TOK_T_BLOB) {
         return true;
       } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
         char* endptr;
@@ -1555,6 +1555,10 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
       }
       break;
     }    
+    case TOK_T_TEXT: {
+      if (!(target_type == TOK_T_BLOB || target_type == TOK_T_JSON)) return false;
+      break;       
+    }
     default:
       return false;
   }
@@ -1600,8 +1604,9 @@ size_t size_from_type(uint8_t column_type) {
       size = sizeof(uint8_t);
       break;
     case TOK_T_TEXT:
+    case TOK_T_BLOB:
     case TOK_T_JSON:
-      size = MAX_JSON_SIZE;
+      size = TOAST_CHUNK_SIZE;
       break;
     default:
       size = 0;  
