@@ -6,7 +6,6 @@ void initialize_buffer_pool(BufferPool* pool, uint8_t idx, char* filename) {
     pool->page_numbers[i] = 0;
   }
 
-  pool->next_pg_no = 0;
   pool->idx = idx;
 
   memcpy(pool->file, filename, MAX_PATH_LENGTH - 1);
@@ -161,7 +160,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       fread(&is_toast_pointer, sizeof(bool), 1, file);
       if (!is_toast_pointer) {
         fread(&str_len, sizeof(uint16_t), 1, file);
-        col_val->str_value = malloc(str_len);
+        col_val->str_value = malloc(str_len + 1);
         if (!col_val->str_value) {
           perror("malloc failed");
           abort();
@@ -172,6 +171,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       }
 
       col_val->is_toast = is_toast_pointer;
+      LOG_DEBUG("is_toast: %s (%u)", col_val->is_toast ? "true": "false", col_val->toast_object);
       break;
     }
     default:
@@ -208,6 +208,8 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
       }
     }
   }
+
+  LOG_DEBUG("Updating pool %u", page_number);
 }
 
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
@@ -334,6 +336,11 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   Page* page = NULL;
 
+  if (pool->num_pages == POOL_SIZE) {
+    pop_lru_page(pool, tc);
+    return serialize_insert(pool, row, tc);
+  }
+
   for (int i = 0; i < POOL_SIZE; i++) {
     if (pool->pages[i] != NULL) {
       page = pool->pages[i];
@@ -346,19 +353,29 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   if (page == NULL) {
     for (int i = 0; i < POOL_SIZE; i++) {
       if (pool->pages[i] == NULL) {
-        page = page_init(0);
+        page = page_init(pool->next_pg_no);
+
         pool->pages[i] = page;
-        pool->next_pg_no++;
+        pool->page_numbers[i] = pool->next_pg_no;
+
         pool->num_pages++;
+        pool->next_pg_no++;
+        
         break;
       }
     }
   }
 
-  if (page == NULL) {
-    pop_lru_page(pool, tc);
-    return serialize_insert(pool, row, tc);
-  }
+  if (page->free_space <= row.row_length) {
+    page->is_full = true; // old
+    page = page_init(pool->next_pg_no);
+
+    pool->pages[pool->num_pages] = page;
+    pool->page_numbers[pool->num_pages] = pool->next_pg_no;  
+
+    pool->num_pages++;
+    pool->next_pg_no++;
+  } 
 
   row.id.row_id = page->num_rows + 1;
   row.id.page_id = page->page_id;
@@ -368,10 +385,6 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   page->num_rows++;
   page->free_space -= row.row_length;
   page->is_dirty = true;
-
-  if (page->free_space == 0) {
-    page->is_full = true;
-  }  
 
   return (RowID){ row.id.page_id, row.id.row_id };
 }
@@ -392,12 +405,12 @@ bool serialize_delete(BufferPool* pool, RowID rid) {
       return false;
     }
 
+    page->num_rows--;
     page->free_space += row->row_length;
 
     memset(row, 0, sizeof(Row));
 
     page->is_dirty = true;
-    page->is_full = false;
 
     LOG_DEBUG("serialize_delete: Deleted row from page %u, slot %u", rid.page_id, rid.row_id);
     return true;
@@ -411,7 +424,7 @@ void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
   if (pool->num_pages == 0) return;
 
   Page* lru_page = pool->pages[0];
-  FILE* file = fopen(pool->file, "wb");
+  FILE* file = fopen(pool->file, "ab");
 
   if (lru_page->is_dirty) {
     write_page(file, lru_page->page_id, lru_page, tc); 
@@ -422,7 +435,18 @@ void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
 
   for (int i = 1; i < pool->num_pages; i++) {
     pool->pages[i - 1] = pool->pages[i];
+    pool->page_numbers[i - 1] = pool->page_numbers[i];
   }
 
+  pool->pages[pool->num_pages - 1] = NULL;
+  pool->page_numbers[pool->num_pages - 1] = 0;
   pool->num_pages--;
+
+  uint32_t max_pg_n = 0;
+  for (int i = 0; i < pool->num_pages; i++) {
+    if (pool->page_numbers[i] > max_pg_n) {
+      max_pg_n = pool->page_numbers[i];
+    }
+  }
+  pool->next_pg_no = max_pg_n + 1;
 }

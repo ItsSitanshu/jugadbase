@@ -29,10 +29,11 @@ typedef struct Page {
 
 typedef struct BufferPool {
   Page* pages[POOL_SIZE];
-  uint32_t page_numbers[POOL_SIZE];
-
-  uint32_t next_pg_no;
   char file[MAX_PATH_LENGTH];
+  
+  uint32_t page_numbers[POOL_SIZE];
+  uint32_t next_pg_no;
+
   uint8_t idx;
   uint8_t num_pages;
 } BufferPool;
