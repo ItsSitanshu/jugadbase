@@ -371,7 +371,7 @@ void load_btree_cluster(Context* ctx, char* name) {
   snprintf(rows_db_path, sizeof(rows_db_path), "%s" SEP "%s" SEP "rows.db", 
             ctx->fs->tables_dir, name);
   if (!file_exists(rows_db_path)) {
-    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run jugad-cli fix", ctx->fs->tables_dir);
+    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run 'fix'", ctx->fs->tables_dir);
     return;
   }
   
@@ -424,8 +424,8 @@ void load_btree_cluster(Context* ctx, char* name) {
     return;
   } 
 
+  ctx->btree_idx_stack[ctx->loaded_btree_clusters] = idx;
   ctx->loaded_btree_clusters++;
-  ctx->btree_idx_stack[ctx->loaded_btree_clusters - 1] = idx;
 
 
   return;
@@ -788,24 +788,26 @@ void flush_lake(Context* ctx) {
   FILE* file = NULL;
 
   for (int i = 0; i < MAX_COLUMNS; i++) {
-    if (ctx->lake[i].file[0] != 0) {  
+    uint32_t idx = ctx->lake[i].idx;
+    if (ctx->lake[idx].file[0] != 0) {  
 
       file = fopen(ctx->lake[i].file, "r+b"); 
       if (!file) {
         file = fopen(ctx->lake[i].file, "w+b");
       }
       
-      for (int j = 0; j < ctx->lake[i].num_pages; j++) {
-        uint32_t pg_n = ctx->lake[i].page_numbers[j];
-        uint32_t idx = ctx->lake[i].idx;
+      for (int j = 0; j < POOL_SIZE; j++) {
+        if (ctx->lake[idx].pages[j] == NULL) {
+          continue;
+        }
         
-        if (ctx->lake[i].pages[pg_n]->is_dirty
-          && (!(is_struct_zeroed(ctx->lake[i].pages[pg_n], sizeof(Page))))
-        ) {
-          write_page(file, pg_n, ctx->lake[i].pages[pg_n], ctx->tc[idx]);
-          ctx->lake[i].pages[pg_n]->is_dirty = false;
-          LOG_DEBUG("Updating pool %d, NPN: %u, File: %s, I: %u", 
-            i, ctx->lake[i].next_pg_no, ctx->lake[i].file, ctx->lake[i].idx);      
+        if (is_struct_zeroed(ctx->lake[idx].pages[j], sizeof(Page))) {
+          continue;
+        }
+
+        if (ctx->lake[idx].pages[j]->is_dirty){
+          write_page(file, ctx->lake[idx].page_numbers[j], ctx->lake[idx].pages[j], ctx->tc[idx]);
+          ctx->lake[idx].pages[j]->is_dirty = false; 
         }
       }
       
