@@ -95,6 +95,10 @@ static size_t eof_fread(void *ptr, size_t size, size_t count, FILE *file, bool *
 }
 
 static bool is_struct_zeroed(const void* ptr, size_t size) {
+  if (ptr == NULL) {
+    return true;
+  }
+  
   void* zeroed_struct = malloc(size);
   memset(zeroed_struct, 0, size);
 

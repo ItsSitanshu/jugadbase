@@ -931,6 +931,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       DateTime dt;
       DateTime_TZ dt_tz;
       __dt temp_dt;
+      
       bool has_time_component = false;
       bool has_date_component = false;
       bool has_timezone = false;

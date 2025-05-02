@@ -309,6 +309,9 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
 
     Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, ctx, schema_idx);
+
+    // printf("%s => %s | ", token_type_strings[cur.type], token_type_strings[schema->columns[i].type]); print_column_value(&cur); printf("\n");
+
     bool valid_conversion = infer_and_cast_value(&cur, schema->columns[i].type);
 
     if (!valid_conversion) {
@@ -397,7 +400,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
   BufferPool* pool = &ctx->lake[schema_idx];
 
   RowID row_start = {0};
-  Row* collected_rows = malloc(sizeof(Row) * (PAGE_SIZE / 10));
+  Row* collected_rows = malloc(sizeof(Row) * 100);
   if (!collected_rows) {
     return (ExecutionResult){1, "Memory allocation failed for result rows"};
   }
@@ -412,6 +415,9 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
         if (row->id.page_id != row_start.page_id || row->id.row_id != row_start.row_id)
           continue;
       }
+
+      if (is_struct_zeroed(row, sizeof(Row))) continue;
+
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx))
         continue;
 
@@ -421,8 +427,6 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
       if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0)
         break;
     }
-    if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0)
-      break;
   }
 
   if (cmd->has_order_by && total_found > 1) {
@@ -461,7 +465,6 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
   
     for (int j = 0; j < col_count; j++) {
       ExprNode* expr = cmd->sel_columns[j].expr;
-  
       if (!expr) {
         ColumnValue raw = src->values[j];
         dst->values[j] = raw; 
@@ -581,6 +584,12 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
           if (!btree_delete(ctx->tc[schema_idx].btree[btree_idx], key)) {
             LOG_WARN("Warning: failed to delete PK from B-tree");
           }
+        }
+
+        if (row->values[k].is_toast) {
+          bool res = toast_delete(ctx, row->values[k].toast_object);
+
+          if (!res) LOG_WARN("Unable to delete TOAST entries \n > run 'fix'");
         }
       }
 
@@ -1458,6 +1467,20 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         col_val->int_value = (int64_t)(col_val->date_value); 
       } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
         snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", date_to_string(col_val->date_value));
+      } else if (target_type == TOK_T_TIMESTAMP) {
+        int y, m, d;
+        decode_date(col_val->date_value, &y, &m, &d);
+
+        __dt ts = {
+          .year = y,
+          .month = m,
+          .day = d,
+          .hour = 0,
+          .minute = 0,
+          .second = 0
+        };
+
+        col_val->timestamp_value = encode_timestamp(&ts);        
       } else {
         return false;
       } 
@@ -1522,6 +1545,20 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         col_val->time_value = col_val->timestamp_tz_value.timestamp;
       } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
         snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", time_tz_to_string(col_val->time_tz_value));
+      } else if (target_type == TOK_T_TIMESTAMP_TZ) {
+        int h, m, s;
+        decode_time(col_val->date_value, &h, &m, &s);
+
+        __dt ts_tz = {
+          .year = 0,
+          .month = 0,
+          .day = 0,
+          .hour = h,
+          .minute = m,
+          .second = s
+        };
+
+        col_val->timestamp_tz_value = encode_timestamp_TZ(&ts_tz, col_val->time_tz_value.time_zone_offset);
       } else {
         return false;
       }
@@ -1634,7 +1671,6 @@ bool column_name_in_list(const char* name, char** list, uint8_t list_len) {
 
 void check_and_concat_toast(Context* ctx, ColumnValue* value) {
   char* result = toast_concat(ctx, value->toast_object);
-
 
   value->str_value = strdup(result);
   value->is_toast = false;
