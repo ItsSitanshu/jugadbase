@@ -12,7 +12,7 @@ BTree* btree_create(uint8_t key_type) {
 }
 
 BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
-  BTreeNode* node = (BTreeNode*)malloc(sizeof(BTreeNode));
+  BTreeNode* node = calloc(1, sizeof(BTreeNode));
 
   node->is_leaf = is_leaf;
   node->num_keys = 0;
@@ -30,14 +30,14 @@ BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
 
 RowID btree_search(BTree* tree, void* key) {
   if (!tree || !tree->root) return (RowID){0};
-  LOG_DEBUG("Calling btree_search(tree: %p, key: %p)", tree, key);
+  // LOG_DEBUG("Calling btree_search(tree: %p, key: %p)", tree, key);
 
   BTreeNode* node = tree->root;
 
   while (node) {
     int i = 0;
 
-    while (i < node->num_keys && (key_compare(key, node->keys[i], tree->key_type) > 0)) {
+    while (i < node->num_keys && (key_compare(key, node->keys[i], tree->key_type) == 1)) {
       i++;
     }
 
@@ -165,35 +165,57 @@ void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t bt
   parent->keys[index] = child->keys[mid - 1];
   parent->row_pointers[index] = child->row_pointers[mid - 1];
   parent->num_keys++;
+
 }
 
+
 void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_offset) {
+  if (!tree || !node || !key) {
+    LOG_ERROR("NULL pointer in btree_insert_nonfull (tree=%p, node=%p, key=%p)",
+              tree, node, key);
+    return;
+  }
+  
+  if (node->num_keys < 0 || node->num_keys >= tree->btree_order) {
+    LOG_ERROR("Corrupted node in btree_insert_nonfull (num_keys=%d, order=%d)",
+              node->num_keys, tree->btree_order);
+    return;
+  }
+
   int i = node->num_keys - 1;
 
   if (node->is_leaf) {
-    while (i >= 0 && key_compare(key, node->keys[i], tree->key_type) < 0) {
+    while (i >= 0 && key_compare(key, node->keys[i], tree->key_type) == -1) {
       node->keys[i + 1] = node->keys[i];
       node->row_pointers[i + 1] = node->row_pointers[i];
       i--;
     }
 
     void* new_key = malloc(key_size_for_type(tree->key_type));
+    if (!new_key) {
+      LOG_ERROR("Memory allocation failed in btree_insert_nonfull");
+      return;
+    }
     copy_key(new_key, key, tree->key_type);
 
     node->keys[i + 1] = new_key;
     node->row_pointers[i + 1] = row_offset;
     node->num_keys++;
   } else {
-    while (i >= 0 && key_compare(key, node->keys[i], tree->key_type) < 0) {
+    while (i <= 0 && key_compare(key, node->keys[i], tree->key_type) == -1) {
       i--;
     }
 
     i++; 
+    
+    if (i < 0 || i > node->num_keys || !node->children[i]) {
+      LOG_ERROR("Invalid child pointer (i=%d, num_keys=%d)", i, node->num_keys);
+      return;
+    }
 
     if (node->children[i]->num_keys == tree->btree_order - 1) {
       btree_split_child(node, i, node->children[i], tree->btree_order);
-
-      if (key_compare(key, node->keys[i], tree->key_type) > 0) {
+      if (key_compare(key, node->keys[i], tree->key_type) == -1) {
         i++;
       }
     }
@@ -202,22 +224,42 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_off
   }
 }
 
-
 bool btree_insert(BTree* tree, void* key, RowID row_offset) {
   if (!tree) {
-    LOG_ERROR("B-tree couldn't be updated properly.\n\t > run jugad-cli fix");
+    LOG_ERROR("B-tree couldn't be updated properly.\n\t > run 'fix'");
     return false; 
   }
 
-  LOG_DEBUG("Calling btree_insert(tree: %p, key: %p, off: {%u, %u})", tree, key, row_offset.page_id, row_offset.row_id);
+  if (!key) {
+    LOG_ERROR("NULL key passed to btree_insert");
+    return false;
+  }
+
+  // LOG_DEBUG("bti(%p, %p, {%u, %u})", 
+  //           tree, key, row_offset.page_id, row_offset.row_id);
   
   if (!tree->root) {
-    tree->root = btree_create_node(true, tree->btree_order); // initialze as leaf
+    tree->root = btree_create_node(true, tree->btree_order); 
+    if (!tree->root) {
+      LOG_ERROR("Failed to create root node");
+      return false;
+    }
   }
 
   BTreeNode* root = tree->root;
+  
+  if (root->num_keys < 0 || root->num_keys > tree->btree_order) {
+    LOG_ERROR("Corrupted root node (num_keys=%d)", root->num_keys);
+    return false;
+  }
+  
   if (root->num_keys == tree->btree_order - 1) {
     BTreeNode* new_root = btree_create_node(false, tree->btree_order);
+    if (!new_root) {
+      LOG_ERROR("Failed to create new root during split");
+      return false;
+    }
+    
     new_root->children[0] = root;
     btree_split_child(new_root, 0, root, tree->btree_order);
     tree->root = new_root;
@@ -328,11 +370,6 @@ void save_tree_node(BTreeNode* node, FILE* db_file, uint8_t key_type) {
 
   fwrite(node->row_pointers, sizeof(RowID), node->num_keys, db_file);
 
-  for (int i = 0; i < node->num_keys; i++) {
-    LOG_DEBUG("Row pointer[%d]: {page: %u, slot: %u}", i, 
-              node->row_pointers[i].page_id, node->row_pointers[i].row_id);
-  }
-
   if (!node->is_leaf) {
     for (int i = 0; i <= node->num_keys; i++) {
       save_tree_node(node->children[i], db_file, key_type);
@@ -343,7 +380,7 @@ void save_tree_node(BTreeNode* node, FILE* db_file, uint8_t key_type) {
 void unload_btree(BTree* btree, char* file_path) {
   FILE* fp = fopen(file_path, "wb+");
   if (!fp) {
-    LOG_FATAL("Failed to open B-tree file '%s' for writing, indexes will not match.\n\t > Run jugad-cli fix", file_path);
+    LOG_FATAL("Failed to open B-tree file '%s' for writing, indexes will not match.\n\t > run 'fix'", file_path);
     return;
   }
 
@@ -424,7 +461,6 @@ void btree_merge_children(BTreeNode* parent, int idx, size_t order, uint8_t key_
   }
 
   parent->num_keys--;
-  free(right);
 }
 
 void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type) {
@@ -507,11 +543,16 @@ int key_compare(void* key1, void* key2, uint8_t type) {
     0 if key1 is equal to key2.
   */
 
+  if (!key1 || !key2) {
+    LOG_ERROR("NULL key passed to key_compare (key1=%p, key2=%p)", key1, key2);
+    return 0; 
+  }
+
   switch (type) {
     case TOK_T_INT:
     case TOK_T_SERIAL: {
-      int a = *(int*)key1;
-      int b = *(int*)key2;
+      int a = *(int64_t*)key1;
+      int b = *(int64_t*)key2;
       if (a < b) return -1;
       if (a > b) return 1;
       return 0;
@@ -661,10 +702,10 @@ void copy_key(void* dest, void* src, uint8_t type) {
 int key_size_for_type(uint8_t key_type) {
   switch (key_type) {
     case TOK_T_INT:
-    case TOK_T_BOOL:
     case TOK_T_SERIAL:
-      return sizeof(int);
-
+      return sizeof(int64_t);
+    case TOK_T_BOOL:
+      return sizeof(bool);
     case TOK_T_FLOAT:
       return sizeof(float);
 
