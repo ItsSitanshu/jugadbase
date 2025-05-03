@@ -38,7 +38,15 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Text~~
   - ~~Blob~~
 - ~~Compacting in actual storage of rows (storage.c)~~
-- ~~Implement foreign constraints~~
+- Clusters:
+  - Design `/jb.core/` cluster directory structure
+  - Implement cluster bootstrap (`--init-cluster`)
+  - Refactor `Context` to include `cluster` and `active_db`
+  - Write `WALWriter` module with
+  - Implement `apply_wal()` for recovery
+  - Add crash recovery on startup using WAL
+  - Build basic physical-backup for Yielded Archival of Known States (YAKS)
+- Implement foreign constraints
 - Design casading  
 - Implement actual VARCHAR
 - FIX BUG: Multiple inserts statements in same file when large contents are present
@@ -54,8 +62,9 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Benchmark query execution speed  
 - Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
 - Add support for stored procedures  
-- Implement views and triggers  
+- Implement triggers  
 - Add replication and sharding for scalability  
+- Add 
 - Add support for database-specific file management, including backing up and restoring individual files
 - Implement composite primary keys
 - Custom importable C-written functions with <dlfcn.h>

@@ -549,7 +549,7 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
             LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
               str_column_value(&row->values[col_index]), schema->columns[col_index].foreign_table, schema->columns[i].foreign_column);
 
-            return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};            
+            return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};            
           }
         }
 
@@ -578,7 +578,7 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
 
   TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
   if (!schema) {
-    return (ExecutionResult){1, "Error: Invalid schema"};
+    return (ExecutionResult){1, "Error: Invcalid schema"};
   }
 
   load_btree_cluster(ctx, schema->table_name);
@@ -616,6 +616,12 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
           bool res = toast_delete(ctx, row->values[k].toast_object);
 
           if (!res) LOG_WARN("Unable to delete TOAST entries \n > run 'fix'");
+        }
+
+        if (schema->columns[k].is_foreign_key) {
+          if (!handle_on_delete_constraints(ctx, schema->columns[k], row->values[k])) {
+            return (ExecutionResult){1, "DELETE restricted by foreign constraint"};
+          }
         }
       }
 
@@ -1715,6 +1721,121 @@ bool check_foreign_key(Context* ctx, ColumnDefinition def, ColumnValue val) {
 
   return res.exec.row_count > 0;
 }
+
+bool handle_on_update_constraints(Context* ctx, ColumnDefinition col) {
+
+}
+
+bool handle_on_delete_constraints(Context* ctx, ColumnDefinition def, ColumnValue val) {
+  char query[1024];
+  char value[300];
+
+  format_column_value(value, sizeof(value), &val);
+
+  switch (def.on_delete) {
+    case FK_CASCADE: {
+      snprintf(query, sizeof(query), "DELETE FROM %s WHERE %s = %s", def.foreign_table, def.foreign_column, value);
+      
+      Result res = process(ctx, query);
+    
+      return res.exec.code == 0;   
+    }  
+    case FK_SET_NULL: {
+      snprintf(query, sizeof(query), "UPDATE %s SET %s = NULL WHERE %s = %s",
+       def.foreign_table, def.foreign_column, def.foreign_column, value);
+      
+      Result res = process(ctx, query);
+    
+      return res.exec.code == 0;   
+    }
+    case FK_RESTRICT: {
+      LOG_INFO("Did not delete row because of foreign constraint restriction with %s.%s", 
+        def.foreign_table, def.foreign_column);
+
+      return false;
+
+    }  
+    default:
+      return true;
+  }
+
+  return true;
+}
+
+// void handle_on_delete_constraints(Row* parent_row, Table* parent_table) {
+//   for each foreign key fk where fk.ref_table == parent_table.name:
+//     Table* child = load_table(fk.table_name);
+//     List<Row*> matching_rows = find_rows(child, fk.column_name == parent_row[fk.ref_column]);
+
+//     switch (fk.on_delete) {
+//       case FK_ACTION_CASCADE:
+//         for each row in matching_rows:
+//           delete_row(child, row);
+//         break;
+
+//       case FK_ACTION_SET_NULL:
+//         for each row in matching_rows:
+//           row[fk.column_name] = NULL;
+//           update_row(child, row);
+//         break;
+
+//       case FK_ACTION_SET_DEFAULT:
+//         for each row in matching_rows:
+//           row[fk.column_name] = get_column_default(child, fk.column_name);
+//           update_row(child, row);
+//         break;
+
+//       case FK_ACTION_RESTRICT:
+//         if (!matching_rows.empty()) {
+//           ERROR("Cannot delete row: restricted by FK constraint");
+//         }
+//         break;
+
+//       case FK_ACTION_NO_ACTION:
+//         // allow deletion, but usually defer check until end of transaction
+//         break;
+//     }
+// }
+
+// void handle_on_update_constraints(Row* parent_old, Row* parent_new, Table* parent_table) {
+//   for each fk in foreign_keys where fk.ref_table == parent_table.name:
+//   if (parent_old[fk.ref_column] == parent_new[fk.ref_column]) continue;
+
+//   Table* child = load_table(fk.table_name);
+//   List<Row*> matching_rows = find_rows(child, fk.column_name == parent_old[fk.ref_column]);
+
+//   switch (fk.on_update) {
+//     case FK_ACTION_CASCADE:
+//       for each row in matching_rows:
+//         row[fk.column_name] = parent_new[fk.ref_column];
+//         update_row(child, row);
+//       break;
+
+//     case FK_ACTION_SET_NULL:
+//       for each row in matching_rows:
+//         row[fk.column_name] = NULL;
+//         update_row(child, row);
+//       break;
+
+//     case FK_ACTION_SET_DEFAULT:
+//       for each row in matching_rows:
+//         row[fk.column_name] = get_column_default(child, fk.column_name);
+//         update_row(child, row);
+//       break;
+
+//     case FK_ACTION_RESTRICT:
+//       if (!matching_rows.empty()) {
+//         ERROR("Cannot update: restricted by FK constraint");
+//       }
+//       break;
+
+//     case FK_ACTION_NO_ACTION:
+//       // skip
+//       break;
+//   }
+// }
+
+
 
 // ExecutionOrder* generate_execution_plan(JQLCommand* command) {
 //   ExecutionOrder* order = malloc(sizeof(ExecutionOrder));
