@@ -566,8 +566,10 @@ bool load_schema_tc(Context* ctx, char* table_name) {
 
     io_read(io, &col->is_foreign_key, sizeof(bool));
     if (col->is_foreign_key) {
-      if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN ||
-          io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+      if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN 
+      || io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN
+      || io_read(io, &col->on_delete, sizeof(FKAction)) != sizeof(FKAction)
+      || io_read(io, &col->on_update, sizeof(FKAction)) != sizeof(FKAction)) {
         LOG_ERROR("Failed to read foreign key details.");
         free(schema->columns);
         free(schema);
@@ -714,8 +716,10 @@ bool load_initial_schema(Context* ctx) {
 
       io_read(io, &col->is_foreign_key, sizeof(bool));
       if (col->is_foreign_key) {
-        if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN ||
-            io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+        if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN 
+        || io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN
+        || io_read(io, &col->on_delete, sizeof(FKAction)) != sizeof(FKAction)
+        || io_read(io, &col->on_update, sizeof(FKAction)) != sizeof(FKAction)) {
           LOG_ERROR("Failed to read foreign key details.");
           free(schema->columns);
           free(schema);

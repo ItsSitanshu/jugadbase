@@ -169,6 +169,8 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     if (col->is_foreign_key) {
       io_write(tca_io, col->foreign_table, MAX_IDENTIFIER_LEN);
       io_write(tca_io, col->foreign_column, MAX_IDENTIFIER_LEN);
+      io_write(tca_io, &col->on_delete, sizeof(FKAction));
+      io_write(tca_io, &col->on_update, sizeof(FKAction));
     }
   }
 
@@ -257,6 +259,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   if (success < cmd->row_count) {
     LOG_ERROR("Inserted %d out of %d provided, could not insert %d row(s)", 
       success, cmd->row_count, (cmd->row_count - success));
+    return (ExecutionResult){1, "Record inserted successfully"};
   }
 
   return (ExecutionResult){0, "Record inserted successfully"};
@@ -317,6 +320,15 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
     if (!valid_conversion) {
       LOG_ERROR("Invalid conversion whilst trying to insert row");
       return false;
+    }
+
+    if (schema->columns[i].is_foreign_key) {
+      if (!check_foreign_key(ctx, schema->columns[i], cur)) {
+        LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
+          str_column_value(&cur), schema->columns[i].foreign_table, schema->columns[i].foreign_column);
+        
+        return false;
+      }
     }
 
     row.values[i] = cur;
@@ -1674,6 +1686,20 @@ void check_and_concat_toast(Context* ctx, ColumnValue* value) {
 
   value->str_value = strdup(result);
   value->is_toast = false;
+}
+
+bool check_foreign_key(Context* ctx, ColumnDefinition def, ColumnValue val) {
+  char query[1024];
+  char value[300];
+
+  format_column_value(value, sizeof(value), &val);
+  snprintf(query, sizeof(query), "SELECT * FROM %s WHERE %s = %s", def.foreign_table, def.foreign_column, value);
+  
+  LOG_DEBUG("%s", query);
+  
+  Result res = process(ctx, query);
+
+  return res.exec.row_count > 0;
 }
 
 // ExecutionOrder* generate_execution_plan(JQLCommand* command) {

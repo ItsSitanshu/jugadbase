@@ -62,6 +62,7 @@ size_t size_from_type(uint8_t column_type);
 uint32_t get_table_offset(Context* ctx, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);
 void check_and_concat_toast(Context* ctx, ColumnValue* value);
+bool check_foreign_key(Context* ctx, ColumnDefinition def, ColumnValue val);
 
 ExecutionOrder* generate_execution_plan(JQLCommand* command);
 
