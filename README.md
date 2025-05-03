@@ -38,7 +38,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Text~~
   - ~~Blob~~
 - ~~Compacting in actual storage of rows (storage.c)~~
-- Implement foreign constraints
+- ~~Implement foreign constraints~~
 - Design casading  
 - Implement actual VARCHAR
 - FIX BUG: Multiple inserts statements in same file when large contents are present
