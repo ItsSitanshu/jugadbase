@@ -198,9 +198,90 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         column.is_primary_key = true;
         column.is_unique = true;
         column.is_not_null = true;
+        parser_consume(parser);
         break;
+      case TOK_FK: {
+        column.is_foreign_key = true;
+        parser_consume(parser);
+        
+        if (parser->cur->type != TOK_REF) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_REF");
+          return false;
+        }
+        parser_consume(parser);
+        
+        if (parser->cur->type != TOK_ID) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_TBL");
+          return false;
+        }
+        strcpy(column.foreign_table, parser->cur->value);
+
+        parser_consume(parser);
+        if (parser->cur->type != TOK_LP) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_LP");
+          return false;
+        }
+        
+        parser_consume(parser);
+        if (parser->cur->type != TOK_ID) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_COL");
+          return false;
+        }
+        strcpy(column.foreign_column, parser->cur->value);
+        
+        parser_consume(parser);
+        if (parser->cur->type != TOK_RP) {
+          REPORT_ERROR(parser->lexer, "SYE_E_FK_RP");
+          return false;
+        }
+
+        parser_consume(parser); 
+        while (parser->cur->type == TOK_ON) {
+          parser_consume(parser);
+          
+          bool is_delete = false;
+          if (parser->cur->type == TOK_DEL) {
+            is_delete = true;
+          } else if (parser->cur->type == TOK_UPD) {
+            is_delete = false;
+          } else {
+            REPORT_ERROR(parser->lexer, "SYE_E_EXPECT_DELETE_OR_UPDATE");
+            return false;
+          }
+          parser_consume(parser);
+          
+          FKAction action = FK_NO_ACTION;
+          if (parser->cur->type == TOK_CASCADE) {
+            action = FK_CASCADE;
+            parser_consume(parser);
+          } else if (parser->cur->type == TOK_RESTRICT) {
+            action = FK_RESTRICT;
+            parser_consume(parser);
+          } else if (parser->cur->type == TOK_SET) {
+            parser_consume(parser);
+            if (parser->cur->type == TOK_NL) {
+              action = FK_SET_NULL;
+              parser_consume(parser);
+            } else {
+              REPORT_ERROR(parser->lexer, "SYE_E_EXPECT_NULL");
+              return false;
+            }
+          } else {
+            REPORT_ERROR(parser->lexer, "SYE_E_INVALID_ACTION");
+            return false;
+          }
+          
+          if (is_delete) {
+            column.on_delete = action;
+          } else {
+            column.on_update = action;
+          }
+        }
+        break;
+      }
       case TOK_UNQ:
         column.is_unique = true;
+        parser_consume(parser);
         break;
       case TOK_NOT:
         parser_consume(parser); 
@@ -211,6 +292,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         }
 
         column.is_not_null = true;
+        parser_consume(parser);
         break;
       case TOK_DEF:
         parser_consume(parser);
@@ -239,49 +321,18 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
           }
           parser_consume(parser);
         }
-        break;
-      case TOK_FK:
-        column.is_foreign_key = true;
-        parser_consume(parser);
-        if (parser->cur->type != TOK_REF) {
-          REPORT_ERROR(parser->lexer, "SYE_E_FK_REF");
-          return false;
-        }
-        parser_consume(parser);
-        if (parser->cur->type != TOK_ID) {
-          REPORT_ERROR(parser->lexer, "SYE_E_FK_TBL");
-          return false;
-        }
-        strcpy(column.foreign_table, parser->cur->value);
-        parser_consume(parser);
 
-        if (parser->cur->type != TOK_LP) {
-          REPORT_ERROR(parser->lexer, "SYE_E_FK_LP");
-          return false;
-        }
         parser_consume(parser);
-
-        if (parser->cur->type != TOK_ID) {
-          REPORT_ERROR(parser->lexer, "SYE_E_FK_COL");
-          return false;
-        }
-        strcpy(column.foreign_column, parser->cur->value);
-        parser_consume(parser);
-
-        if (parser->cur->type != TOK_RP) {
-          REPORT_ERROR(parser->lexer, "SYE_E_FK_RP");
-          return false;
-        }
         break;
       case TOK_IDX:
         column.is_index = true;
+        parser_consume(parser);
         break;
       default:
         REPORT_ERROR(parser->lexer, "SYE_U_COLDEF", parser->cur->value);
         return false;
     }
 
-    parser_consume(parser);
   }
 
   command->schema->columns[command->schema->column_count] = column;
@@ -1537,43 +1588,234 @@ void print_column_value(ColumnValue* val) {
 }
 
 
-char* sprintf_column_value(ColumnValue* val, char* buffer) {  
+char* str_column_value(ColumnValue* val) {
   if (val->is_null) {
-    snprintf(buffer, sizeof(buffer), "nil");
-    return strdup(buffer);
+    return strdup("NULL");
   }
 
-  const char* type_str = get_token_type(val->type);
-  
+  char buffer[256];
+
   switch (val->type) {
-    case TOK_T_INT: case TOK_T_UINT: case TOK_T_SERIAL: 
-      snprintf(buffer, sizeof(buffer), "%s[%ld]", type_str, val->int_value);
+    case TOK_T_INT:
+    case TOK_T_UINT:
+    case TOK_T_SERIAL:
+      snprintf(buffer, sizeof(buffer), "%ld", val->int_value);
       break;
 
     case TOK_T_FLOAT:
-      snprintf(buffer, sizeof(buffer), "%s[%f]", type_str, val->float_value);
+      snprintf(buffer, sizeof(buffer), "%f", val->float_value);
       break;
 
     case TOK_T_DOUBLE:
-      snprintf(buffer, sizeof(buffer), "%s[%lf]", type_str, val->double_value);
+      snprintf(buffer, sizeof(buffer), "%lf", val->double_value);
       break;
 
     case TOK_T_BOOL:
-      snprintf(buffer, sizeof(buffer), "%s[%s]", type_str, val->bool_value ? "true" : "false");
+      snprintf(buffer, sizeof(buffer), "%s", val->bool_value ? "true" : "false");
       break;
 
     case TOK_T_STRING:
     case TOK_T_VARCHAR:
     case TOK_T_CHAR:
-      snprintf(buffer, sizeof(buffer), "%s[\"%s\"]", type_str, val->str_value);
+      snprintf(buffer, sizeof(buffer), "\"%s\"", val->str_value);
       break;
 
+    case TOK_T_DATE: {
+      int y, m, d;
+      decode_date(val->date_value, &y, &m, &d);
+      snprintf(buffer, sizeof(buffer), "%04d-%02d-%02d", y, m, d);
+      break;
+    }
+
+    case TOK_T_TIME: {
+      int h, m, s;
+      decode_time(val->time_value, &h, &m, &s);
+      snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d", h, m, s);
+      break;
+    }
+
+    case TOK_T_DATETIME: {
+      DateTime dt = val->datetime_value;
+      snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02d",
+               dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+      break;
+    }
+
+    case TOK_T_TIMESTAMP: {
+      __dt ts;
+      decode_timestamp(val->timestamp_value, &ts);
+      snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02d",
+               ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second);
+      break;
+    }
+
+    case TOK_T_TIME_TZ: {
+      int h, m, s, offset_minutes;
+      decode_time_TZ(val->time_tz_value, &h, &m, &s, &offset_minutes);
+      int abs_offset = abs(offset_minutes);
+      snprintf(buffer, sizeof(buffer), "%02d:%02d:%02d%c%02d:%02d",
+               h, m, s, (offset_minutes >= 0 ? '+' : '-'),
+               abs_offset / 60, abs_offset % 60);
+      break;
+    }
+
+    case TOK_T_DATETIME_TZ: {
+      DateTime_TZ dt = val->datetime_tz_value;
+      int abs_offset = abs(dt.time_zone_offset);
+      snprintf(buffer, sizeof(buffer), "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+               dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second,
+               (dt.time_zone_offset >= 0 ? '+' : '-'),
+               abs_offset / 60, abs_offset % 60);
+      break;
+    }
+
+    case TOK_T_INTERVAL: {
+      const char* s = interval_to_string(&val->interval_value);
+      return strdup(s);
+    }
+
+    case TOK_T_TEXT:
+    case TOK_T_BLOB:
+    case TOK_T_JSON: {
+      if (val->is_toast) {
+        snprintf(buffer, sizeof(buffer), "<%s>(%u)", token_type_strings[val->type], val->toast_object);
+      } else {
+        const char* s = val->str_value;
+        size_t len = strlen(s);
+        if (len <= 8) {
+          snprintf(buffer, sizeof(buffer), "\"%s\"", s);
+        } else {
+          char preview[12];
+          memcpy(preview, s, 8);
+          strcpy(preview + 8, "...");
+          snprintf(buffer, sizeof(buffer), "\"%s (%zu chars)\"", preview, len - 8);
+        }
+      }
+      break;
+    }
+
     default:
-      snprintf(buffer, sizeof(buffer), "%s[unprintable type: %d]", type_str, val->type);
+      snprintf(buffer, sizeof(buffer), "unprintable type: %d", val->type);
       break;
   }
 
   return strdup(buffer);
+}
+
+void format_column_value(char* out, size_t out_size, ColumnValue* val) {
+  if (val->is_null) {
+    snprintf(out, out_size, "NULL");
+    return;
+  }
+
+  switch (val->type) {
+    case TOK_T_INT:
+    case TOK_T_UINT:
+    case TOK_T_SERIAL:
+      snprintf(out, out_size, "%ld", val->int_value);
+      break;
+
+    case TOK_T_FLOAT:
+      snprintf(out, out_size, "%f", val->float_value);
+      break;
+
+    case TOK_T_DOUBLE:
+      snprintf(out, out_size, "%lf", val->double_value);
+      break;
+
+    case TOK_T_BOOL:
+      snprintf(out, out_size, "%s", val->bool_value ? "true" : "false");
+      break;
+
+    case TOK_T_STRING:
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR:
+      snprintf(out, out_size, "\"%s\"", val->str_value);
+      break;
+
+    case TOK_T_DATE: {
+      int y, m, d;
+      decode_date(val->date_value, &y, &m, &d);
+      snprintf(out, out_size, "%04d-%02d-%02d", y, m, d);
+      break;
+    }
+
+    case TOK_T_TIME: {
+      int h, m, s;
+      decode_time(val->time_value, &h, &m, &s);
+      snprintf(out, out_size, "%02d:%02d:%02d", h, m, s);
+      break;
+    }
+
+    case TOK_T_DATETIME: {
+      DateTime dt = val->datetime_value;
+      snprintf(out, out_size, "%04d-%02d-%02dT%02d:%02d:%02d",
+               dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+      break;
+    }
+
+    case TOK_T_TIMESTAMP: {
+      __dt ts;
+      decode_timestamp(val->timestamp_value, &ts);
+      snprintf(out, out_size, "%04d-%02d-%02dT%02d:%02d:%02d",
+               ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second);
+      break;
+    }
+
+    case TOK_T_TIME_TZ: {
+      int h, m, s, offset_minutes;
+      decode_time_TZ(val->time_tz_value, &h, &m, &s, &offset_minutes);
+      int abs_offset = abs(offset_minutes);
+      snprintf(out, out_size,
+               "%02d:%02d:%02d%c%02d:%02d",
+               h, m, s, (offset_minutes >= 0 ? '+' : '-'),
+               abs_offset / 60, abs_offset % 60);
+      break;
+    }
+
+    case TOK_T_DATETIME_TZ: {
+      DateTime_TZ dt = val->datetime_tz_value;
+      int abs_offset = abs(dt.time_zone_offset);
+      snprintf(out, out_size,
+               "%04d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+               dt.year, dt.month, dt.day,
+               dt.hour, dt.minute, dt.second,
+               (dt.time_zone_offset >= 0 ? '+' : '-'),
+               abs_offset / 60, abs_offset % 60);
+      break;
+    }
+
+    case TOK_T_INTERVAL: {
+      const char* s = interval_to_string(&val->interval_value);
+      snprintf(out, out_size, "%s", s);
+      break;
+    }
+
+    // case TOK_T_TEXT:
+    // case TOK_T_BLOB:
+    // // case TOK_T_JSON: {
+    // //   if (val->is_toast) {
+    // //     snprintf(out, out_size, "<%s>(%u)]", token_type_strings[val->type], val->toast_object);
+    // //   } else {
+    // //     const char* s = val->str_value;
+    // //     size_t len = strlen(s);
+
+    // //     if (len <= 8) {
+    // //       snprintf(out, out_size, "\"%s\"", s);
+    // //     } else {
+    // //       char preview[12];
+    // //       memcpy(preview, s, 8);
+    // //       strcpy(preview + 8, "...");
+    // //       snprintf(out, out_size, "\"%s (%zu chars)\"]", preview, len - 8);
+    // //     }
+    // //   }
+    // //   break;
+    // // }
+
+    default:
+      snprintf(out, out_size, "NULL", val->type);
+      break;
+  }
 }
 
 bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr) {

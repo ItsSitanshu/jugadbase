@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NO_OF_KEYWORDS 72
+#define NO_OF_KEYWORDS 74
 #define KEYWORDS keywords
 
 #define MAX_KEYWORD_LEN 11
@@ -119,6 +119,8 @@ typedef struct Token {
     TOK_BETWEEN,  // BETWEEN
     TOK_IF,  // IF
     TOK_EXISTS, // EXISTS
+    TOK_CASCADE, // CASCADE
+    TOK_RESTRICT, // RESTRICT
 
     // Sorting & Transactions
     TOK_ASC,      // ASC (Ascending Sort)
