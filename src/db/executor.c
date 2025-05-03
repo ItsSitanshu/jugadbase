@@ -257,9 +257,14 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   }
 
   if (success < cmd->row_count) {
-    LOG_ERROR("Inserted %d out of %d provided, could not insert %d row(s)", 
-      success, cmd->row_count, (cmd->row_count - success));
-    return (ExecutionResult){1, "Record inserted successfully"};
+    char errbuf[256];
+    snprintf(errbuf, sizeof(errbuf),
+            "Inserted %d out of %d provided, could not insert %d row(s)",
+            success, cmd->row_count, (cmd->row_count - success));
+
+    LOG_ERROR("%s", errbuf);
+
+    return (ExecutionResult){1, errbuf};
   }
 
   return (ExecutionResult){0, "Record inserted successfully"};
@@ -537,6 +542,15 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
         
         if (!valid_conversion) {          
           return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};;
+        }
+
+        if (schema->columns[col_index].is_foreign_key) {
+          if (!check_foreign_key(ctx, schema->columns[col_index], row->values[col_index])) {
+            LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
+              str_column_value(&row->values[col_index]), schema->columns[col_index].foreign_table, schema->columns[i].foreign_column);
+
+            return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};            
+          }
         }
 
         row->null_bitmap = cmd->bitmap;

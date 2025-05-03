@@ -50,7 +50,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
       ColumnValue val = row->values[c];
       
       char buffer[256] = {0};
-      sprintf_column_value(&val, buffer);
+      format_column_value(&val, 256, buffer);
       
       formatted_values[i * cmd->schema->column_count + c] = strdup(buffer);
       
