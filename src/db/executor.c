@@ -3,19 +3,19 @@
 #include "../utils/log.h"
 #include "../utils/security.h"
 
-Result process(Context* ctx, char* buffer) {
-  if (!ctx || !ctx->lexer || !ctx->parser) {
+Result process(Database* db, char* buffer) {
+  if (!db || !db->lexer || !db->parser) {
     return (Result){(ExecutionResult){1, "Invalid context"}, NULL};
   }
 
-  lexer_set_buffer(ctx->lexer, buffer);
-  parser_reset(ctx->parser);
+  lexer_set_buffer(db->lexer, buffer);
+  parser_reset(db->parser);
 
-  JQLCommand cmd = parser_parse(ctx);
-  return execute_cmd(ctx, &cmd);
+  JQLCommand cmd = parser_parse(db);
+  return execute_cmd(db, &cmd);
 }
 
-Result execute_cmd(Context* ctx, JQLCommand* cmd) {
+Result execute_cmd(Database* db, JQLCommand* cmd) {
   if (cmd->is_invalid) {
     return (Result){(ExecutionResult){1, "Invalid command"}, NULL};
   }
@@ -24,19 +24,19 @@ Result execute_cmd(Context* ctx, JQLCommand* cmd) {
 
   switch (cmd->type) {
     case CMD_CREATE:
-      result = (Result){execute_create_table(ctx, cmd), cmd};
+      result = (Result){execute_create_table(db, cmd), cmd};
       break;
     case CMD_INSERT:
-      result = (Result){execute_insert(ctx, cmd), cmd};
+      result = (Result){execute_insert(db, cmd), cmd};
       break;
     case CMD_SELECT:
-      result = (Result){execute_select(ctx, cmd), cmd};
+      result = (Result){execute_select(db, cmd), cmd};
       break;
     case CMD_UPDATE:
-      result = (Result){execute_update(ctx, cmd), cmd};
+      result = (Result){execute_update(db, cmd), cmd};
       break;
     case CMD_DELETE:
-      result = (Result){execute_delete(ctx, cmd), cmd};
+      result = (Result){execute_delete(db, cmd), cmd};
       break;
     default:
       result = (Result){(ExecutionResult){1, "Unknown command type"}, NULL};
@@ -79,7 +79,7 @@ Result execute_cmd(Context* ctx, JQLCommand* cmd) {
 }
 
 
-ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
+ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   /*
   [4B]  DB_INIT_MAGIC
   [4B]  Table Count
@@ -110,17 +110,17 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
       [var] Foreign Table
       [var] Foreign Column
   */
-  if (!ctx || !cmd || !ctx->tc_appender) {
+  if (!db || !cmd || !db->tc_appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  FILE* tca_io = ctx->tc_appender;
+  FILE* tca_io = db->tc_appender;
   TableSchema* schema = cmd->schema;
   
   uint32_t table_count;
   io_seek(tca_io, sizeof(uint32_t), SEEK_SET);
   if (io_read(tca_io, &table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
-    table_count = ctx->table_count ? ctx->table_count : 0;
+    table_count = db->table_count ? db->table_count : 0;
     io_write(tca_io, &table_count, sizeof(uint32_t)); 
   }
 
@@ -175,21 +175,21 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
   }
 
   table_count++;
-  io_seek_write(ctx->tc_writer, TABLE_COUNT_OFFSET, &table_count, sizeof(uint32_t), SEEK_SET); 
+  io_seek_write(db->tc_writer, TABLE_COUNT_OFFSET, &table_count, sizeof(uint32_t), SEEK_SET); 
   
   uint32_t schema_length = (uint32_t)(io_tell(tca_io) - schema_offset);
-  io_seek(ctx->tc_writer, schema_offset, SEEK_SET); 
-  io_write(ctx->tc_writer, &schema_length, sizeof(uint32_t)); 
+  io_seek(db->tc_writer, schema_offset, SEEK_SET); 
+  io_write(db->tc_writer, &schema_length, sizeof(uint32_t)); 
 
   int offset_index = hash_fnv1a(schema->table_name, MAX_TABLES) * sizeof(uint32_t) + (2 * sizeof(uint32_t));
-  io_seek_write(ctx->tc_writer, offset_index, &schema_offset, sizeof(uint32_t), SEEK_SET);
+  io_seek_write(db->tc_writer, offset_index, &schema_offset, sizeof(uint32_t), SEEK_SET);
   
   off_t schema_offset_before_flush = io_tell(tca_io); 
 
   io_flush(tca_io);
 
   char table_dir[MAX_PATH_LENGTH];
-  snprintf(table_dir, sizeof(table_dir), "%s/%s", ctx->fs->tables_dir, schema->table_name);
+  snprintf(table_dir, sizeof(table_dir), "%s/%s", db->fs->tables_dir, schema->table_name);
 
   if (create_directory(table_dir) != 0) {
     LOG_ERROR("Failed to create table directory");
@@ -199,7 +199,7 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
     rmdir(table_dir);
 
     table_count--;  
-    io_seek_write(ctx->tc_writer, TABLE_COUNT_OFFSET, &table_count, sizeof(uint32_t), SEEK_SET);
+    io_seek_write(db->tc_writer, TABLE_COUNT_OFFSET, &table_count, sizeof(uint32_t), SEEK_SET);
 
     return (ExecutionResult){0, "Table creat.ion failed"};;
   }
@@ -223,23 +223,23 @@ ExecutionResult execute_create_table(Context* ctx, JQLCommand* cmd) {
 
   fclose(rows_fp);
 
-  io_flush(ctx->tc_writer);
+  io_flush(db->tc_writer);
 
-  load_tc(ctx);
-  load_schema_tc(ctx, schema->table_name);
+  load_tc(db);
+  load_schema_tc(db, schema->table_name);
 
   return (ExecutionResult){0, "Table schema written successfully"};
 }
 
-ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
-  if (!ctx || !cmd || !cmd->schema) {
+ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
   if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
-  load_btree_cluster(ctx, schema->table_name);
+  load_btree_cluster(db, schema->table_name);
 
   uint8_t column_count = schema->column_count;
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
@@ -250,7 +250,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   uint8_t success = 0;
 
   for (uint32_t i = 0; i < cmd->row_count; i++) {
-    if (execute_row_insert(cmd->values[i], ctx, schema_idx, primary_key_cols,
+    if (execute_row_insert(cmd->values[i], db, schema_idx, primary_key_cols,
         primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order)) {
       success += 1;
     }
@@ -270,7 +270,7 @@ ExecutionResult execute_insert(Context* ctx, JQLCommand* cmd) {
   return (ExecutionResult){0, "Record inserted successfully"};
 }
 
-bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx, 
+bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
                       ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
                       TableSchema* schema, uint8_t column_count,
                       char** columns, uint8_t up_col_count, bool specified_order) {
@@ -316,7 +316,7 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
     int i = specified_order ? j : find_column_index(schema, columns[j]);
 
     Row empty_row = {0};
-    ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, ctx, schema_idx);
+    ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, db, schema_idx);
 
     // printf("%s => %s | ", token_type_strings[cur.type], token_type_strings[schema->columns[i].type]); print_column_value(&cur); printf("\n");
 
@@ -328,7 +328,7 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
     }
 
     if (schema->columns[i].is_foreign_key) {
-      if (!check_foreign_key(ctx, schema->columns[i], cur)) {
+      if (!check_foreign_key(db, schema->columns[i], cur)) {
         LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
           str_column_value(&cur), schema->columns[i].foreign_table, schema->columns[i].foreign_column);
         
@@ -364,7 +364,7 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
     if (&primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i].name, MAX_COLUMNS);
       void* key = get_column_value_as_pointer(&primary_key_vals[i]);
-      RowID res = btree_search(ctx->tc[schema_idx].btree[idx], key);
+      RowID res = btree_search(db->tc[schema_idx].btree[idx], key);
       if (!is_struct_zeroed(&res, sizeof(RowID))) {
         free(row.values);
         free(row.null_bitmap);
@@ -373,23 +373,23 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
     }
   }
 
-  BufferPool* pool = &(ctx->lake[schema_idx]);
+  BufferPool* pool = &(db->lake[schema_idx]);
   char row_file[MAX_PATH_LENGTH];
   snprintf(row_file, sizeof(row_file), "%s" SEP "%s" SEP "rows.db",
-        ctx->fs->tables_dir, schema->table_name);
+        db->fs->tables_dir, schema->table_name);
 
   if (is_struct_zeroed(pool, sizeof(BufferPool))) {
     initialize_buffer_pool(pool, schema_idx, row_file);
   }
 
-  RowID row_id = serialize_insert(pool, row, ctx->tc[schema_idx]);
+  RowID row_id = serialize_insert(pool, row, db->tc[schema_idx]);
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (&primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i].name, MAX_COLUMNS);
       void* key = get_column_value_as_pointer(&primary_key_vals[i]);
     
-      if (!btree_insert(ctx->tc[schema_idx].btree[idx], key, row_id)) {
+      if (!btree_insert(db->tc[schema_idx].btree[idx], key, row_id)) {
         free(row.values);
         free(row.null_bitmap);
         return false;
@@ -400,21 +400,21 @@ bool execute_row_insert(ExprNode** src, Context* ctx, uint8_t schema_idx,
   return true;
 }
 
-ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
-  if (!ctx || !cmd || !cmd->schema) {
+ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
-  load_btree_cluster(ctx, schema->table_name);
+  load_btree_cluster(db, schema->table_name);
   cmd->schema = schema;
 
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
-  BufferPool* pool = &ctx->lake[schema_idx];
+  BufferPool* pool = &db->lake[schema_idx];
 
   RowID row_start = {0};
   Row* collected_rows = malloc(sizeof(Row) * 100);
@@ -435,7 +435,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
 
       if (is_struct_zeroed(row, sizeof(Row))) continue;
 
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx))
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx))
         continue;
 
       collected_rows[total_found] = *row;
@@ -487,7 +487,7 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
         dst->values[j] = raw; 
         dst->values[j].column_index = j;
       } else {
-        ColumnValue val = evaluate_expression(expr, src, schema, ctx, schema_idx);
+        ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
         dst->values[val.column_index] = val;
       }
     }
@@ -506,18 +506,18 @@ ExecutionResult execute_select(Context* ctx, JQLCommand* cmd) {
 }
 
 
-ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
-  if (!ctx || !cmd || !cmd->schema) {
+ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
   if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
-  load_btree_cluster(ctx, schema->table_name);
+  load_btree_cluster(db, schema->table_name);
 
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
-  BufferPool* pool = &ctx->lake[schema_idx];
+  BufferPool* pool = &db->lake[schema_idx];
 
   uint32_t rows_updated = 0;
 
@@ -529,7 +529,7 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
       Row* row = &page->rows[j];
       Row* temp = malloc(sizeof(Row)); 
 
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
 
@@ -537,7 +537,7 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
         char* colname = cmd->columns[k];
         int col_index = find_column_index(schema, colname);
         
-        row->values[col_index] = evaluate_expression(cmd->values[0][k], row, schema, ctx, schema_idx);
+        row->values[col_index] = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
         bool valid_conversion = infer_and_cast_value(&row->values[col_index], schema->columns[col_index].type);
         
         if (!valid_conversion) {          
@@ -545,7 +545,7 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
         }
 
         if (schema->columns[col_index].is_foreign_key) {
-          if (!check_foreign_key(ctx, schema->columns[col_index], row->values[col_index])) {
+          if (!check_foreign_key(db, schema->columns[col_index], row->values[col_index])) {
             LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
               str_column_value(&row->values[col_index]), schema->columns[col_index].foreign_table, schema->columns[i].foreign_column);
 
@@ -571,21 +571,21 @@ ExecutionResult execute_update(Context* ctx, JQLCommand* cmd) {
   };
 }
 
-ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
-  if (!ctx || !cmd || !cmd->schema) {
+ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = find_table_schema_tc(ctx, cmd->schema->table_name);
+  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invcalid schema"};
   }
 
-  load_btree_cluster(ctx, schema->table_name);
+  load_btree_cluster(db, schema->table_name);
   cmd->schema = schema;
 
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
-  BufferPool* pool = &ctx->lake[schema_idx];
+  BufferPool* pool = &db->lake[schema_idx];
 
   uint32_t rows_deleted = 0;
 
@@ -598,7 +598,7 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
 
       if (is_struct_zeroed(row, sizeof(Row))) continue;
 
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, ctx, schema_idx)) {
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
 
@@ -607,19 +607,19 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
           uint8_t btree_idx = hash_fnv1a(schema->columns[k].name, MAX_COLUMNS);
           void* key = get_column_value_as_pointer(&row->values[k]);
 
-          if (!btree_delete(ctx->tc[schema_idx].btree[btree_idx], key)) {
+          if (!btree_delete(db->tc[schema_idx].btree[btree_idx], key)) {
             LOG_WARN("Warning: failed to delete PK from B-tree");
           }
         }
 
         if (row->values[k].is_toast) {
-          bool res = toast_delete(ctx, row->values[k].toast_object);
+          bool res = toast_delete(db, row->values[k].toast_object);
 
           if (!res) LOG_WARN("Unable to delete TOAST entries \n > run 'fix'");
         }
 
         if (schema->columns[k].is_foreign_key) {
-          if (!handle_on_delete_constraints(ctx, schema->columns[k], row->values[k])) {
+          if (!handle_on_delete_constraints(db, schema->columns[k], row->values[k])) {
             return (ExecutionResult){1, "DELETE restricted by foreign constraint"};
           }
         }
@@ -638,8 +638,8 @@ ExecutionResult execute_delete(Context* ctx, JQLCommand* cmd) {
   };
 }
 
-ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx, uint8_t* out_type) {
-  ColumnValue value = evaluate_expression(expr, row, schema, ctx, schema_idx);
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx, uint8_t* out_type) {
+  ColumnValue value = evaluate_expression(expr, row, schema, db, schema_idx);
 
   if (expr->type == EXPR_COLUMN) {
     int col_index = expr->column_index;
@@ -650,7 +650,7 @@ ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Co
   return value;
 }
 
-ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   
@@ -666,52 +666,52 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, C
   
   switch (expr->type) {
     case EXPR_LITERAL:
-      return evaluate_literal_expression(expr, ctx);
+      return evaluate_literal_expression(expr, db);
     case EXPR_COLUMN:
-      return evaluate_column_expression(expr, row, schema, ctx);
+      return evaluate_column_expression(expr, row, schema, db);
     case EXPR_UNARY_OP:
-      return evaluate_unary_op_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_unary_op_expression(expr, row, schema, db, schema_idx);
     case EXPR_BINARY_OP:
-      return evaluate_binary_op_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_binary_op_expression(expr, row, schema, db, schema_idx);
     case EXPR_FUNCTION:
-      return evaluate_function(expr->fn.name, expr->fn.args, expr->fn.arg_count, row, schema, ctx, schema_idx);
+      return evaluate_function(expr->fn.name, expr->fn.args, expr->fn.arg_count, row, schema, db, schema_idx);
     case EXPR_COMPARISON:
-      return evaluate_comparison_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_comparison_expression(expr, row, schema, db, schema_idx);
     case EXPR_LIKE:
-      return evaluate_like_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_like_expression(expr, row, schema, db, schema_idx);
     case EXPR_BETWEEN:
-      return evaluate_between_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_between_expression(expr, row, schema, db, schema_idx);
     case EXPR_IN:
-      return evaluate_in_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_in_expression(expr, row, schema, db, schema_idx);
     case EXPR_LOGICAL_AND:
-      return evaluate_logical_and_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_logical_and_expression(expr, row, schema, db, schema_idx);
     case EXPR_LOGICAL_OR:
-      return evaluate_logical_or_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_logical_or_expression(expr, row, schema, db, schema_idx);
     case EXPR_LOGICAL_NOT:
-      return evaluate_logical_not_expression(expr, row, schema, ctx, schema_idx);
+      return evaluate_logical_not_expression(expr, row, schema, db, schema_idx);
     default:
       return result;
   }
 }
 
-ColumnValue evaluate_literal_expression(ExprNode* expr, Context* ctx) {
+ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db) {
   ColumnValue* value = &expr->literal;
 
   if (value->type == TOK_T_STRING) {
     if (value->str_value && strlen(value->str_value) > TOAST_CHUNK_SIZE) {
-      uint32_t toast_id = toast_new_entry(ctx, value->str_value);
+      uint32_t toast_id = toast_new_entry(db, value->str_value);
       value->is_toast = true;
       value->type = TOK_T_TEXT;
       value->toast_object = toast_id;
     }
   } else if (value->is_toast) { 
-    check_and_concat_toast(ctx, value);
+    check_and_concat_toast(db, value);
   }
 
   return *value;
 }
 
-ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx) {
+ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   
@@ -721,7 +721,7 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
     ColumnValue col = row->values[expr->column_index];
     
     if (col.is_toast) {
-      check_and_concat_toast(ctx, &col);
+      check_and_concat_toast(db, &col);
       printf("toast: "); print_column_value(&col); printf("\n");
     }
     
@@ -734,11 +734,11 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   
-  ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, schema, ctx, schema_idx, &result.type);
+  ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, schema, db, schema_idx, &result.type);
 
   switch (expr->arth_unary.op) {
     case TOK_SUB:
@@ -942,13 +942,13 @@ ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int
   return result;
 }
 
-ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   uint8_t type = 0;
 
-  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, ctx, schema_idx, &type);
-  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, ctx, schema_idx, &type);
+  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &type);
+  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &type);
 
   switch (type) {
     case TOK_T_INT:
@@ -971,22 +971,22 @@ ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema*
   }
 }
 
-ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   uint8_t type = 0;
 
-  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, ctx, schema_idx, &type);
-  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, ctx, schema_idx, &type);
+  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &type);
+  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &type);
   
   if (expr->binary.op == TOK_EQ &&
       expr->binary.left->type == EXPR_COLUMN &&
       expr->binary.right->type == EXPR_LITERAL &&
-      schema->columns[expr->binary.left->column_index].is_primary_key && ctx) {
+      schema->columns[expr->binary.left->column_index].is_primary_key && db) {
     
     void* key = get_column_value_as_pointer(&right);
     uint8_t btree_idx = hash_fnv1a(schema->columns[expr->binary.left->column_index].name, MAX_COLUMNS);
-    RowID rid = btree_search(ctx->tc[schema_idx].btree[btree_idx], key);
+    RowID rid = btree_search(db->tc[schema_idx].btree[btree_idx], key);
 
     result.type = TOK_T_BOOL;
     result.bool_value = (!is_struct_zeroed(&rid, sizeof(RowID)) &&
@@ -1031,10 +1031,10 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
   return result;
 }
 
-ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   uint8_t type = 0;
 
-  ColumnValue left = resolve_expr_value(expr->like.left, row, schema, ctx, schema_idx, &type);
+  ColumnValue left = resolve_expr_value(expr->like.left, row, schema, db, schema_idx, &type);
   if (left.type != TOK_T_VARCHAR || left.str_value == NULL) {
     LOG_ERROR("LIKE can only be applied to VARCHAR values");
     return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
@@ -1044,12 +1044,12 @@ ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* sche
   return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = res };
 }
 
-ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   uint8_t type = 0;
 
-  ColumnValue value = resolve_expr_value(expr->between.value, row, schema, ctx, schema_idx, &type);
-  ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, ctx, schema_idx, &type);
-  ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, ctx, schema_idx, &type);
+  ColumnValue value = resolve_expr_value(expr->between.value, row, schema, db, schema_idx, &type);
+  ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, db, schema_idx, &type);
+  ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, db, schema_idx, &type);
   
   bool valid_conversion = infer_and_cast_va(3,
     (__c){&lower, TOK_T_DOUBLE},
@@ -1068,13 +1068,13 @@ ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* s
   return result;
 }
 
-ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   uint8_t type = 0;
-  ColumnValue value = resolve_expr_value(expr->in.value, row, schema, ctx, schema_idx, &type);
+  ColumnValue value = resolve_expr_value(expr->in.value, row, schema, db, schema_idx, &type);
   ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
 
   for (size_t i = 0; i < expr->in.count; ++i) {
-    ColumnValue val = resolve_expr_value(expr->in.list[i], row, schema, ctx, schema_idx, &type);
+    ColumnValue val = resolve_expr_value(expr->in.list[i], row, schema, db, schema_idx, &type);
 
     bool match = false;
     if (value.type == TOK_T_INT || value.type == TOK_T_UINT || value.type == TOK_T_SERIAL) {
@@ -1092,36 +1092,36 @@ ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema
   return result;
 }
 
-ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-  ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
+ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+  ColumnValue left = evaluate_expression(expr->binary.left, row, schema, db, schema_idx);
   if (!left.bool_value) {
     return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
   }
   
-  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
+  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, db, schema_idx);
   return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = left.bool_value && right.bool_value };
 }
 
-ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-  ColumnValue left = evaluate_expression(expr->binary.left, row, schema, ctx, schema_idx);
+ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+  ColumnValue left = evaluate_expression(expr->binary.left, row, schema, db, schema_idx);
   if (left.bool_value) {
     return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = true };
   }
   
-  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, ctx, schema_idx);
+  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, db, schema_idx);
   return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = left.bool_value || right.bool_value };
 }
 
-ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
-  ColumnValue operand = evaluate_expression(expr->unary, row, schema, ctx, schema_idx);
+ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+  ColumnValue operand = evaluate_expression(expr->unary, row, schema, db, schema_idx);
   return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = !operand.bool_value };
 }
 
 
-bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Context* ctx, uint8_t schema_idx) {
+bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   if (!expr) return false;
   
-  ColumnValue result = evaluate_expression(expr, row, schema, ctx, schema_idx);
+  ColumnValue result = evaluate_expression(expr, row, schema, db, schema_idx);
 
   return result.bool_value;
 }
@@ -1685,10 +1685,10 @@ size_t size_from_type(uint8_t column_type) {
   return size;
 }
 
-uint32_t get_table_offset(Context* ctx, const char* table_name) {
-  for (int i = 0; i < ctx->table_count; i++) {
-    if (strcmp(ctx->tc[i].name, table_name) == 0) {
-      return ctx->tc[i].offset;
+uint32_t get_table_offset(Database* db, const char* table_name) {
+  for (int i = 0; i < db->table_count; i++) {
+    if (strcmp(db->tc[i].name, table_name) == 0) {
+      return db->tc[i].offset;
     }
   }
   return 0;  
@@ -1701,14 +1701,14 @@ bool column_name_in_list(const char* name, char** list, uint8_t list_len) {
   return false;
 }
 
-void check_and_concat_toast(Context* ctx, ColumnValue* value) {
-  char* result = toast_concat(ctx, value->toast_object);
+void check_and_concat_toast(Database* db, ColumnValue* value) {
+  char* result = toast_concat(db, value->toast_object);
 
   value->str_value = strdup(result);
   value->is_toast = false;
 }
 
-bool check_foreign_key(Context* ctx, ColumnDefinition def, ColumnValue val) {
+bool check_foreign_key(Database* db, ColumnDefinition def, ColumnValue val) {
   char query[1024];
   char value[300];
 
@@ -1717,16 +1717,16 @@ bool check_foreign_key(Context* ctx, ColumnDefinition def, ColumnValue val) {
   
   LOG_DEBUG("%s", query);
   
-  Result res = process(ctx, query);
+  Result res = process(db, query);
 
   return res.exec.row_count > 0;
 }
 
-bool handle_on_update_constraints(Context* ctx, ColumnDefinition col) {
+bool handle_on_update_constraints(Database* db, ColumnDefinition col) {
 
 }
 
-bool handle_on_delete_constraints(Context* ctx, ColumnDefinition def, ColumnValue val) {
+bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValue val) {
   char query[1024];
   char value[300];
 
@@ -1736,7 +1736,7 @@ bool handle_on_delete_constraints(Context* ctx, ColumnDefinition def, ColumnValu
     case FK_CASCADE: {
       snprintf(query, sizeof(query), "DELETE FROM %s WHERE %s = %s", def.foreign_table, def.foreign_column, value);
       
-      Result res = process(ctx, query);
+      Result res = process(db, query);
     
       return res.exec.code == 0;   
     }  
@@ -1744,7 +1744,7 @@ bool handle_on_delete_constraints(Context* ctx, ColumnDefinition def, ColumnValu
       snprintf(query, sizeof(query), "UPDATE %s SET %s = NULL WHERE %s = %s",
        def.foreign_table, def.foreign_column, def.foreign_column, value);
       
-      Result res = process(ctx, query);
+      Result res = process(db, query);
     
       return res.exec.code == 0;   
     }

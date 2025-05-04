@@ -7,7 +7,7 @@
 #include "testing.h"
 
 START_TEST(test_read_table_schema) {
-  INIT_TEST(ctx);
+  INIT_TEST(db);
 
   char* create_queries[] = {
     "CREATE TABLE users ("
@@ -48,11 +48,11 @@ START_TEST(test_read_table_schema) {
 
   for (int i = 0; i < sizeof(create_queries) / sizeof(create_queries[0]); i++) {
     printf("Executing query #%d: %s\n", i + 1, create_queries[i]);
-    ExecutionResult res = process(ctx, create_queries[i]).exec;
+    ExecutionResult res = process(db, create_queries[i]).exec;
     ck_assert_int_eq(res.code, 0);
   }
 
-  TableSchema* schema = find_table_schema_tc(ctx, "users");
+  TableSchema* schema = find_table_schema_tc(db, "users");
   ck_assert_str_eq(schema->table_name, "users");
   ck_assert_int_eq(schema->column_count, 5);
   ck_assert_str_eq(schema->columns[0].name, "id");
@@ -88,7 +88,7 @@ START_TEST(test_read_table_schema) {
   free(schema->columns);
 
   // --- Validation for 'products' table ---
-  TableSchema* schema_products = find_table_schema_tc(ctx, "products");
+  TableSchema* schema_products = find_table_schema_tc(db, "products");
   ck_assert_str_eq(schema_products->table_name, "products");
   ck_assert_int_eq(schema_products->column_count, 5);
   ck_assert_str_eq(schema_products->columns[0].name, "product_id");
@@ -118,7 +118,7 @@ START_TEST(test_read_table_schema) {
   free(schema_products->columns);
 
   // --- Validation for 'orders' table ---
-  TableSchema* schema_orders = find_table_schema_tc(ctx, "orders");
+  TableSchema* schema_orders = find_table_schema_tc(db, "orders");
   ck_assert_str_eq(schema_orders->table_name, "orders");
   ck_assert_int_eq(schema_orders->column_count, 4);
 
@@ -144,7 +144,7 @@ START_TEST(test_read_table_schema) {
   free(schema_orders->columns);
 
   // --- Validation for 'categories' table ---
-  TableSchema* schema_categories = find_table_schema_tc(ctx, "categories");
+  TableSchema* schema_categories = find_table_schema_tc(db, "categories");
   ck_assert_str_eq(schema_categories->table_name, "categories");
   ck_assert_int_eq(schema_categories->column_count, 2);
 
@@ -161,7 +161,7 @@ START_TEST(test_read_table_schema) {
   free(schema_categories->columns);
 
   // --- Validation for 'payments' table ---
-  TableSchema* schema_payments = find_table_schema_tc(ctx, "payments");
+  TableSchema* schema_payments = find_table_schema_tc(db, "payments");
   ck_assert_str_eq(schema_payments->table_name, "payments");
   ck_assert_int_eq(schema_payments->column_count, 4);
 
@@ -187,7 +187,7 @@ START_TEST(test_read_table_schema) {
 
   free(schema_payments->columns);
 
-  ctx_free(ctx);
+  db_free(db);
 }
 END_TEST
 

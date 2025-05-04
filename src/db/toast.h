@@ -13,12 +13,12 @@ typedef struct {
   size_t count;
 } ToastChunks;
 
-typedef struct Context Context;
+typedef struct Database Database;
 
-bool toast_create(Context* ctx);
-uint32_t toast_new_entry(Context* ctx, const char* data);
-char* toast_concat(Context* ctx, uint32_t toast_id);
-bool toast_delete(Context* ctx, uint32_t toast_id);
+bool toast_create(Database* db);
+uint32_t toast_new_entry(Database* db, const char* data);
+char* toast_concat(Database* db, uint32_t toast_id);
+bool toast_delete(Database* db, uint32_t toast_id);
 
 ToastChunks* toast_split_entry(const char* data);
 void toast_free_chunks(ToastChunks* chunks);

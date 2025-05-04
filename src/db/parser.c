@@ -1,5 +1,5 @@
 #include "parser.h"
-#include "context.h"
+#include "database.h"
 
 Parser* parser_init(Lexer* lexer) {
   Parser* parser = malloc(sizeof(Parser));
@@ -68,49 +68,49 @@ void jql_command_free(JQLCommand* cmd) {
   free(cmd);
 }
 
-JQLCommand parser_parse(Context* ctx) {
+JQLCommand parser_parse(Database* db) {
   JQLCommand command = {0};
   memset(&command, 0, sizeof(JQLCommand));
 
-  while (ctx->parser->cur->type == TOK_SC) {
-    parser_consume(ctx->parser);
+  while (db->parser->cur->type == TOK_SC) {
+    parser_consume(db->parser);
   }
 
-  switch (ctx->parser->cur->type) {
+  switch (db->parser->cur->type) {
     case TOK_CRT:
-      command = parser_parse_create_table(ctx->parser, ctx);
+      command = parser_parse_create_table(db->parser, db);
       break;
     case TOK_INS:
-      command = parser_parse_insert(ctx->parser, ctx);
+      command = parser_parse_insert(db->parser, db);
       break;
     case TOK_SEL: 
-      command = parser_parse_select(ctx->parser, ctx);
+      command = parser_parse_select(db->parser, db);
       break;
     case TOK_UPD:
-      command = parser_parse_update(ctx->parser, ctx);
+      command = parser_parse_update(db->parser, db);
       break;
     case TOK_DEL:
-      command = parser_parse_delete(ctx->parser, ctx);
+      command = parser_parse_delete(db->parser, db);
       break;
     case TOK_EOF:
       return command;
     default:
-      REPORT_ERROR(ctx->parser->lexer, "SYE_UNSUPPORTED");
+      REPORT_ERROR(db->parser->lexer, "SYE_UNSUPPORTED");
       return command;
   }
 
   if (command.is_invalid) {
-    while (ctx->parser->cur->type != TOK_SC) {      
-      parser_consume(ctx->parser);
+    while (db->parser->cur->type != TOK_SC) {      
+      parser_consume(db->parser);
     }
   } 
   
-  if (ctx->parser->cur->type != TOK_SC && ctx->parser->cur->type != TOK_EOF && !command.is_invalid) {
-    REPORT_ERROR(ctx->parser->lexer, "SYE_UE_SEMICOLON");
+  if (db->parser->cur->type != TOK_SC && db->parser->cur->type != TOK_EOF && !command.is_invalid) {
+    REPORT_ERROR(db->parser->lexer, "SYE_UE_SEMICOLON");
     command.is_invalid = true;
   }
 
-  parser_consume(ctx->parser);
+  parser_consume(db->parser);
 
   return command;
 }
@@ -341,7 +341,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   return true;
 }
 
-JQLCommand parser_parse_create_table(Parser* parser, Context* ctx) {
+JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
   JQLCommand command;
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_CREATE;
@@ -387,7 +387,7 @@ JQLCommand parser_parse_create_table(Parser* parser, Context* ctx) {
 
   int idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
 
-  if (!is_struct_zeroed(&ctx->tc[idx], sizeof(TableCatalogEntry))) {
+  if (!is_struct_zeroed(&db->tc[idx], sizeof(TableCatalogEntry))) {
     if (!if_not_exists) {
       LOG_ERROR("Table `%s` already exists", command.schema->table_name);
     }
@@ -430,7 +430,7 @@ JQLCommand parser_parse_create_table(Parser* parser, Context* ctx) {
   return command;
 }
 
-JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
+JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   JQLCommand command;  
 
   memset(&command, 0, sizeof(JQLCommand));
@@ -498,11 +498,11 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
 
   command.specified_order = command.col_count == 0;
   command.col_count = command.col_count == 0 ? 
-    ctx->tc[idx].schema->column_count 
+    db->tc[idx].schema->column_count 
     : command.col_count;
 
   while (parser->cur->type == TOK_LP) {
-    ExprNode** row = calloc(ctx->tc[idx].schema->column_count, sizeof(ExprNode*));
+    ExprNode** row = calloc(db->tc[idx].schema->column_count, sizeof(ExprNode*));
 
     parser_consume(parser); 
 
@@ -512,9 +512,9 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
 
       int row_idx = command.specified_order ? 
         value_count 
-        : find_column_index(ctx->tc[idx].schema, command.columns[value_count]);
+        : find_column_index(db->tc[idx].schema, command.columns[value_count]);
       
-      row[row_idx] = parser_parse_expression(parser, ctx->tc[idx].schema);
+      row[row_idx] = parser_parse_expression(parser, db->tc[idx].schema);
       if (!row[row_idx]) return command;
       value_count++;
 
@@ -560,7 +560,7 @@ JQLCommand parser_parse_insert(Parser *parser, Context* ctx) {
   return command;
 }
 
-JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
+JQLCommand parser_parse_select(Parser* parser, Database* db) {
   JQLCommand command;
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_SELECT;
@@ -588,7 +588,7 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
 
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
   
-  if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
+  if (is_struct_zeroed(&db->tc[idx].schema, sizeof(TableSchema))) {
     LOG_ERROR("Couldn't fetch rows from table '%s', doesn't exist", command.schema->table_name);
     return command;
   }
@@ -598,10 +598,10 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   uint8_t value_count = 0;
   
   if (parser->cur->type == TOK_MUL) {
-    value_count = ctx->tc[idx].schema->column_count;
+    value_count = db->tc[idx].schema->column_count;
     command.sel_columns = calloc(value_count, sizeof(SelectColumn));
     
-    for (int j = 0; j < ctx->tc[idx].schema->column_count; j++) {
+    for (int j = 0; j < db->tc[idx].schema->column_count; j++) {
       ExprNode* id_expr = malloc(sizeof(ExprNode));
       id_expr->type = EXPR_COLUMN;
       id_expr->column_index = j;
@@ -616,7 +616,7 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
     command.sel_columns = calloc(MAX_COLUMNS, sizeof(ExprNode*));
     
     while (true) {
-      ExprNode* expr = parser_parse_expression(parser, ctx->tc[idx].schema);
+      ExprNode* expr = parser_parse_expression(parser, db->tc[idx].schema);
       
       if (expr == NULL) {
         REPORT_ERROR(parser->lexer, "E_INVALID_COLUMN_EXPR");
@@ -660,8 +660,8 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   
   command.value_counts[0] = value_count;
 
-  parse_where_clause(parser, ctx, &command, idx);
-  parse_order_by_clause(parser, ctx, &command, idx);
+  parse_where_clause(parser, db, &command, idx);
+  parse_order_by_clause(parser, db, &command, idx);
   parse_limit_clause(parser, &command);
   parse_offset_clause(parser, &command);
 
@@ -669,12 +669,12 @@ JQLCommand parser_parse_select(Parser* parser, Context* ctx) {
   return command;
 }
 
-void parse_where_clause(Parser* parser, Context* ctx, JQLCommand* command, uint32_t idx) {
+void parse_where_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx) {
   if (parser->cur->type == TOK_WR) {
     parser_consume(parser);
     command->has_where = true;
     command->where = malloc(sizeof(ExprNode));
-    command->where = parser_parse_expression(parser, ctx->tc[idx].schema);
+    command->where = parser_parse_expression(parser, db->tc[idx].schema);
   }
 }
 
@@ -708,7 +708,7 @@ void parse_offset_clause(Parser* parser, JQLCommand* command) {
   }
 }
 
-void parse_order_by_clause(Parser* parser, Context* ctx, JQLCommand* command, uint32_t idx) {
+void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx) {
   if (parser->cur->type == TOK_ODR) {
     parser_consume(parser);
     if (parser->cur->type != TOK_BY) {
@@ -720,10 +720,10 @@ void parse_order_by_clause(Parser* parser, Context* ctx, JQLCommand* command, ui
 
     command->has_order_by = true;
     command->order_by_count = 0;
-    command->order_by = calloc(ctx->tc[idx].schema->column_count, (sizeof(bool) + (2 * sizeof(uint8_t))));
+    command->order_by = calloc(db->tc[idx].schema->column_count, (sizeof(bool) + (2 * sizeof(uint8_t))));
 
     while (true) {
-      ExprNode* ord_expr = parser_parse_expression(parser, ctx->tc[idx].schema);
+      ExprNode* ord_expr = parser_parse_expression(parser, db->tc[idx].schema);
       if (!ord_expr || ord_expr->type != EXPR_COLUMN) {
         REPORT_ERROR(parser->lexer, "E_INVALID_ORDER_EXPRESSION");
         return;
@@ -742,8 +742,8 @@ void parse_order_by_clause(Parser* parser, Context* ctx, JQLCommand* command, ui
       command->order_by_count++;
 
       if (parser->cur->type != TOK_COM) break;
-      if (command->order_by_count > ctx->tc[idx].schema->column_count) {
-        LOG_ERROR("Got more ORDER basises (%d) than existing columns (%d)", command->order_by_count, ctx->tc[idx].schema->column_count);
+      if (command->order_by_count > db->tc[idx].schema->column_count) {
+        LOG_ERROR("Got more ORDER basises (%d) than existing columns (%d)", command->order_by_count, db->tc[idx].schema->column_count);
         return;
       }
       parser_consume(parser);
@@ -751,7 +751,7 @@ void parse_order_by_clause(Parser* parser, Context* ctx, JQLCommand* command, ui
   }
 }
 
-JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
+JQLCommand parser_parse_update(Parser* parser, Database* db) {
   JQLCommand command;
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_UPDATE;
@@ -768,7 +768,7 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
   strcpy(command.schema->table_name, parser->cur->value);
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
 
-  if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
+  if (is_struct_zeroed(&db->tc[idx].schema, sizeof(TableSchema))) {
     return command;
   }
 
@@ -785,10 +785,10 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
   command.values = calloc(1, sizeof(ExprNode*));
   command.row_count = 1;
 
-  command.columns = calloc(ctx->tc[idx].schema->column_count, sizeof(char*));
-  command.values[0] = calloc(ctx->tc[idx].schema->column_count, sizeof(ExprNode));
+  command.columns = calloc(db->tc[idx].schema->column_count, sizeof(char*));
+  command.values[0] = calloc(db->tc[idx].schema->column_count, sizeof(ExprNode));
 
-  uint8_t null_bitmap_size = (ctx->tc[idx].schema->column_count + 7) / 8;
+  uint8_t null_bitmap_size = (db->tc[idx].schema->column_count + 7) / 8;
   command.bitmap = (uint8_t*)malloc(null_bitmap_size);
   if (!command.bitmap) {
     return command;
@@ -805,14 +805,14 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
     }
     parser_consume(parser); 
     
-    ExprNode* value = parser_parse_expression(parser, ctx->tc[idx].schema);
+    ExprNode* value = parser_parse_expression(parser, db->tc[idx].schema);
     if (!value) {
       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUE_IN_SET");
       free(column_name);
       return command;
     }
   
-    int col_index = find_column_index(ctx->tc[idx].schema, column_name);
+    int col_index = find_column_index(db->tc[idx].schema, column_name);
     if (col_index == -1) {
       REPORT_ERROR(parser->lexer, "SYE_E_UNKNOWN_COLUMN_IN_SET");
       free(column_name);
@@ -835,13 +835,13 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
     char* col_name = command.columns[i];
     ExprNode* val = command.values[0][i];
   
-    int col_index = find_column_index(ctx->tc[idx].schema, col_name);
+    int col_index = find_column_index(db->tc[idx].schema, col_name);
     if (col_index == -1) {
       LOG_ERROR("Column '%s' not found in schema", col_name);
       return command;
     }
   
-    if (ctx->tc[idx].schema->columns[col_index].is_not_null /* && val->is_null */) {
+    if (db->tc[idx].schema->columns[col_index].is_not_null /* && val->is_null */) {
       LOG_ERROR("Column '%s' is NOT NULL but attempted to set NULL", col_name);
       return command;
     }
@@ -849,13 +849,13 @@ JQLCommand parser_parse_update(Parser* parser, Context* ctx) {
   
   command.value_counts[0] = value_count;
 
-  parse_where_clause(parser, ctx, &command, idx);
+  parse_where_clause(parser, db, &command, idx);
 
   command.is_invalid = false;
   return command;
 }
 
-JQLCommand parser_parse_delete(Parser* parser, Context* ctx) {
+JQLCommand parser_parse_delete(Parser* parser, Database* db) {
   JQLCommand command;
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_DELETE;
@@ -884,14 +884,14 @@ JQLCommand parser_parse_delete(Parser* parser, Context* ctx) {
   strcpy(command.schema->table_name, parser->cur->value);
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
 
-  if (is_struct_zeroed(&ctx->tc[idx].schema, sizeof(TableSchema))) {
+  if (is_struct_zeroed(&db->tc[idx].schema, sizeof(TableSchema))) {
     LOG_ERROR("Couldn't update row in table '%s', doesn't exist", command.schema->table_name);
     return command;
   }
 
   parser_consume(parser);
 
-  parse_where_clause(parser, ctx, &command, idx);
+  parse_where_clause(parser, db, &command, idx);
 
   command.is_invalid = false;
   return command;

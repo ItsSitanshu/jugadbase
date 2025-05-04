@@ -24,10 +24,10 @@ int main(int argc, char* argv[]) {
     LOG_WARN("Invalid verbosity level: %d. Defaulting to WARN.", *verbosity_level);
   }
 
-  Context* ctx = ctx_init(DB_ROOT_DIRECTORY);
+  Database* db = db_init(DB_ROOT_DIRECTORY);
 
-  if (!ctx) {
-    fprintf(stderr, "Failed to initialize context\n");
+  if (!db) {
+    fprintf(stderr, "Failed to initialize database\n");
     return 1;
   }
 
@@ -44,15 +44,15 @@ int main(int argc, char* argv[]) {
     
     input = jugadline(&history, prompt);
 
-    if (!process_dot_cmd(ctx, input)) {
-      Result result = process(ctx, input);
+    if (!process_dot_cmd(db, input)) {
+      Result result = process(db, input);
       if (output_filename) {
         print_text_table_to_file(result.exec, result.cmd, output_filename);
       }
     }
   }
 
-  ctx_free(ctx);
+  db_free(db);
   for (int i = 0; i < history.size; i++) {
     free(history.history[i]);
   }

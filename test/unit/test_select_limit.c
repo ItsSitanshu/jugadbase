@@ -7,8 +7,8 @@
 #include "testing.h"
 
 START_TEST(test_select_with_limit) {
-  INIT_TEST(ctx);
-  setup_test_data(ctx, employees_setup_queries);
+  INIT_TEST(db);
+  setup_test_data(db, employees_setup_queries);
   
   struct {
     char* query;
@@ -23,7 +23,7 @@ START_TEST(test_select_with_limit) {
 
   for (int i = 0; i < sizeof(limit_test_cases) / sizeof(limit_test_cases[0]); i++) {
     printf("Executing LIM test case #%d: %s\n", i + 1, limit_test_cases[i].query);
-    ExecutionResult res = process(ctx, limit_test_cases[i].query).exec;
+    ExecutionResult res = process(db, limit_test_cases[i].query).exec;
   
     ck_assert_int_eq(res.code, 0);
     ck_assert_msg(res.row_count == limit_test_cases[i].expected_rows,
@@ -35,7 +35,7 @@ START_TEST(test_select_with_limit) {
     }
   }
 
-  ctx_free(ctx);
+  db_free(db);
 }
 END_TEST
 

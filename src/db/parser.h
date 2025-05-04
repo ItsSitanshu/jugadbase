@@ -18,8 +18,8 @@
 #define MAX_FN_ARGS 40
 #define MAX_LIKE_PATTERNS 32
 
-struct Context;
-typedef struct Context Context;
+struct Database;
+typedef struct Database Database;
 typedef struct ExprNode ExprNode;
 
 
@@ -254,18 +254,18 @@ void parser_reset(Parser* parser);
 void parser_free(Parser* parser);
 void jql_command_free(JQLCommand* cmd);
 
-JQLCommand parser_parse(Context* ctx);
+JQLCommand parser_parse(Database* db);
 
-JQLCommand parser_parse_create_table(Parser* parser, Context* ctx);
-JQLCommand parser_parse_insert(Parser *parser, Context* ctx);
-JQLCommand parser_parse_select(Parser* parser, Context* ctx);
-void parse_where_clause(Parser* parser, Context* ctx, JQLCommand* command, uint32_t idx);
+JQLCommand parser_parse_create_table(Parser* parser, Database* db);
+JQLCommand parser_parse_insert(Parser *parser, Database* db);
+JQLCommand parser_parse_select(Parser* parser, Database* db);
+void parse_where_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
 void parse_limit_clause(Parser* parser, JQLCommand* command);
 void parse_offset_clause(Parser* parser, JQLCommand* command);
-void parse_order_by_clause(Parser* parser, Context* ctx, JQLCommand* command, uint32_t idx);
+void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
 
-JQLCommand parser_parse_update(Parser* parser, Context* ctx);
-JQLCommand parser_parse_delete(Parser* parser, Context* ctx);
+JQLCommand parser_parse_update(Parser* parser, Database* db);
+JQLCommand parser_parse_delete(Parser* parser, Database* db);
 
 void parser_consume(Parser* parser);
 

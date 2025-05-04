@@ -1,8 +1,8 @@
 #include <string.h>
-#include <context.h>
+#include <database.h>
 
 
-#define INIT_TEST(ctx_var)                                                  \
+#define INIT_TEST(db_var)                                                  \
   char path[MAX_PATH_LENGTH];                                                \
   do {                                                                      \
     *verbosity_level = 2;                                                    \
@@ -18,8 +18,8 @@
     }                                                                        \
     snprintf(path, sizeof(path), "%s" SEP "%s", DB_ROOT_DIRECTORY, __basename); \
   } while (0);                                                               \
-  Context* ctx_var = ctx_init(path);                                         \
-  ck_assert_ptr_nonnull(ctx_var);                                    
+  Database* db_var = db_init(path);                                         \
+  ck_assert_ptr_nonnull(db_var);                                    
   
 #define ck_assert_ptr_nonnull(X) _ck_assert_ptr_null(X, !=)
 
@@ -52,10 +52,10 @@ static char* employees_setup_queries[] = {
   "INSERT INTO employees VALUES (15, \"oscar@example.com\", \"Oscar Kim\", 29, 71000, \"HR\", true, \"2025-03-20\");"
 };
 
-static void setup_test_data(Context* ctx, char* setup_queries[]) {
+static void setup_test_data(Database* db, char* setup_queries[]) {
   for (int i = 0; i < 16; i++) {
     printf("Executing setup query #%d: %s\n", i + 1, setup_queries[i]);
-    ExecutionResult res = process(ctx, setup_queries[i]).exec;
+    ExecutionResult res = process(db, setup_queries[i]).exec;
     ck_assert_int_eq(res.code, 0);
   }
 }
