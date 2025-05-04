@@ -129,7 +129,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   parser_consume(parser);
 
   if (!is_valid_data_type(parser)) {
-    REPORT_ERROR(parser->lexer, "SYE_E_CDTYPE");
+    REPORT_ERROR(parser->lexer, "SYE_E_CDTYPE", parser->cur->value);
     return false;
   }
 

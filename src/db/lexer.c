@@ -665,6 +665,7 @@ struct ErrorTemplate templates[] = {
   {"SYE_E_CPR", "Expected closing parenthesis"},
   {"SYE_E_VARCHAR_VALUE", "Expected a value > 0 and <= 255 to specify number of charachters, not VARCHAR(%s)"},
   {"SYE_U_COLDEF", "Expected a proper column definition, not '%s'"},
+  {"SYE_E_CDTYPE", "Expected a correct data type but got %s"}
 };
 
 char* lexer_get_reference(Lexer* lexer) {
