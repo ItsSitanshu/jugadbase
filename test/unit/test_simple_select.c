@@ -7,8 +7,8 @@
 #include "testing.h"
 
 START_TEST(test_simple_select) {
-  INIT_TEST(ctx);
-  setup_test_data(ctx, employees_setup_queries);
+  INIT_TEST(db);
+  setup_test_data(db, employees_setup_queries);
 
   struct {
     char* query;
@@ -27,7 +27,7 @@ START_TEST(test_simple_select) {
 
   for (int i = 0; i < sizeof(complex_where_cases) / sizeof(complex_where_cases[0]); i++) {
     printf("Executing complex WHERE query #%d: %s\n", i + 1, complex_where_cases[i].query);
-    ExecutionResult res = process(ctx, complex_where_cases[i].query).exec;
+    ExecutionResult res = process(db, complex_where_cases[i].query).exec;
   
     ck_assert_int_eq(res.code, 0);
     ck_assert_msg(res.row_count == complex_where_cases[i].expected_rows,
@@ -39,7 +39,7 @@ START_TEST(test_simple_select) {
     }
   }  
 
-  ctx_free(ctx);
+  db_free(db);
 }
 END_TEST
 

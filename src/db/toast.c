@@ -1,8 +1,8 @@
 #include "toast.h"
 #include "executor.h"
 
-bool toast_create(Context* ctx) {
-  if (!ctx) {
+bool toast_create(Database* db) {
+  if (!db) {
     return false;
   }
 
@@ -12,15 +12,15 @@ bool toast_create(Context* ctx) {
     "data TEXT"
     ");"; 
 
-  Result res = process(ctx, buffer);
+  Result res = process(db, buffer);
   
   LOG_INFO("Successfully loaded JB_TOAST for large attributes");
 
   return true;
 }
 
-uint32_t toast_new_entry(Context* ctx, const char* data) {
-  if (!ctx || !data) {
+uint32_t toast_new_entry(Database* db, const char* data) {
+  if (!db || !data) {
     return 0;
   }
 
@@ -31,7 +31,7 @@ uint32_t toast_new_entry(Context* ctx, const char* data) {
     return 0;
   } 
 
-  Result id_query = process(ctx, "SELECT id FROM jb_toast ORDER BY id");
+  Result id_query = process(db, "SELECT id FROM jb_toast ORDER BY id");
   uint32_t id = (id_query.exec.row_count > 0) ?
     (id_query.exec.rows[0].values[0].int_value + 1)
     : 0;
@@ -41,19 +41,19 @@ uint32_t toast_new_entry(Context* ctx, const char* data) {
     snprintf(insert_query, sizeof(insert_query),
       "INSERT INTO jb_toast (id, seq, data) VALUES (%d, %zu, \"%s\");",
       id, i, chunks->chunks[i]);
-    process(ctx, insert_query);
+    process(db, insert_query);
   }
 
   toast_free_chunks(chunks);
   return id;
 }
 
-char* toast_concat(Context* ctx, uint32_t toast_id) {
+char* toast_concat(Database* db, uint32_t toast_id) {
   char query[128];
   snprintf(query, sizeof(query),
            "SELECT data FROM jb_toast WHERE id = %u ORDER BY seq;", toast_id);
     
-  Result res = process(ctx, query);
+  Result res = process(db, query);
   if (res.exec.code != 0 || res.exec.row_count == 0) {
     return NULL;
   }
@@ -74,12 +74,12 @@ char* toast_concat(Context* ctx, uint32_t toast_id) {
   return full_text;
 }
 
-bool toast_delete(Context* ctx, uint32_t toast_id) {
+bool toast_delete(Database* db, uint32_t toast_id) {
   char query[128];
   snprintf(query, sizeof(query),
            "DELETE FROM jb_toast WHERE id = %u;", toast_id);
 
-  Result res = process(ctx, query);
+  Result res = process(db, query);
   if (res.exec.code != 0) {
     LOG_ERROR("Failed to delete TOAST entry with id %u", toast_id);
     return false;

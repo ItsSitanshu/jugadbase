@@ -1,0 +1,53 @@
+#ifndef DATABASE_H
+#define DATABASE_H
+
+#include "fs.h"
+#include "io.h"
+#include "btree.h"
+#include "parser.h"
+#include "storage.h"
+#include "toast.h"
+
+#define MAX_COMMANDS 1024
+#define MAX_TABLES 256 // Prime to avoid hash collisons
+#define DB_INIT_MAGIC 0x4A554741  // "JUGA" 
+
+typedef struct Database {
+  Lexer* lexer;
+  Parser* parser;
+  char* uuid;
+
+  TableCatalogEntry tc[MAX_TABLES];
+  BufferPool lake[MAX_TABLES];
+  
+  size_t table_count;
+  uint8_t loaded_btree_clusters;
+  uint8_t btree_idx_stack[BTREE_LIFETIME_THRESHOLD];
+
+  FILE* tc_reader;
+  FILE* tc_writer;
+  FILE* tc_appender;
+
+  FS* fs;
+} Database;
+
+Database* db_init(char* dir);
+void db_free(Database* db);
+
+bool process_dot_cmd(Database* db, char* input);
+void list_tables(Database* db);
+void process_file(Database* db, char* filename);
+
+void load_tc(Database* db);
+void load_table_schema(Database* db);
+void load_btree_cluster(Database* db, char* table_name);
+void pop_btree_cluster(Database* db);
+
+bool load_schema_tc(Database* db, char* table_name);
+TableSchema* find_table_schema_tc(Database* db, const char* filename);
+bool load_initial_schema(Database* db);
+
+void load_lake(Database* db);
+void flush_lake(Database* db);
+
+#endif // DATABASE_H

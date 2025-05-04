@@ -1,89 +1,89 @@
-#include "context.h"
+#include "database.h"
 #include "executor.h"
 #include "uuid.h"
 
 #include "../utils/log.h"
 #include "../utils/security.h"
 
-Context* ctx_init(char* dir) {
-  Context* ctx = (Context*)malloc(sizeof(Context));
-  if (!ctx) {
-    LOG_FATAL("Failed to allocate memory for context.");
+Database* db_init(char* dir) {
+  Database* db = (Database*)malloc(sizeof(Database));
+  if (!db) {
+    LOG_FATAL("Failed to allocate memory for database.");
     return NULL;
   }
 
-  memset(ctx, 0, sizeof(Context));
+  memset(db, 0, sizeof(Database));
 
-  ctx->lexer = lexer_init();
-  if (!ctx->lexer) {
+  db->lexer = lexer_init();
+  if (!db->lexer) {
     LOG_FATAL("Failed to initialize lexer.");
-    free(ctx);
+    free(db);
     return NULL;
   }
 
-  ctx->parser = parser_init(ctx->lexer);
-  if (!ctx->parser) {
+  db->parser = parser_init(db->lexer);
+  if (!db->parser) {
     LOG_FATAL("Failed to initialize parser.");
-    lexer_free(ctx->lexer);
-    free(ctx);
+    lexer_free(db->lexer);
+    free(db);
     return NULL;
   }
 
-  ctx->uuid = uuid();
-  if (!ctx->uuid) {
+  db->uuid = uuid();
+  if (!db->uuid) {
     LOG_FATAL("Failed to generate UUID.");
-    parser_free(ctx->parser);
-    lexer_free(ctx->lexer);
-    free(ctx);
+    parser_free(db->parser);
+    lexer_free(db->lexer);
+    free(db);
     return NULL;
   }
 
-  ctx->fs = fs_init(dir);
-  if (!ctx->fs) {
+  db->fs = fs_init(dir);
+  if (!db->fs) {
     LOG_FATAL("Failed to initialize file system.");
-    free(ctx->uuid);
-    parser_free(ctx->parser);
-    lexer_free(ctx->lexer);
-    free(ctx);
+    free(db->uuid);
+    parser_free(db->parser);
+    lexer_free(db->lexer);
+    free(db);
     return NULL;
   }
 
-  ctx->table_count = 0;
-  memset(ctx->tc, 0, sizeof(ctx->tc));
-  memset(ctx->tc, 0, sizeof(ctx->lake));
+  db->table_count = 0;
+  memset(db->tc, 0, sizeof(db->tc));
+  memset(db->tc, 0, sizeof(db->lake));
 
-  ctx->tc_reader = io_init(ctx->fs->schema_file, FILE_READ, 1024);
-  ctx->tc_writer = io_init(ctx->fs->schema_file, FILE_WRITE, 1024);
-  ctx->tc_appender = io_init(ctx->fs->schema_file, FILE_APPEND, 1024);
+  db->tc_reader = io_init(db->fs->schema_file, FILE_READ, 1024);
+  db->tc_writer = io_init(db->fs->schema_file, FILE_WRITE, 1024);
+  db->tc_appender = io_init(db->fs->schema_file, FILE_APPEND, 1024);
 
-  load_tc(ctx);
-  if (!load_initial_schema(ctx)) {
+  load_tc(db);
+  if (!load_initial_schema(db)) {
     LOG_FATAL("Failed to read schema");
   }
-  load_lake(ctx);
-  LOG_INFO("Successfully loaded %lu table(s) from catalog", ctx->table_count);
+  load_lake(db);
+  LOG_INFO("Successfully loaded %lu table(s) from catalog", db->table_count);
   
   register_builtin_functions();
-  toast_create(ctx);
+  toast_create(db);
 
-  return ctx;
+  return db;
 }
 
-void ctx_free(Context* ctx) {
-  if (!ctx) return;
+void db_free(Database* db) {
+  if (!db) return;
 
-  flush_lake(ctx);
+  flush_lake(db);
 
   for (int i = 0; i < BTREE_LIFETIME_THRESHOLD; i++) {
-    uint32_t idx = ctx->btree_idx_stack[i];
-    TableCatalogEntry* tc = &ctx->tc[idx];
+    uint32_t idx = db->btree_idx_stack[i];
+    TableCatalogEntry* tc = &db->tc[idx];
 
     if (!tc || !tc->schema) {
       break;
     }
     
     char dir_path[MAX_PATH_LENGTH];
-    snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", ctx->fs->tables_dir, tc->schema->table_name);
+    snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", db->fs->tables_dir, tc->schema->table_name);
 
     for (uint8_t j = 0; j < tc->schema->prim_column_count; j++) {
       unsigned int file_hash = hash_fnv1a(tc->schema->columns[j].name, MAX_COLUMNS);
@@ -98,18 +98,18 @@ void ctx_free(Context* ctx) {
     }
   }
 
-  parser_free(ctx->parser);
-  fs_free(ctx->fs);
-  free(ctx->uuid);
+  parser_free(db->parser);
+  fs_free(db->fs);
+  free(db->uuid);
 
-  if (ctx->tc_reader) io_close(ctx->tc_reader);
-  if (ctx->tc_writer) io_close(ctx->tc_writer);
-  if (ctx->tc_appender) io_close(ctx->tc_appender);
+  if (db->tc_reader) io_close(db->tc_reader);
+  if (db->tc_writer) io_close(db->tc_writer);
+  if (db->tc_appender) io_close(db->tc_appender);
 
-  free(ctx);
+  free(db);
 }
 
-bool process_dot_cmd(Context* ctx, char* input) {
+bool process_dot_cmd(Database* db, char* input) {
   if (strcmp(input, ".help") == 0 || tolower(input[0]) == 'h') {
     LOG_INFO("Available commands:\n"
       "  tables       - List all tables\n"
@@ -121,14 +121,14 @@ bool process_dot_cmd(Context* ctx, char* input) {
     );
     return true;
   } else if (strcmp(input, "tables") == 0) {
-    list_tables(ctx);
+    list_tables(db);
     return true;
   } else if (strcmp(input, "stats") == 0) {
-    // show_db_stats(ctx); backtrack transactions?
+    // show_db_stats(db); backtrack transactions?
     return true;
   } else if (strcmp(input, ".quit") == 0 || tolower(input[0]) == 'q') {
     LOG_INFO("Exiting...");
-    ctx_free(ctx);
+    db_free(db);
     exit(0);
   } else if (strcmp(input, "clear") == 0) {
     clear_screen();
@@ -140,7 +140,7 @@ bool process_dot_cmd(Context* ctx, char* input) {
       return true;
     }
 
-    process_file(ctx, filename);
+    process_file(db, filename);
     return true;
   } else if (tolower(input[0]) == 'e') {
     char* filename = input + 2;
@@ -149,31 +149,31 @@ bool process_dot_cmd(Context* ctx, char* input) {
       return true;
     }
 
-    process_file(ctx, filename);
+    process_file(db, filename);
     return true;
   }
 
   return false;
 }
 
-void list_tables(Context* ctx) {
-  if (!ctx || ctx->table_count == 0) {
+void list_tables(Database* db) {
+  if (!db || db->table_count == 0) {
     LOG_INFO("No tables found in the database.");
     return;
   }
 
   LOG_INFO("Tables in the database:");
   for (int i = 0; i < MAX_TABLES; i++) {
-    if (ctx->tc[i].schema) {
-      printf("\\ %s (%u cols)\n", ctx->tc[i].schema->table_name, ctx->tc[i].schema->column_count);
-      for (int j = 0; j < ctx->tc[i].schema->column_count; j++) {
-        printf("|- %s (%s)\n", ctx->tc[i].schema->columns[j].name, get_token_type(ctx->tc[i].schema->columns[j].type));
+    if (db->tc[i].schema) {
+      printf("\\ %s (%u cols)\n", db->tc[i].schema->table_name, db->tc[i].schema->column_count);
+      for (int j = 0; j < db->tc[i].schema->column_count; j++) {
+        printf("|- %s (%s)\n", db->tc[i].schema->columns[j].name, get_token_type(db->tc[i].schema->columns[j].type));
       }
     }
   }
 }
 
-void process_file(Context* ctx, char* filename) {
+void process_file(Database* db, char* filename) {
   FILE* file = fopen(filename, "r");
   if (!file) {
     LOG_ERROR("Error opening file: %s", filename);
@@ -212,12 +212,12 @@ void process_file(Context* ctx, char* filename) {
   size_t res_n = 0;
   size_t res_capacity = 5; 
   
-  lexer_set_buffer(ctx->lexer, buffer);
-  parser_reset(ctx->parser);
+  lexer_set_buffer(db->lexer, buffer);
+  parser_reset(db->parser);
   
-  JQLCommand cmd = parser_parse(ctx);
+  JQLCommand cmd = parser_parse(db);
   while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
-    res_list[res_n] = execute_cmd(ctx, &cmd);
+    res_list[res_n] = execute_cmd(db, &cmd);
   
     if (res_n + 1 >= res_capacity) {
       res_capacity *= 2; 
@@ -229,21 +229,21 @@ void process_file(Context* ctx, char* filename) {
     }
   
     res_n++;
-    cmd = parser_parse(ctx); 
+    cmd = parser_parse(db); 
   }
 
   free(buffer);
   fclose(file);
 }
 
-void load_tc(Context* ctx) {
-  if (!ctx || !ctx->fs) return;
+void load_tc(Database* db) {
+  if (!db || !db->fs) return;
 
-  load_table_schema(ctx);
+  load_table_schema(db);
 
-  DIR* dir = opendir(ctx->fs->tables_dir);
+  DIR* dir = opendir(db->fs->tables_dir);
   if (!dir) {
-    LOG_ERROR("Failed to open schema directory: %s", ctx->fs->tables_dir);
+    LOG_ERROR("Failed to open schema directory: %s", db->fs->tables_dir);
     return;
   }
 
@@ -254,8 +254,8 @@ void load_tc(Context* ctx) {
     if (entry->d_type == DT_DIR && strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
       bool found = false;
 
-      for (int i = 0; i < ctx->table_count; i++) {
-        if (strcmp(entry->d_name, ctx->tc[i].name) == 0) {
+      for (int i = 0; i < db->table_count; i++) {
+        if (strcmp(entry->d_name, db->tc[i].name) == 0) {
           found = true;
           break;
         }
@@ -266,7 +266,7 @@ void load_tc(Context* ctx) {
       }
 
       char table_path[MAX_PATH_LENGTH];
-      snprintf(table_path, MAX_PATH_LENGTH, "%s" SEP "%s", ctx->fs->tables_dir, entry->d_name);
+      snprintf(table_path, MAX_PATH_LENGTH, "%s" SEP "%s", db->fs->tables_dir, entry->d_name);
 
       char data_file[MAX_PATH_LENGTH];
       snprintf(data_file, MAX_PATH_LENGTH, "%.*s" SEP "rows.db",
@@ -281,58 +281,58 @@ void load_tc(Context* ctx) {
   }
 
 
-  if (tc < ctx->table_count) {
+  if (tc < db->table_count) {
     LOG_WARN("Not all directories match the expected table names from the schema.");
-    LOG_DEBUG("Table Catalog defines %ld whilst %d were read", ctx->table_count, tc);
+    LOG_DEBUG("Table Catalog defines %ld whilst %d were read", db->table_count, tc);
   }
 
   closedir(dir);
 }
 
-void load_table_schema(Context* ctx) {
-  if (!ctx || !ctx->fs) {
-    LOG_ERROR("Invalid context or missing filesystem.");
+void load_table_schema(Database* db) {
+  if (!db || !db->fs) {
+    LOG_ERROR("Invalid database or missing filesystem.");
     return;
   }
   
-  io_seek(ctx->tc_reader, 0, SEEK_SET);
+  io_seek(db->tc_reader, 0, SEEK_SET);
 
   uint32_t db_init;
-  if (io_read(ctx->tc_reader, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
+  if (io_read(db->tc_reader, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
     LOG_ERROR("Failed to read database initialization magic number.");
-    io_close(ctx->tc_reader);
+    io_close(db->tc_reader);
     return;
   }
 
   if (db_init != DB_INIT_MAGIC) {
     LOG_ERROR("Invalid database file (wrong DB INIT magic number: 0x%X).", db_init);
-    io_close(ctx->tc_reader);
+    io_close(db->tc_reader);
     return;
   }
 
-  if (io_read(ctx->tc_reader, &ctx->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
+  if (io_read(db->tc_reader, &db->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
     LOG_ERROR("Failed to read table count.");
-    io_close(ctx->tc_reader);
+    io_close(db->tc_reader);
     return;
   }
 
-  if (ctx->table_count > MAX_TABLES) {
+  if (db->table_count > MAX_TABLES) {
     LOG_ERROR("Table count exceeds maximum allowed tables.");
-    io_close(ctx->tc_reader);
+    io_close(db->tc_reader);
     return;
   }
 
-  io_seek(ctx->tc_reader, sizeof(uint32_t) * MAX_TABLES, SEEK_CUR);
+  io_seek(db->tc_reader, sizeof(uint32_t) * MAX_TABLES, SEEK_CUR);
 
-  for (uint32_t tc = 0; tc < ctx->table_count; tc++) {
-    TableCatalogEntry* entry = &ctx->tc[tc];
+  for (uint32_t tc = 0; tc < db->table_count; tc++) {
+    TableCatalogEntry* entry = &db->tc[tc];
 
-    if (io_read(ctx->tc_reader, &entry->offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    if (io_read(db->tc_reader, &entry->offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
       LOG_ERROR("Failed to read table offset.");
       break;
     }
 
-    if (io_read(ctx->tc_reader, &entry->name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    if (io_read(db->tc_reader, &entry->name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
       LOG_ERROR("Failed to read table name length.");
       break;
     }
@@ -342,41 +342,41 @@ void load_table_schema(Context* ctx) {
       break;
     }
 
-    if (io_read(ctx->tc_reader, entry->name, entry->name_length) != entry->name_length) {
+    if (io_read(db->tc_reader, entry->name, entry->name_length) != entry->name_length) {
       LOG_ERROR("Failed to read table name.");
       break;
     }
     entry->name[entry->name_length] = '\0';
 
-    long current_pos = io_tell(ctx->tc_reader);
+    long current_pos = io_tell(db->tc_reader);
     long next_offset = entry->offset - (entry->name_length + sizeof(uint32_t) + sizeof(uint8_t));
 
     if (next_offset > 0) {
-      io_seek(ctx->tc_reader, next_offset, SEEK_CUR);
+      io_seek(db->tc_reader, next_offset, SEEK_CUR);
     }
   }
 }
 
-void load_btree_cluster(Context* ctx, char* name) {
+void load_btree_cluster(Database* db, char* name) {
   uint8_t idx = hash_fnv1a(name, MAX_TABLES);
 
-  if (ctx->tc[idx].is_populated) {
+  if (db->tc[idx].is_populated) {
     // TODO: Consider double checking for new columns after ALTER is implemented
     return;
   }
 
-  TableSchema* schema = (&ctx->tc[idx])->schema;
+  TableSchema* schema = (&db->tc[idx])->schema;
 
   char rows_db_path[MAX_PATH_LENGTH];
   snprintf(rows_db_path, sizeof(rows_db_path), "%s" SEP "%s" SEP "rows.db", 
-            ctx->fs->tables_dir, name);
+            db->fs->tables_dir, name);
   if (!file_exists(rows_db_path)) {
-    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run 'fix'", ctx->fs->tables_dir);
+    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run 'fix'", db->fs->tables_dir);
     return;
   }
   
-  if (ctx->loaded_btree_clusters >= BTREE_LIFETIME_THRESHOLD) {
-    pop_btree_cluster(ctx);
+  if (db->loaded_btree_clusters >= BTREE_LIFETIME_THRESHOLD) {
+    pop_btree_cluster(db);
   }
 
   uint8_t found_prims = 0;
@@ -386,7 +386,7 @@ void load_btree_cluster(Context* ctx, char* name) {
       
       char btree_file_path[MAX_PATH_LENGTH];
       snprintf(btree_file_path, sizeof(btree_file_path), "%s" SEP "%s" SEP "%u.idx",
-              ctx->fs->tables_dir, name, file_hash);
+              db->fs->tables_dir, name, file_hash);
       
 
       FILE* fp = fopen(btree_file_path, "rb");
@@ -408,8 +408,8 @@ void load_btree_cluster(Context* ctx, char* name) {
       
       fclose(fp);
       
-      ctx->tc[idx].btree[file_hash] = btree;
-      ctx->tc[idx].is_populated = true;
+      db->tc[idx].btree[file_hash] = btree;
+      db->tc[idx].is_populated = true;
       found_prims++;
       
       if (found_prims == schema->prim_column_count) {
@@ -424,25 +424,25 @@ void load_btree_cluster(Context* ctx, char* name) {
     return;
   } 
 
-  ctx->btree_idx_stack[ctx->loaded_btree_clusters] = idx;
-  ctx->loaded_btree_clusters++;
+  db->btree_idx_stack[db->loaded_btree_clusters] = idx;
+  db->loaded_btree_clusters++;
 
 
   return;
 }
 
-void pop_btree_cluster(Context* ctx) {
-  if (ctx->loaded_btree_clusters == 0) {
+void pop_btree_cluster(Database* db) {
+  if (db->loaded_btree_clusters == 0) {
     LOG_WARN("No B-tree clusters to unload.");
     return;
   }
 
-  uint32_t idx_to_unload = ctx->btree_idx_stack[ctx->loaded_btree_clusters - 1];
+  uint32_t idx_to_unload = db->btree_idx_stack[db->loaded_btree_clusters - 1];
   
-  TableCatalogEntry* tc = &ctx->tc[idx_to_unload];
+  TableCatalogEntry* tc = &db->tc[idx_to_unload];
   
   char dir_path[MAX_PATH_LENGTH];
-  snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", ctx->fs->tables_dir, tc->name);
+  snprintf(dir_path, sizeof(dir_path), "%s" SEP "%s", db->fs->tables_dir, tc->name);
 
   for (uint8_t i = 0; i < tc->schema->prim_column_count; i++) {
     if (tc->btree[i] != NULL) {
@@ -455,28 +455,28 @@ void pop_btree_cluster(Context* ctx) {
     }
   }
 
-  ctx->loaded_btree_clusters--;
+  db->loaded_btree_clusters--;
 }
 
-bool load_schema_tc(Context* ctx, char* table_name) {
-  if (!ctx || !ctx->tc_reader) {
+bool load_schema_tc(Database* db, char* table_name) {
+  if (!db || !db->tc_reader) {
     LOG_ERROR("No database file is open.");
     return false;
   }
 
   unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
-  if (ctx->tc[idx].schema) {
-    if (strcmp(ctx->tc[idx].schema->table_name, table_name) == 0) {
+  if (db->tc[idx].schema) {
+    if (strcmp(db->tc[idx].schema->table_name, table_name) == 0) {
       return true;
     }
   }
   
   uint32_t initial_offset = 0; 
   
-  io_seek(ctx->tc_reader, (idx * sizeof(uint32_t)) + (2 * sizeof(uint32_t)), SEEK_SET);
-  io_read(ctx->tc_reader, &initial_offset, sizeof(uint32_t));
+  io_seek(db->tc_reader, (idx * sizeof(uint32_t)) + (2 * sizeof(uint32_t)), SEEK_SET);
+  io_read(db->tc_reader, &initial_offset, sizeof(uint32_t));
 
-  FILE* io = ctx->tc_reader;
+  FILE* io = db->tc_reader;
   TableSchema* schema = malloc(sizeof(TableSchema));
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
@@ -586,26 +586,26 @@ bool load_schema_tc(Context* ctx, char* table_name) {
     }
   }
 
-  ctx->tc[idx].schema = schema;
+  db->tc[idx].schema = schema;
   LOG_INFO("Created new schema entry in the in memory catalog at %d", idx);
   return true;
 }
 
-TableSchema* find_table_schema_tc(Context* ctx, const char* filename) {
-  if (!ctx || !filename) {
-    LOG_ERROR("Invalid context or filename provided.");
+TableSchema* find_table_schema_tc(Database* db, const char* filename) {
+  if (!db || !filename) {
+    LOG_ERROR("Invalid database or filename provided.");
     return NULL;
   }
 
   unsigned int idx = hash_fnv1a(filename, MAX_TABLES);
   
-  if (ctx->tc[idx].schema && strcmp(ctx->tc[idx].schema->table_name, filename) == 0) {
-    return ctx->tc[idx].schema;
+  if (db->tc[idx].schema && strcmp(db->tc[idx].schema->table_name, filename) == 0) {
+    return db->tc[idx].schema;
   }
 
-  for (int i = 0; i < ctx->table_count; i++) {
-    if (ctx->tc[i].schema && strcmp(ctx->tc[i].schema->table_name, filename) == 0) {
-      return ctx->tc[i].schema;
+  for (int i = 0; i < db->table_count; i++) {
+    if (db->tc[i].schema && strcmp(db->tc[i].schema->table_name, filename) == 0) {
+      return db->tc[i].schema;
     }
   }
 
@@ -613,21 +613,21 @@ TableSchema* find_table_schema_tc(Context* ctx, const char* filename) {
   return NULL;
 }
 
-bool load_initial_schema(Context* ctx) {
-  if (!ctx || !ctx->tc_reader) {
+bool load_initial_schema(Database* db) {
+  if (!db || !db->tc_reader) {
     LOG_ERROR("No database file is open.");
     return false;
   }
 
-  FILE* io = ctx->tc_reader;
+  FILE* io = db->tc_reader;
   size_t CONTENTS_OFFSET = 2 * sizeof(uint32_t) + MAX_TABLES * sizeof(uint32_t);
   io_seek(io, CONTENTS_OFFSET, SEEK_SET);
 
-  for (size_t i = 0; i < ctx->table_count; i++) {
-    const char* table_name = ctx->tc[i].name;
+  for (size_t i = 0; i < db->table_count; i++) {
+    const char* table_name = db->tc[i].name;
     unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
     
-    if (ctx->tc[idx].schema) continue;
+    if (db->tc[idx].schema) continue;
 
     TableSchema* schema = malloc(sizeof(TableSchema));
     if (!schema) {
@@ -736,20 +736,20 @@ bool load_initial_schema(Context* ctx) {
       }
     }
 
-    ctx->tc[idx].schema = schema;
+    db->tc[idx].schema = schema;
   }
 
   return true;
 }
 
 
-void load_lake(Context* ctx) {
+void load_lake(Database* db) {
   FILE* file = NULL;
   char file_path[MAX_PATH_LENGTH];
 
   for (int i = 0; i < MAX_TABLES; i++) {
-    if (ctx->tc[i].schema) {
-      sprintf(file_path, "%s" SEP "%s" SEP "rows.db", ctx->fs->tables_dir, ctx->tc[i].schema->table_name);
+    if (db->tc[i].schema) {
+      sprintf(file_path, "%s" SEP "%s" SEP "rows.db", db->fs->tables_dir, db->tc[i].schema->table_name);
       file = fopen(file_path, "rb");
       if (!file) {
         LOG_WARN("Could not open file for reading: %s", file_path);
@@ -763,15 +763,15 @@ void load_lake(Context* ctx) {
       uint32_t num_pages = (file_size + PAGE_SIZE - 1) / PAGE_SIZE;
       if (num_pages == 0) num_pages = 1;
 
-      uint32_t idx = hash_fnv1a(ctx->tc[i].schema->table_name, MAX_TABLES);
+      uint32_t idx = hash_fnv1a(db->tc[i].schema->table_name, MAX_TABLES);
 
       for (int j = 0; j < num_pages; j++) {
         uint32_t pg_n = j;
         
-        if (!ctx->lake[idx].pages[pg_n]) {
-          ctx->lake[idx].pages[pg_n] = page_init(pg_n);
-          read_page(file, pg_n, ctx->lake[idx].pages[pg_n], ctx->tc[idx]);
-          ctx->lake[idx].num_pages += 1;
+        if (!db->lake[idx].pages[pg_n]) {
+          db->lake[idx].pages[pg_n] = page_init(pg_n);
+          read_page(file, pg_n, db->lake[idx].pages[pg_n], db->tc[idx]);
+          db->lake[idx].num_pages += 1;
         }
 
         if ((j + 1) == num_pages) {
@@ -781,41 +781,140 @@ void load_lake(Context* ctx) {
 
       fclose(file);
 
-      memcpy(ctx->lake[idx].file, file_path, MAX_PATH_LENGTH - 1);
-      ctx->lake[idx].file[MAX_PATH_LENGTH - 1] = '\0';
-      ctx->lake[idx].idx = idx; 
+      memcpy(db->lake[idx].file, file_path, MAX_PATH_LENGTH - 1);
+      db->lake[idx].file[MAX_PATH_LENGTH - 1] = '\0';
+      db->lake[idx].idx = idx; 
     }
   }
 }
 
-void flush_lake(Context* ctx) {
+void flush_lake(Database* db) {
   FILE* file = NULL;
 
   for (int i = 0; i < MAX_COLUMNS; i++) {
-    uint32_t idx = ctx->lake[i].idx;
-    if (ctx->lake[idx].file[0] != 0) {  
+    uint32_t idx = db->lake[i].idx;
+    if (db->lake[idx].file[0] != 0) {  
 
-      file = fopen(ctx->lake[i].file, "r+b"); 
+      file = fopen(db->lake[i].file, "r+b"); 
       if (!file) {
-        file = fopen(ctx->lake[i].file, "w+b");
+        file = fopen(db->lake[i].file, "w+b");
       }
       
       for (int j = 0; j < POOL_SIZE; j++) {
-        if (ctx->lake[idx].pages[j] == NULL) {
+        if (db->lake[idx].pages[j] == NULL) {
           continue;
         }
         
-        if (is_struct_zeroed(ctx->lake[idx].pages[j], sizeof(Page))) {
+        if (is_struct_zeroed(db->lake[idx].pages[j], sizeof(Page))) {
           continue;
         }
 
-        if (ctx->lake[idx].pages[j]->is_dirty){
-          write_page(file, ctx->lake[idx].page_numbers[j], ctx->lake[idx].pages[j], ctx->tc[idx]);
-          ctx->lake[idx].pages[j]->is_dirty = false; 
+        if (db->lake[idx].pages[j]->is_dirty){
+          write_page(file, db->lake[idx].page_numbers[j], db->lake[idx].pages[j], db->tc[idx]);
+          db->lake[idx].pages[j]->is_dirty = false; 
         }
       }
       
       fclose(file);
     }
   }
+}
+
+void db_init_core(Database* db) {
+  process(db, "CREATE TABLE jb_constraint ("
+    "oid INT PRIMKEY,"
+    "conname VARCHAR(64) NOT NULL,"
+    "connamespace INT,"
+    "contype CHAR,"
+    "condeferrable BOOL,"
+    "condeferred BOOL,"
+    "convalidated BOOL,"
+    "conrelid INT,"
+    "contypid INT,"
+    "conindid INT,"
+    "conparentid INT,"
+    "confrelid INT,"
+    "confupdtype CHAR,"
+    "confdeltype CHAR,"
+    "confmatchtype CHAR,"
+    "conislocal BOOL,"
+    "coninhcount INT,"
+    "connoinherit BOOL,"
+    // "conkey INT[],"
+    // "confkey INT[],"
+    // "conpfeqop INT[],"
+    // "conppeqop INT[],"
+    // "conffeqop INT[],"
+    // "conexclop INT[],"
+    "conbin TEXT,"
+    "consrc TEXT"
+    ")");
+  
+ 
+  process(db, "CREATE TABLE jb_authid ("
+    "oid INT PRIMKEY,"
+    "rolname VARCHAR(64) NOT NULL UNIQUE,"
+    "rolsuper BOOL,"
+    "rolinherit BOOL,"
+    "rolcreaterole BOOL,"
+    "rolcreatedb BOOL,"
+    "rolcanlogin BOOL,"
+    "rolreplication BOOL,"
+    "rolbypassrls BOOL,"
+    "rolconnlimit INT,"
+    "rolpassword VARCHAR(100),"
+    "rolvaliduntil TIMESTAMP"
+    ")");
+  
+  // process(db, "CREATE TABLE jg_statistic ("
+  //         "starelid INT,"
+  //         "staattnum INT,"
+  //         "stainherit BOOL,"
+  //         "stanullfrac FLOAT,"
+  //         "stawidth INT,"
+  //         "stadistinct FLOAT,"
+  //         "stakind1 SMALLINT,"
+  //         "stakind2 SMALLINT,"
+  //         "stakind3 SMALLINT,"
+  //         "stakind4 SMALLINT,"
+  //         "stakind5 SMALLINT,"
+  //         "staop1 INT,"
+  //         "staop2 INT,"
+  //         "staop3 INT,"
+  //         "staop4 INT,"
+  //         "staop5 INT,"
+  //         "stanumbers1 FLOAT[],"
+  //         "stanumbers2 FLOAT[],"
+  //         "stanumbers3 FLOAT[],"
+  //         "stanumbers4 FLOAT[],"
+  //         "stanumbers5 FLOAT[],"
+  //         "stavalues1 TEXT,"
+  //         "stavalues2 TEXT,"
+  //         "stavalues3 TEXT,"
+  //         "stavalues4 TEXT,"
+  //         "stavalues5 TEXT,"
+  //         "PRIMARY KEY (starelid, staattnum, stainherit)"
+  //         ")");
+  
+  
+  // process(db, "CREATE TABLE jg_trigger ("
+  //   "oid INT PRIMARY KEY,"
+  //   "tgrelid INT,"
+  //   "tgname VARCHAR(64) NOT NULL,"
+  //   "tgfoid INT,"
+  //   "tgtype INT,"
+  //   "tgenabled CHAR(1),"
+  //   "tgisinternal BOOL,"
+  //   "tgconstrrelid INT,"
+  //   "tgconstrindid INT,"
+  //   "tgconstraint INT,"
+  //   "tgdeferrable BOOL,"
+  //   "tginitdeferred BOOL,"
+  //   "tgnargs INT,"
+  //   "tgattr INT[],"
+  //   "tgargs BYTEA,"
+  //   "tgqual TEXT,"
+  //   "tgoldtable VARCHAR(64),"
+  //   "tgnewtable VARCHAR(64)"
+  //   ")");
 }

@@ -7,8 +7,8 @@
 #include "testing.h"
 
 START_TEST(test_update_operations) {
-  INIT_TEST(ctx);
-  setup_test_data(ctx, employees_setup_queries);
+  INIT_TEST(db);
+  setup_test_data(db, employees_setup_queries);
 
   struct {
     char* update_query;
@@ -50,10 +50,10 @@ START_TEST(test_update_operations) {
   for (int i = 0; i < sizeof(update_test_cases) / sizeof(update_test_cases[0]); i++) {
     printf("Executing UPDATE test case #%d: %s\n", i + 1, update_test_cases[i].update_query);
     
-    ExecutionResult update_res = process(ctx, update_test_cases[i].update_query).exec;
+    ExecutionResult update_res = process(db, update_test_cases[i].update_query).exec;
     ck_assert_int_eq(update_res.code, 0);
     
-    ExecutionResult verify_res = process(ctx, update_test_cases[i].verify_query).exec;
+    ExecutionResult verify_res = process(db, update_test_cases[i].verify_query).exec;
     ck_assert_int_eq(verify_res.code, 0);
     ck_assert_msg(verify_res.row_count == update_test_cases[i].expected_verify_rows,
       "UPDATE test case #%d verification failed: expected %d rows, got %d",
@@ -64,7 +64,7 @@ START_TEST(test_update_operations) {
     }
   }
 
-  ctx_free(ctx);
+  db_free(db);
 }
 END_TEST
 

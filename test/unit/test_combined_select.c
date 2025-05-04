@@ -7,8 +7,8 @@
 #include "testing.h"
 
 START_TEST(test_combined_select_features) {
-  INIT_TEST(ctx);
-  setup_test_data(ctx, employees_setup_queries);
+  INIT_TEST(db);
+  setup_test_data(db, employees_setup_queries);
   
   struct {
     char* query;
@@ -29,7 +29,7 @@ START_TEST(test_combined_select_features) {
 
   for (int i = 0; i < sizeof(combined_test_cases) / sizeof(combined_test_cases[0]); i++) {
     printf("Executing combined test case #%d: %s\n", i + 1, combined_test_cases[i].query);
-    ExecutionResult res = process(ctx, combined_test_cases[i].query).exec;
+    ExecutionResult res = process(db, combined_test_cases[i].query).exec;
   
     ck_assert_int_eq(res.code, 0);
     ck_assert_msg(res.row_count == combined_test_cases[i].expected_rows,
@@ -45,7 +45,7 @@ START_TEST(test_combined_select_features) {
     }
   }
 
-  ctx_free(ctx);
+  db_free(db);
 }
 END_TEST
 

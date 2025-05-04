@@ -7,8 +7,8 @@
 #include "testing.h"
 
 START_TEST(test_select_with_like) {
-  INIT_TEST(ctx);
-  setup_test_data(ctx, employees_setup_queries);
+  INIT_TEST(db);
+  setup_test_data(db, employees_setup_queries);
   
   struct {
     char* query;
@@ -24,7 +24,7 @@ START_TEST(test_select_with_like) {
 
   for (int i = 0; i < sizeof(like_test_cases) / sizeof(like_test_cases[0]); i++) {
     printf("Executing LIKE test case #%d: %s\n", i + 1, like_test_cases[i].query);
-    ExecutionResult res = process(ctx, like_test_cases[i].query).exec;
+    ExecutionResult res = process(db, like_test_cases[i].query).exec;
   
     ck_assert_int_eq(res.code, 0);
     ck_assert_msg(res.row_count == like_test_cases[i].expected_rows,
@@ -36,7 +36,7 @@ START_TEST(test_select_with_like) {
     }
   }
 
-  ctx_free(ctx);
+  db_free(db);
 }
 END_TEST
 

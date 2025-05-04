@@ -7,8 +7,8 @@
 #include "testing.h"
 
 START_TEST(test_select_with_order_by) {
-  INIT_TEST(ctx);
-  setup_test_data(ctx, employees_setup_queries);
+  INIT_TEST(db);
+  setup_test_data(db, employees_setup_queries);
   
   struct {
     char* query;
@@ -25,7 +25,7 @@ START_TEST(test_select_with_order_by) {
 
   for (int i = 0; i < sizeof(order_by_test_cases) / sizeof(order_by_test_cases[0]); i++) {
     printf("Executing ORDER BY test case #%d: %s\n", i + 1, order_by_test_cases[i].query);
-    ExecutionResult res = process(ctx, order_by_test_cases[i].query).exec;
+    ExecutionResult res = process(db, order_by_test_cases[i].query).exec;
   
     ck_assert_int_eq(res.code, 0);
     ck_assert_int_eq(res.row_count, 15);
@@ -38,7 +38,7 @@ START_TEST(test_select_with_order_by) {
     }
   }
 
-  ctx_free(ctx);
+  db_free(db);
 }
 END_TEST
 
