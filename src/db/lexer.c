@@ -451,6 +451,12 @@ Token* lexer_handle_1char(Lexer* lexer) {
     case ']':
       lexer_advance(lexer, 1); return lexer_token_init(lexer, "]", TOK_RB);
       break;
+    case '{':
+      lexer_advance(lexer, 1); return lexer_token_init(lexer, "{", TOK_LBR);
+      break;
+    case '}':
+      lexer_advance(lexer, 1); return lexer_token_init(lexer, "}", TOK_RBR);
+      break;
     case '-':
       return lexer_process_minus_op(lexer, next_char);
       break;

@@ -52,20 +52,20 @@ int main(int argc, char* argv[]) {
       return 1;
     }
 
-    // if (!cluster_add_db(cluster_manager, 1, default_db)) {
-    //   fprintf(stderr, "Failed to add default database to cluster\n");
-    //   cluster_manager_free(cluster_manager);
-    //   return 1;
-    // }
+    if (!cluster_add_db(cluster_manager, 0, default_db)) {
+      fprintf(stderr, "Failed to add default database to cluster\n");
+      cluster_manager_free(cluster_manager);
+      return 1;
+    }
 
-    // db = cluster_get_active_db(cluster_manager);
-    // if (!db && cluster_manager->cluster_count > 0) {
-    //   cluster_switch(cluster_manager, 1);
-    //   if (cluster_manager->clusters[1].db_count > 0) {
-    //     cluster_switch_db(cluster_manager, 1);
-    //     db = cluster_get_active_db(cluster_manager);
-    //   }
-    // }
+    db = cluster_get_active_db(cluster_manager);
+    if (!db && cluster_manager->cluster_count > 0) {
+      cluster_switch(cluster_manager, 1);
+      if (cluster_manager->clusters[1].db_count > 0) {
+        cluster_switch_db(cluster_manager, 1);
+        db = cluster_get_active_db(cluster_manager);
+      }
+    }
   }
   
   if (!db) {

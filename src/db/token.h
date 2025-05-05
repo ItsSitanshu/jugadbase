@@ -53,6 +53,8 @@ typedef struct Token {
     TOK_RP,       // )
     TOK_LB,       // [
     TOK_RB,       // ]
+    TOK_LBR,       // {
+    TOK_RBR,       // }
     TOK_COM,      // ,
     TOK_SC,       // ;
     TOK_EQ,       // =
@@ -62,7 +64,7 @@ typedef struct Token {
     TOK_GE,       // >=
     TOK_NE,       // !=
     TOK_ADD,      // +
-    TOK_SUB,      // -
+    TOK_SUB,      // -f
     TOK_MUL,      // *
     TOK_DIV,      // /
     TOK_MOD,      // %

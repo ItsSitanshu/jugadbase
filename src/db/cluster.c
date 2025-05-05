@@ -178,6 +178,7 @@ bool cluster_create(ClusterManager* manager, const char* name) {
   cluster_switch(manager, 0);
   Database* db = cluster_get_active_db(manager);
   db_init_core(db);
+  cluster_switch_db(manager, 0);
 
   return true;
 }
@@ -221,9 +222,7 @@ bool cluster_add_db(ClusterManager* manager, int cluster_idx, const char* db_pat
   cluster->db_paths[db_idx][255] = '\0';
   cluster->db_count++;
   
-  if (cluster->active_db == -1) {
-    cluster->active_db = 0;
-  }
+  cluster->active_db = db_idx;
   
   cluster_manager_save(manager);
   

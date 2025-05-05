@@ -51,7 +51,6 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Design casading  
 - Implement actual VARCHAR
 - FIX BUG: Multiple inserts statements in same file when large contents are present
-- Migrate JB_TOAST to use TEXT[] instead of traditional strucute
 - Implement `$variables` for cleaner SDK support
 - Implement `DROP` to remove tables
 - Add indexing for performance optimization  

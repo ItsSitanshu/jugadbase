@@ -192,6 +192,18 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
     parser_consume(parser);
   }
 
+  if (parser->cur->type == TOK_LB) {
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_RB) {
+      REPORT_ERROR(parser->lexer, "SYE_E_COMP_BRAC");
+      return false;
+    }
+    parser_consume(parser);
+
+    column.is_array = true;
+  }
+
   while (parser->cur->type != TOK_COM && parser->cur->type != TOK_RP) {
     switch (parser->cur->type) {
       case TOK_PK:
@@ -989,7 +1001,54 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       
       has_timezone = (strpbrk(temp_str, "+-") != NULL);
       
-      if (has_timezone && parse_to_datetime_TZ(temp_str, &dt_tz)) {
+      if (temp_str[0] == '{' && temp_str[value_len - 1] == '}') {
+        char* array_contents = temp_str;  
+        array_contents[value_len] = '\0';
+
+        size_t count = 0;
+        ColumnValue* array = malloc(MAX_ARRAY_SIZE * sizeof(ColumnValue));
+
+        uint32_t array_type = -1; 
+
+        Lexer* tmp_lexer = lexer_init();
+        Parser* tmp_parser = parser_init(tmp_lexer);
+        lexer_set_buffer(tmp_parser->lexer, strdup(array_contents));
+        tmp_parser->cur = lexer_next_token(tmp_parser->lexer);
+        parser_consume(tmp_parser);
+
+        while (tmp_parser->cur->type != TOK_EOF
+          && tmp_parser->cur->type != TOK_RBK
+          && count < MAX_ARRAY_SIZE) {
+
+          
+          ColumnValue element_val;
+          if (!parser_parse_value(tmp_parser, &element_val)) {
+            free(array);
+            return false;
+          }
+
+          if (array_type == -1) {
+            array_type = element_val.type;
+          }
+
+          array[count] = element_val;
+          count++;
+          if (tmp_parser->cur->type != TOK_EOF 
+            || tmp_parser->cur->type == TOK_COM) {
+            parser_consume(tmp_parser);
+          } else {
+            break;
+          }
+        }
+
+        parser_free(tmp_parser);
+
+        col_val->array.array_value = array;
+        col_val->array.array_size = count;
+        col_val->array.array_type = array_type;
+
+        col_val->type = col_val->array.array_type;
+      } else if (has_timezone && parse_to_datetime_TZ(temp_str, &dt_tz)) {
         col_val->type = TOK_T_DATETIME_TZ;
         memcpy(&col_val->datetime_tz_value, &dt_tz, sizeof(DateTime_TZ));
       } else if (parse_to_datetime(temp_str, &dt)) {

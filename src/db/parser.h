@@ -17,11 +17,12 @@
 #define MAX_VARCHAR_SIZE 255
 #define MAX_FN_ARGS 40
 #define MAX_LIKE_PATTERNS 32
+#define MAX_ARRAY_SIZE 2048
 
 struct Database;
 typedef struct Database Database;
 typedef struct ExprNode ExprNode;
-
+typedef struct ColumnValue ColumnValue;
 
 typedef enum {
   FK_NO_ACTION,
@@ -47,7 +48,7 @@ typedef struct ExecutionOrder {
   struct ExecutionOrder *next;
 } ExecutionOrder;
 
-typedef struct {
+typedef struct ColumnValue {
   uint8_t column_index;
   uint8_t type; 
 
@@ -70,6 +71,11 @@ typedef struct {
     Timestamp timestamp_value;
     Timestamp_TZ timestamp_tz_value;
     Interval interval_value;
+    struct cv__Array { 
+      ColumnValue* array_value;
+      uint8_t array_size;
+      uint16_t array_type;
+    } array;
   };
 } ColumnValue;
 
@@ -150,6 +156,8 @@ typedef struct {
 
   bool has_check;
   char check_expr[MAX_IDENTIFIER_LEN];
+
+  bool is_array;
 
   bool is_foreign_key;
   char foreign_table[MAX_IDENTIFIER_LEN];
