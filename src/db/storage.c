@@ -62,6 +62,28 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
   }
 }
 
+void read_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
+  if (!file || !col_val || !col_def) {
+    LOG_ERROR("Invalid input to read_array_value.\n");
+    return;
+  }
+
+  uint16_t len;
+  fread(&len, sizeof(uint16_t), 1, file);
+
+  col_val->is_array = true;
+  col_val->array.array_size = len;
+  col_val->array.array_value = calloc(len, sizeof(ColumnValue));
+
+  ColumnDefinition base_def = *col_def;
+  base_def.is_array = false;
+
+  for (int i = 0; i < len; i++) {
+    col_val->array.array_value[i].is_array = false;
+    read_column_value(file, &col_val->array.array_value[i], &base_def);
+  }
+}
+
 void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
   uint16_t text_len, max_len, str_len;
   bool is_toast_pointer = false;
@@ -70,6 +92,11 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
     LOG_ERROR("Invalid input to read_column_value.\n");
     return;
   }
+
+  if (col_def->is_array) {
+    read_array_value(file, col_val, col_def);
+    return;
+  }  
 
   col_val->type = col_def->type;
 
@@ -160,7 +187,8 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       fread(&is_toast_pointer, sizeof(bool), 1, file);
       if (!is_toast_pointer) {
         fread(&str_len, sizeof(uint16_t), 1, file);
-        col_val->str_value = malloc(str_len + 1);
+        col_val->str_value = calloc(str_len + 1, sizeof(char));
+        col_val->str_value[str_len] = '\0';  
         if (!col_val->str_value) {
           perror("malloc failed");
           abort();
@@ -212,6 +240,22 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
   LOG_DEBUG("Updating pool %u", page_number);
 }
 
+void write_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
+  if (!col_val || !file || !col_val->array.array_value || col_val->array.array_size == 0) return;
+
+  uint16_t len = col_val->array.array_size;
+  fwrite(&len, sizeof(uint16_t), 1, file);
+
+  ColumnDefinition base_def = *col_def;
+  base_def.is_array = false;
+
+  for (int i = 0; i < len; i++) {
+    ColumnValue* elem = &col_val->array.array_value[i];
+    elem->is_array = false;
+    write_column_value(file, elem, &base_def);
+  }
+}
+
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
   uint16_t text_len, str_len, max_len;
   bool is_toast_pointer = false;
@@ -221,6 +265,11 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
     return;
   }
 
+  if (col_val->is_array && col_def->is_array) {
+    write_array_value(file, col_val, col_def);
+    return;
+  }
+  
   switch (col_def->type) {
     case TOK_T_INT:
     case TOK_T_SERIAL:

@@ -44,6 +44,7 @@ Page* page_init(uint32_t pg_n);
 void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc);
 void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc);
+void write_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc);
