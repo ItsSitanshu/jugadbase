@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
 
   Database* db = NULL;
   
-  if (cluster_manager->cluster_count == 0 && create_default) {
+  if (cluster_manager->active_cluster == -1 && create_default) {
     if (!cluster_create(cluster_manager, cluster_name)) {
       fprintf(stderr, "Failed to create default cluster\n");
       cluster_manager_free(cluster_manager);
@@ -68,10 +68,12 @@ int main(int argc, char* argv[]) {
     }
   }
   
-  if (!db) {
-    fprintf(stderr, "No active database available. Use cluster commands to create or switch to a cluster and database.\n");
-    LOG_WARN("Starting with no active database");
+  if (!db && cluster_manager->active_cluster == -1) {
+    LOG_WARN("No active database available. Use cluster commands to create or switch to a cluster and database.");
   }
+
+  DbCluster cluster = cluster_manager->clusters[cluster_manager->active_cluster];
+  db = cluster.databases[cluster.active_db];
 
   char* input = NULL;
   CommandHistory history = { .current = 1, .size = 0 };
