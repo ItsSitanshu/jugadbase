@@ -39,7 +39,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Blob~~
 - ~~Compacting in actual storage of rows (storage.c)~~
 - Clusters:
-  - Introduce lists <type>[]
+  - ~~Introduce lists <type>[]~~
   - Design `/jb.core/` cluster directory structure
   - Implement cluster bootstrap (`--init-cluster`)
   - Refactor `Context` to include `cluster` and `active_db`
