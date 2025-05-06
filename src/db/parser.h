@@ -53,6 +53,7 @@ typedef struct ColumnValue {
   uint8_t type; 
 
   bool is_null;
+  bool is_array;
   bool is_toast;
   
   union {  

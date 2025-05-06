@@ -962,6 +962,8 @@ bool is_valid_default(Parser* parser, int column_type, int literal_type) {
 bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
   memset(col_val, 0, sizeof(ColumnValue)); 
 
+  col_val->is_array = false;
+
   switch (parser->cur->type) {
     case TOK_NL:
       col_val->is_null = true;
@@ -1020,7 +1022,6 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
           && tmp_parser->cur->type != TOK_RBK
           && count < MAX_ARRAY_SIZE) {
 
-          
           ColumnValue element_val;
           if (!parser_parse_value(tmp_parser, &element_val)) {
             free(array);
@@ -1047,6 +1048,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         col_val->array.array_size = count;
         col_val->array.array_type = array_type;
 
+        col_val->is_array = true;
         col_val->type = col_val->array.array_type;
       } else if (has_timezone && parse_to_datetime_TZ(temp_str, &dt_tz)) {
         col_val->type = TOK_T_DATETIME_TZ;
@@ -1534,8 +1536,27 @@ void print_column_value(ColumnValue* val) {
     return;
   }
 
-  printf("%s[", get_token_type(val->type));
+  printf("array<%s>[", get_token_type(val->type));
 
+  if (val->is_array) {
+    char buffer[1024];
+    size_t offset = 0;
+    
+    for (size_t i = 0; i < val->array.array_size; i++) {
+      char* elem_str = str_column_value(&val->array.array_value[i]);
+      if (i > 0) {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, ", ");
+      }
+      offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_str);
+      free(elem_str);
+    }
+  
+    snprintf(buffer + offset, sizeof(buffer) - offset, "]");
+  
+    printf("%s", buffer);
+    return;
+  }
+  
   switch (val->type) {
     case TOK_T_INT:
     case TOK_T_UINT:
