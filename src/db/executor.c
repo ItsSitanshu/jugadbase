@@ -152,6 +152,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col->is_primary_key, sizeof(bool));
     io_write(tca_io, &col->is_unique, sizeof(bool));
     io_write(tca_io, &col->is_not_null, sizeof(bool));
+    io_write(tca_io, &col->is_array, sizeof(bool));
     io_write(tca_io, &col->is_index, sizeof(bool));
     io_write(tca_io, &col->is_auto_increment, sizeof(bool));
 

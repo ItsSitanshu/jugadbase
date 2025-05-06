@@ -60,6 +60,11 @@ ClusterManager* cluster_manager_init(char* root_dir) {
     } else {
       LOG_ERROR("Failed to open cluster configuration file");
     }
+
+    cluster_switch(manager, 0);
+    cluster_switch_db(manager, 1);
+
+    LOG_DEBUG("WORKS!");
   } else {
     LOG_INFO("No cluster configuration found, initialized empty manager");
   }
