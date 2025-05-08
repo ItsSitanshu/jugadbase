@@ -217,25 +217,56 @@ void lexer_handle_error(Lexer* lexer) {
 }
 
 void lexer_handle_fillers(Lexer* lexer) {
-  /*
-  Skips un-importaint values (whitespace, newline, horizontal/vertical tab)
-  */
-
-  switch (lexer->c) {
-    case ' ':
-      lexer_advance(lexer, 1);
-      break;
-    case '\n':
-    case '\v':
-      lexer->cl += 1;
-      lexer_advance(lexer, 1);
-      lexer->cc = 1;
-      break;
-    case '\t':
-      lexer_advance(lexer, 2);
-      break;
-    default:
-      break;
+  while (true) {
+    switch (lexer->c) {
+      case ' ':
+        lexer_advance(lexer, 1);
+        break;
+      case '\n':
+      case '\v':
+        lexer->cl += 1;
+        lexer_advance(lexer, 1);
+        lexer->cc = 1;
+        break;
+      case '\t':
+        lexer_advance(lexer, 2);
+        break;
+      case '-':
+        lexer_advance(lexer, 1);
+        if (lexer->c == '-') {
+          lexer_advance(lexer, 1);
+          while (lexer->c != '\0' && lexer->c != '\n') {
+            lexer_advance(lexer, 1);
+          }
+        } else {
+          return;
+        }
+        break;
+      case '/':
+        lexer_advance(lexer, 1);
+        if (lexer->c == '*') {
+          lexer_advance(lexer, 1);
+          while (lexer->c != '\0') {
+            if (lexer->c == '*') {
+              lexer_advance(lexer, 1);
+              if (lexer->c == '/') {
+                lexer_advance(lexer, 1);
+                break;
+              }
+            }
+            if (lexer->c == '\n') {
+              lexer->cl += 1;
+              lexer->cc = 1;
+            }
+            lexer_advance(lexer, 1);
+          }
+        } else {
+          return;
+        }
+        break;
+      default:
+        return;
+    }
   }
 }
 
