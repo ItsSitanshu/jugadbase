@@ -11,6 +11,25 @@ VERBOSE_LEVEL=0
 VERBOSE_MAKE=0
 NUM_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 CMAKE_ARGS=""
+DEFAULT_CORE_PATH="$(pwd)/src/core.jcl"
+SYSTEM_CORE_PATH="/usr/local/share/jugadbase/core.jcl"
+OS="$(uname -s)"
+case "$OS" in
+    Linux*)
+        SYSTEM_CORE_PATH="/usr/local/share/jugadbase/core.jcl"
+        ;;
+    Darwin*)
+        SYSTEM_CORE_PATH="/usr/local/share/jugadbase/core.jcl"
+        ;;
+    CYGWIN*|MINGW*|MSYS*)
+        SYSTEM_CORE_PATH="$(cygpath -u "$APPDATA")/jugadbase/core.jcl"
+        ;;
+    *)
+        echo "Unsupported OS: $OS"
+        exit 1
+        ;;
+esac
+
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     LINKER_FLAGS="-L/opt/homebrew/lib"
@@ -148,7 +167,18 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-# Prevent using both gdb and lldb
+if [[ "$RELEASE_BUILD" == "1" ]]; then
+    echo "Release build: installing core.jcl to system path"
+    mkdir -p "$(dirname "$SYSTEM_CORE_PATH")"
+    cp "$DEFAULT_CORE_PATH" "$SYSTEM_CORE_PATH" || {
+        echo "Error: Could not copy core.jcl to $SYSTEM_CORE_PATH"
+        exit 1
+    }
+    CORE_JCL_PATH="$SYSTEM_CORE_PATH"
+else
+    CORE_JCL_PATH="$DEFAULT_CORE_PATH"
+fi
+
 if [ "$DEBUG_WITH_GDB" -eq 1 ] && [ "$DEBUG_WITH_LLDB" -eq 1 ]; then
     echo "Error: Cannot use both GDB and LLDB simultaneously."
     exit 1
@@ -162,11 +192,13 @@ fi
 
 mkdir -p "$BUILD_DIR"
 
-CMAKE_CMD="cmake -B $BUILD_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_MODULE_PATH=/usr/share/doc/check/examples/cmake"
+CMAKE_CMD="cmake -B $BUILD_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_MODULE_PATH=/usr/share/doc/check/examples/cmake" 
 [ -n "$CMAKE_ARGS" ] && CMAKE_CMD="$CMAKE_CMD $CMAKE_ARGS"
 [ -n "$LINKER_FLAGS" ] && CMAKE_CMD="$CMAKE_CMD -DCMAKE_EXE_LINKER_FLAGS=\"$LINKER_FLAGS\""
 
-echo "Running: $CMAKE_CMD"
+CMAKE_CMD="$CMAKE_CMD -DCORE_JCL_PATH=$CORE_JCL_PATH"
+
+echo "$> $CMAKE_CMD"
 eval "$CMAKE_CMD"
 
 MAKE_CMD="make -C $BUILD_DIR -j$NUM_CORES"
