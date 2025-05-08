@@ -15,7 +15,7 @@
 
 int main(int argc, char* argv[]) {
   const char* output_filename = NULL;
-  const char* default_db = "default";
+  const char* default_db = "public";
   const char* cluster_name = "default";
   bool create_default = true;
 

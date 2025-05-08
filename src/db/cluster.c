@@ -8,7 +8,6 @@
 #include "cluster.h"
 #include "../utils/log.h"
 
-#define CONFIG_FILE "cluster.jbconf"
 
 ClusterManager* cluster_manager_init(char* root_dir) {
   struct stat st = {0};
@@ -182,8 +181,7 @@ bool cluster_create(ClusterManager* manager, const char* name) {
 
   cluster_switch(manager, 0);
   Database* db = cluster_get_active_db(manager);
-  db_init_core(db);
-  cluster_switch_db(manager, 0);
+  process_file(db, CORE_JDL_PATH);
 
   return true;
 }
@@ -361,9 +359,7 @@ static bool parse_cluster_cmd(const char* input, char* cmd, char* arg1, char* ar
   const char* ptr = input;
   while (*ptr && isspace(*ptr)) ptr++;
   
-  if (strncmp(ptr, ".cluster", 8) == 0) {
-    ptr += 8;
-  } else if (strncmp(ptr, ".c", 2) == 0) {
+  if (strncmp(ptr, "~ ", 2) == 0) {
     ptr += 2;
   } else {
     return false;
@@ -499,5 +495,5 @@ bool is_cluster_cmd(const char* input) {
   
   while (*input && isspace(*input)) input++;
   
-  return (strncmp(input, ".cluster", 8) == 0 || strncmp(input, ".c", 2) == 0);
+  return (strncmp(input, "~ ", 2) == 0);
 }

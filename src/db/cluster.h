@@ -8,6 +8,11 @@
 #define MAX_CLUSTERS 8
 #define MAX_CLUSTER_NAME 64
 
+#define CONFIG_FILE "cluster.jbconf"
+#ifndef CORE_JDL_PATH
+  #define CORE_JDL_PATH "src/core.jcl"
+#endif
+
 typedef struct {
   char name[MAX_CLUSTER_NAME];
   Database* databases[MAX_DBS_PER_CLUSTER];

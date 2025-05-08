@@ -309,12 +309,13 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
       case TOK_DEF:
         parser_consume(parser);
         
-        if (!is_valid_default(parser, column.type, parser->cur->type)) {
-          REPORT_ERROR(parser->lexer, "SYE_E_DEFVAL");
+        ColumnValue col_val;
+        if (!(parser_parse_value(parser, &col_val))) {
+          REPORT_ERROR(parser->lexer, "SYE_E_VDEFVAL");
           return false;
         }
-    
-        strcpy(column.default_value, parser->cur->value);
+
+        // column.default_value = memcpy(&column.default_value, &col_val, sizeof(col_val));
         column.has_default = true;
         
         break;
