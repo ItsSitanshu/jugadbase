@@ -40,13 +40,13 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Compacting in actual storage of rows (storage.c)~~
 - Clusters:
   - ~~Introduce lists <type>[]~~
-  - Design `/jb.core/` cluster directory structure
-  - Implement cluster bootstrap (`--init-cluster`)
-  - Refactor `Context` to include `cluster` and `active_db`
+  - ~~Design `/jb.core/` cluster directory structure~~
+  - ~~Refactor `Context` => `Database` to include `cluster` and `active_db`~~
   - Write `WALWriter` module with
   - Implement `apply_wal()` for recovery
   - Add crash recovery on startup using WAL
   - Build basic physical-backup for Yielded Archival of Known States (YAKS)
+  - Implement `DEFAULT` values
 - Implement foreign constraints
 - Design casading  
 - Implement actual VARCHAR
