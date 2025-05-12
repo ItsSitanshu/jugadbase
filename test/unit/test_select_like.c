@@ -14,12 +14,12 @@ START_TEST(test_select_with_like) {
     char* query;
     int expected_rows;
   } like_test_cases[] = {
-    { "SELECT * FROM employees WHERE name LIKE \"%Smith%\";", 1 },          // Contains "Smith"
-    { "SELECT * FROM employees WHERE email LIKE \"%@example.com\";", 15 },  // Ends with "@example.com"
-    { "SELECT * FROM employees WHERE name LIKE \"A%\";", 1 },               // Starts with "A"
-    { "SELECT * FROM employees WHERE department LIKE \"%ing\";", 9 },       // Ends with "ing"
-    { "SELECT * FROM employees WHERE last_login_date LIKE \"2025-04-%\";", 7 }, // Dates in April
-    { "SELECT * FROM employees WHERE name LIKE \"_o%\";", 1 }               // Second character is "o"
+    { "SELECT * FROM employees WHERE name LIKE '%Smith%';", 1 },          // Contains "Smith"
+    { "SELECT * FROM employees WHERE email LIKE '%@example.com';", 15 },  // Ends with "@example.com"
+    { "SELECT * FROM employees WHERE name LIKE 'A%';", 1 },               // Starts with "A"
+    { "SELECT * FROM employees WHERE department LIKE '%ing';", 9 },       // Ends with "ing"
+    { "SELECT * FROM employees WHERE last_login_date LIKE '2025-04-%';", 7 }, // Dates in April
+    { "SELECT * FROM employees WHERE name LIKE '_o%';", 1 }               // Second character is "o"
   };
 
   for (int i = 0; i < sizeof(like_test_cases) / sizeof(like_test_cases[0]); i++) {

@@ -30,8 +30,8 @@ START_TEST(test_select_with_order_by) {
     ck_assert_int_eq(res.code, 0);
     ck_assert_int_eq(res.row_count, 15);
     
-    ck_assert_int_eq(res.rows[0].id.row_id, order_by_test_cases[i].expected_first_id);
-    ck_assert_int_eq(res.rows[14].id.row_id, order_by_test_cases[i].expected_last_id);
+    ck_assert_int_eq(res.rows[0].values[0].int_value, order_by_test_cases[i].expected_first_id);
+    ck_assert_int_eq(res.rows[14].values[0].int_value, order_by_test_cases[i].expected_last_id);
   
     if (res.owns_rows) {
       free(res.rows);
