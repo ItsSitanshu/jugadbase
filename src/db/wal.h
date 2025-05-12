@@ -20,9 +20,15 @@ typedef struct {
   uint32_t payload_size;
 } WALRecordHeader;
 
+static uint64_t global_txid = 1;
+
+static inline void generate_txid() {
+  global_txid += 1;
+}
+
 FILE* wal_open(const char* filename, const char* mode);
 void wal_close(FILE* file);
-uint64_t wal_write(FILE* file, WALAction action, uint64_t txid, uint32_t table_id, const void* payload, uint32_t payload_size);
+uint64_t wal_write(FILE* file, WALAction action, uint32_t table_id, const void* payload, uint32_t payload_size);
 int wal_read(FILE* file, WALRecordHeader* header, void* payload);
 void wal_replay(const char* filename); // Replays WAL for recovery
 

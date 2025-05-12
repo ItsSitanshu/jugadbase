@@ -7,6 +7,7 @@
 
 #define PAGE_SIZE 8192
 #define POOL_SIZE 32
+#define MAX_ROW_BUFFER 8192
 
 typedef struct Row {
   RowID id;
@@ -45,9 +46,11 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
 void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc);
 void write_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
+uint32_t write_array_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, ColumnDefinition* col_def);
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
-
+uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, ColumnDefinition* col_def);
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc);
+uint32_t row_to_buffer(RowID* row_id, BufferPool* pool, TableSchema* schema, uint8_t* buffer);
 bool serialize_delete(BufferPool* pool, RowID rid);
 
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc);

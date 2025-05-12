@@ -256,6 +256,32 @@ void write_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
   }
 }
 
+uint32_t write_array_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, ColumnDefinition* col_def) {
+  if (!buffer || !col_val || !col_val->array.array_value || col_val->array.array_size == 0) {
+    return 0;
+  }
+
+  uint32_t offset = 0;
+  uint16_t len = col_val->array.array_size;
+
+  memcpy(buffer + offset, &len, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+
+  ColumnDefinition base_def = *col_def;
+  base_def.is_array = false;
+
+  for (int i = 0; i < len; i++) {
+    ColumnValue* elem = &col_val->array.array_value[i];
+    elem->is_array = false;
+
+    uint32_t written = write_column_value_to_buffer(buffer + offset, elem, &base_def);
+    offset += written;
+  }
+
+  return offset;
+}
+
+
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
   uint16_t text_len, str_len, max_len;
   bool is_toast_pointer = false;
@@ -382,6 +408,160 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
   }
 }
 
+uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, ColumnDefinition* col_def) {
+  if (!buffer || !col_val || !col_def) {
+    LOG_ERROR("Invalid column value or buffer.\n");
+    return 0;
+  }
+
+  uint32_t offset = 0;
+  uint16_t str_len, max_len;
+  bool is_toast_pointer = false;
+
+  if (col_val->is_array && col_def->is_array) {
+    return write_array_value_to_buffer(buffer, col_val, col_def);
+  }
+
+  switch (col_def->type) {
+    case TOK_T_INT:
+    case TOK_T_SERIAL:
+      memcpy(buffer + offset, &col_val->int_value, sizeof(int64_t));
+      offset += sizeof(int64_t);
+      break;
+
+    case TOK_T_BOOL: {
+      uint8_t bool_value = col_val->bool_value ? 1 : 0;
+      memcpy(buffer + offset, &bool_value, sizeof(uint8_t));
+      offset += sizeof(uint8_t);
+      break;
+    }
+
+    case TOK_T_FLOAT:
+      memcpy(buffer + offset, &col_val->float_value, sizeof(float));
+      offset += sizeof(float);
+      break;
+
+    case TOK_T_DOUBLE:
+      memcpy(buffer + offset, &col_val->double_value, sizeof(double));
+      offset += sizeof(double);
+      break;
+
+    case TOK_T_DECIMAL:
+      memcpy(buffer + offset, &col_val->decimal.precision, sizeof(int));
+      offset += sizeof(int);
+      memcpy(buffer + offset, &col_val->decimal.scale, sizeof(int));
+      offset += sizeof(int);
+      memcpy(buffer + offset, col_val->decimal.decimal_value, MAX_DECIMAL_LEN);
+      offset += MAX_DECIMAL_LEN;
+      break;
+
+    case TOK_T_UUID: {
+      size_t uuid_len = strlen(col_val->str_value);
+      if (uuid_len == 36) {
+        uint8_t binary_uuid[16];
+        if (!parser_parse_uuid_string(col_val->str_value, binary_uuid)) {
+          LOG_ERROR("Error: Invalid UUID format.\n");
+          return 0;
+        }
+        memcpy(buffer + offset, binary_uuid, 16);
+        offset += 16;
+      } else if (uuid_len == 16) {
+        memcpy(buffer + offset, col_val->str_value, 16);
+        offset += 16;
+      } else {
+        LOG_ERROR("Invalid UUID length.\n");
+        return 0;
+      }
+      break;
+    }
+
+    case TOK_T_DATE:
+      memcpy(buffer + offset, &col_val->date_value, sizeof(Date));
+      offset += sizeof(Date);
+      break;
+
+    case TOK_T_TIME:
+      memcpy(buffer + offset, &col_val->time_value, sizeof(TimeStored));
+      offset += sizeof(TimeStored);
+      break;
+
+    case TOK_T_TIME_TZ:
+      memcpy(buffer + offset, &col_val->time_tz_value, sizeof(Time_TZ));
+      offset += sizeof(Time_TZ);
+      break;
+
+    case TOK_T_DATETIME:
+      memcpy(buffer + offset, &col_val->datetime_value, sizeof(DateTime));
+      offset += sizeof(DateTime);
+      break;
+
+    case TOK_T_DATETIME_TZ:
+      memcpy(buffer + offset, &col_val->datetime_tz_value, sizeof(DateTime_TZ));
+      offset += sizeof(DateTime_TZ);
+      break;
+
+    case TOK_T_TIMESTAMP:
+      memcpy(buffer + offset, &col_val->timestamp_value, sizeof(Timestamp));
+      offset += sizeof(Timestamp);
+      break;
+
+    case TOK_T_TIMESTAMP_TZ:
+      memcpy(buffer + offset, &col_val->timestamp_tz_value, sizeof(Timestamp_TZ));
+      offset += sizeof(Timestamp_TZ);
+      break;
+
+    case TOK_T_INTERVAL:
+      memcpy(buffer + offset, &col_val->interval_value, sizeof(Interval));
+      offset += sizeof(Interval);
+      break;
+
+    case TOK_T_VARCHAR:
+    case TOK_T_CHAR: {
+      str_len = (uint16_t)strlen(col_val->str_value);
+      max_len = (col_def->type_varchar == 0) ? 255 : col_def->type_varchar;
+
+      if (str_len > max_len) {
+        str_len = max_len;
+      }
+
+      memcpy(buffer + offset, &str_len, sizeof(uint16_t));
+      offset += sizeof(uint16_t);
+
+      memcpy(buffer + offset, col_val->str_value, str_len);
+      offset += str_len;
+      break;
+    }
+
+    case TOK_T_TEXT:
+    case TOK_T_JSON:
+    case TOK_T_BLOB: {
+      is_toast_pointer = col_val->is_toast;
+      memcpy(buffer + offset, &is_toast_pointer, sizeof(bool));
+      offset += sizeof(bool);
+
+      if (!is_toast_pointer) {
+        str_len = (uint16_t)strlen(col_val->str_value);
+        memcpy(buffer + offset, &str_len, sizeof(uint16_t));
+        offset += sizeof(uint16_t);
+
+        memcpy(buffer + offset, col_val->str_value, str_len);
+        offset += str_len;
+      } else {
+        memcpy(buffer + offset, &col_val->toast_object, sizeof(uint32_t));
+        offset += sizeof(uint32_t);
+      }
+      break;
+    }
+
+    default:
+      LOG_ERROR("Error: Unsupported data type.\n");
+      return 0;
+  }
+
+  return offset;
+}
+
+
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   Page* page = NULL;
 
@@ -436,6 +616,40 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   page->is_dirty = true;
 
   return (RowID){ row.id.page_id, row.id.row_id };
+}
+
+uint32_t row_to_buffer(RowID* row_id, BufferPool* pool, TableSchema* schema, uint8_t* buffer) {
+  if (!row_id || !pool || !buffer) return 0;
+
+  Row* row = &(pool->pages[row_id->page_id]->rows[row_id->row_id - 1]);
+  
+  uint32_t offset = 0;
+
+  memcpy(buffer + offset, &row->id.page_id, sizeof(row->id.page_id));
+  offset += sizeof(row->id.page_id);
+
+  memcpy(buffer + offset, &row->id.row_id, sizeof(row->id.row_id));
+  offset += sizeof(row->id.row_id);
+
+  memcpy(buffer + offset, &row->row_length, sizeof(row->row_length));
+  offset += sizeof(row->row_length);
+
+  memcpy(buffer + offset, &row->null_bitmap_size, sizeof(row->null_bitmap_size));
+  offset += sizeof(row->null_bitmap_size);
+
+  if (row->null_bitmap && row->null_bitmap_size > 0) {
+    memcpy(buffer + offset, row->null_bitmap, row->null_bitmap_size);
+    offset += row->null_bitmap_size;
+  }
+
+  for (int j = 0; j < schema->column_count; j++) {
+    ColumnDefinition* col_def = &schema->columns[j];
+    if (!row->values[j].is_null && col_def) {
+      offset += write_column_value_to_buffer(buffer + offset, &row->values[j], col_def);
+    }
+  }
+
+  return offset; 
 }
 
 bool serialize_delete(BufferPool* pool, RowID rid) {

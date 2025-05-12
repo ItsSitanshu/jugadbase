@@ -11,7 +11,7 @@ void wal_close(FILE* file) {
   if (file) fclose(file);
 }
 
-uint64_t wal_write(FILE* file, WALAction action, uint64_t txid, uint32_t table_id, const void* payload, uint32_t payload_size) {
+uint64_t wal_write(FILE* file, WALAction action, uint32_t table_id, const void* payload, uint32_t payload_size) {
   if (!file) return 0;
 
   static uint64_t lsn_counter = 1;
@@ -19,7 +19,7 @@ uint64_t wal_write(FILE* file, WALAction action, uint64_t txid, uint32_t table_i
 
   WALRecordHeader header = {
     .lsn = lsn,
-    .txid = txid,
+    .txid = global_txid,
     .timestamp = time(NULL),
     .action = action,
     .table_id = table_id,
@@ -30,7 +30,10 @@ uint64_t wal_write(FILE* file, WALAction action, uint64_t txid, uint32_t table_i
   if (payload_size > 0 && payload) {
     fwrite(payload, payload_size, 1, file);
   }
+
   fflush(file); 
+  generate_txid();
+
   return lsn;
 }
 
