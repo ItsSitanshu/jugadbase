@@ -35,21 +35,21 @@ static char* employees_setup_queries[] = {
   "last_login_date VARCHAR(50)"
   ");",
 
-  "INSERT INTO employees VALUES (1, \"alice@example.com\", \"Alice Smith\", 30, 75000, \"Engineering\", true, \"2025-04-01\");",
-  "INSERT INTO employees VALUES (2, \"bob@example.com\", \"Bob Johnson\", 25, 65000, \"Marketing\", false, \"2025-03-15\");",
-  "INSERT INTO employees VALUES (3, \"charlie@example.com\", \"Charlie Davis\", 35, 85000, \"Engineering\", true, \"2025-04-10\");",
-  "INSERT INTO employees VALUES (4, \"daisy@example.com\", \"Daisy Brown\", 22, 55000, \"HR\", true, \"2025-04-05\");",
-  "INSERT INTO employees VALUES (5, \"eve@example.com\", \"Eve Wilson\", 40, 95000, \"Finance\", false, \"2025-03-01\");",
-  "INSERT INTO employees VALUES (6, \"frank@example.com\", \"Frank Miller\", 29, 70000, \"Engineering\", true, \"2025-04-12\");",
-  "INSERT INTO employees VALUES (7, \"grace@example.com\", \"Grace Taylor\", 31, 80000, \"Marketing\", true, \"2025-03-28\");",
-  "INSERT INTO employees VALUES (8, \"heidi@example.com\", \"Heidi Garcia\", 27, 63000, \"HR\", false, \"2025-02-20\");",
-  "INSERT INTO employees VALUES (9, \"ivan@example.com\", \"Ivan Chen\", 33, 82000, \"Engineering\", true, \"2025-04-08\");",
-  "INSERT INTO employees VALUES (10, \"judy@example.com\", \"Judy Lopez\", 28, 68000, \"Finance\", false, \"2025-03-10\");",
-  "INSERT INTO employees VALUES (11, \"kevin@example.com\", \"Kevin Adams\", 38, 88000, \"Engineering\", true, \"2025-04-11\");",
-  "INSERT INTO employees VALUES (12, \"lisa@example.com\", \"Lisa Wright\", 26, 61000, \"Marketing\", true, \"2025-03-25\");",
-  "INSERT INTO employees VALUES (13, \"mike@example.com\", \"Mike Rodriguez\", 34, 79000, \"Finance\", false, \"2025-02-15\");",
-  "INSERT INTO employees VALUES (14, \"nancy@example.com\", \"Nancy Lee\", 32, 76000, \"Engineering\", true, \"2025-04-07\");",
-  "INSERT INTO employees VALUES (15, \"oscar@example.com\", \"Oscar Kim\", 29, 71000, \"HR\", true, \"2025-03-20\");"
+  "INSERT INTO employees VALUES (1, 'alice@example.com', 'Alice Smith', 30, 75000, 'Engineering', true, '2025-04-01');",
+  "INSERT INTO employees VALUES (2, 'bob@example.com', 'Bob Johnson', 25, 65000, 'Marketing', false, '2025-03-15');",
+  "INSERT INTO employees VALUES (3, 'charlie@example.com', 'Charlie Davis', 35, 85000, 'Engineering', true, '2025-04-10');",
+  "INSERT INTO employees VALUES (4, 'daisy@example.com', 'Daisy Brown', 22, 55000, 'HR', true, '2025-04-05');",
+  "INSERT INTO employees VALUES (5, 'eve@example.com', 'Eve Wilson', 40, 95000, 'Finance', false, '2025-03-01');",
+  "INSERT INTO employees VALUES (6, 'frank@example.com', 'Frank Miller', 29, 70000, 'Engineering', true, '2025-04-12');",
+  "INSERT INTO employees VALUES (7, 'grace@example.com', 'Grace Taylor', 31, 80000, 'Marketing', true, '2025-03-28');",
+  "INSERT INTO employees VALUES (8, 'heidi@example.com', 'Heidi Garcia', 27, 63000, 'HR', false, '2025-02-20');",
+  "INSERT INTO employees VALUES (9, 'ivan@example.com', 'Ivan Chen', 33, 82000, 'Engineering', true, '2025-04-08');",
+  "INSERT INTO employees VALUES (10, 'judy@example.com', 'Judy Lopez', 28, 68000, 'Finance', false, '2025-03-10');",
+  "INSERT INTO employees VALUES (11, 'kevin@example.com', 'Kevin Adams', 38, 88000, 'Engineering', true, '2025-04-11');",
+  "INSERT INTO employees VALUES (12, 'lisa@example.com', 'Lisa Wright', 26, 61000, 'Marketing', true, '2025-03-25');",
+  "INSERT INTO employees VALUES (13, 'mike@example.com', 'Mike Rodriguez', 34, 79000, 'Finance', false, '2025-02-15');",
+  "INSERT INTO employees VALUES (14, 'nancy@example.com', 'Nancy Lee', 32, 76000, 'Engineering', true, '2025-04-07');",
+  "INSERT INTO employees VALUES (15, 'oscar@example.com', 'Oscar Kim', 29, 71000, 'HR', true, '2025-03-20');"
 };
 
 static void setup_test_data(Database* db, char* setup_queries[]) {

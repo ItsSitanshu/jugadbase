@@ -49,8 +49,8 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
     for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
       ColumnValue val = row->values[c];
       
-      char buffer[256] = {0};
-      format_column_value(&val, 256, buffer);
+      char* buffer;
+      format_column_value(buffer, 256, &val);
       
       formatted_values[i * cmd->schema->column_count + c] = strdup(buffer);
       

@@ -10,9 +10,10 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
 
 #define MAX_HISTORY 10
-#define MAX_CMD_LENGTH 100
+#define MAX_CMD_LENGTH 1024
 #define MAX_COMPLETIONS 100
 
 typedef struct {
@@ -20,6 +21,13 @@ typedef struct {
   int current;
   int size;
 } CommandHistory;
+
+// Get terminal width
+int get_terminal_width() {
+  struct winsize w;
+  ioctl(STDOUT_FILENO, TIOCGWINSZ, &w);
+  return w.ws_col;
+}
 
 char getch() {
   struct termios oldt, newt;
@@ -50,14 +58,15 @@ void add_to_history(CommandHistory *history, const char *cmd) {
   }
 }
 
-void clear_line(int prompt_len, int cursor_pos) {
+// Simple function to redraw the command line
+void redraw_command_line(const char *prefix, const char *cmd, int cursor_pos) {
+  // Clear the current line from the beginning
   printf("\r\033[K");
-}
-
-void print_command(const char *prefix, const char *cmd, int cursor_pos) {
-  clear_line(0, 0);
+  
+  // Print the prefix and command
   printf("%s%s", prefix, cmd);
   
+  // Move cursor to position
   if (cursor_pos < strlen(cmd)) {
     printf("\033[%dD", (int)(strlen(cmd) - cursor_pos));
   }
@@ -212,13 +221,39 @@ void handle_tab_completion(char *cmd, int *cursor_pos, int *cmd_len, const char 
     *cursor_pos = word_start + strlen(completions[0]);
     *cmd_len = *cmd_len + chars_to_add;
     
-    print_command(prefix, cmd, *cursor_pos);
+    redraw_command_line(prefix, cmd, *cursor_pos);
   } else {
     printf("\n");
+    
+    // Calculate the maximum length of completions
+    size_t max_len = 0;
     for (int i = 0; i < completion_count; i++) {
-      printf("%s  ", completions[i]);
+      size_t len = strlen(completions[i]);
+      if (len > max_len) max_len = len;
     }
-    printf("\n%s%s", prefix, cmd);
+    max_len += 2; // Add spacing
+    
+    // Calculate how many columns we can fit
+    int term_width = get_terminal_width();
+    int cols = term_width / max_len;
+    if (cols == 0) cols = 1;
+    
+    // Print completions in columns
+    for (int i = 0; i < completion_count; i++) {
+      printf("%-*s", (int)max_len, completions[i]);
+      if ((i + 1) % cols == 0 || i == completion_count - 1) {
+        printf("\n");
+      }
+    }
+    
+    // Reprint prompt and command
+    printf("%s%s", prefix, cmd);
+    
+    // Place cursor at the right position
+    if (*cursor_pos < strlen(cmd)) {
+      printf("\033[%dD", (int)(strlen(cmd) - *cursor_pos));
+    }
+    
     fflush(stdout);
   }
   
@@ -242,39 +277,44 @@ char* jugadline(CommandHistory *history, char* prefix) {
   int history_pos = history->size;
   char *temp_cmd = NULL;
   
+  // Print initial prompt
   printf("%s", prefix);
   fflush(stdout);
   
   while (1) {
     ch = getch();
     
-    if (ch == 127 || ch == 8) {
+    if (ch == 127 || ch == 8) { // Backspace
       if (cursor_pos > 0) {
         memmove(&cmd[cursor_pos-1], &cmd[cursor_pos], cmd_len - cursor_pos + 1);
         cursor_pos--;
         cmd_len--;
-        print_command(prefix, cmd, cursor_pos);
+        
+        // For long commands, simply clear entire line and reprint
+        redraw_command_line(prefix, cmd, cursor_pos);
       }
-    } else if (ch == 9) {
+    } else if (ch == 9) { // Tab
       handle_tab_completion(cmd, &cursor_pos, &cmd_len, prefix);
-    } else if (ch == 27) {
+    } else if (ch == 27) { // Escape sequence
       ch = getch();
       if (ch == 91) {
         ch = getch();
         
-        if (ch == 68) {
+        if (ch == 68) { // Left arrow
           if (cursor_pos > 0) {
             cursor_pos--;
+            // Move cursor left
             printf("\033[1D");
             fflush(stdout);
           }
-        } else if (ch == 67) {
+        } else if (ch == 67) { // Right arrow
           if (cursor_pos < cmd_len) {
             cursor_pos++;
+            // Move cursor right
             printf("\033[1C");
             fflush(stdout);
           }
-        } else if (ch == 65) {
+        } else if (ch == 65) { // Up arrow
           if (history_pos > 0 && history->size > 0) {
             if (history_pos == history->size && cmd_len > 0) {
               temp_cmd = strdup(cmd);
@@ -284,32 +324,32 @@ char* jugadline(CommandHistory *history, char* prefix) {
             strncpy(cmd, history->history[history_pos], MAX_CMD_LENGTH - 1);
             cmd_len = strlen(cmd);
             cursor_pos = cmd_len;
-            print_command(prefix, cmd, cursor_pos);
+            redraw_command_line(prefix, cmd, cursor_pos);
           }
-        } else if (ch == 66) {
+        } else if (ch == 66) { // Down arrow
           if (history_pos < history->size - 1) {
             history_pos++;
             strncpy(cmd, history->history[history_pos], MAX_CMD_LENGTH - 1);
             cmd_len = strlen(cmd);
             cursor_pos = cmd_len;
-            print_command(prefix, cmd, cursor_pos);
+            redraw_command_line(prefix, cmd, cursor_pos);
           } else if (history_pos == history->size - 1) {
             history_pos = history->size;
             if (temp_cmd) {
               strncpy(cmd, temp_cmd, MAX_CMD_LENGTH - 1);
               cmd_len = strlen(cmd);
               cursor_pos = cmd_len;
-              print_command(prefix, cmd, cursor_pos);
+              redraw_command_line(prefix, cmd, cursor_pos);
             } else {
               cmd[0] = '\0';
               cmd_len = 0;
               cursor_pos = 0;
-              print_command(prefix, cmd, cursor_pos);
+              redraw_command_line(prefix, cmd, cursor_pos);
             }
           }
         }
       }
-    } else if (ch == 10 || ch == 13) {
+    } else if (ch == 10 || ch == 13) { // Enter key
       cmd[cmd_len] = '\0';
       printf("\n");
       if (cmd_len > 0) {
@@ -321,13 +361,15 @@ char* jugadline(CommandHistory *history, char* prefix) {
       }
       
       return cmd;
-    } else {
+    } else { // Regular character
       if (cmd_len < MAX_CMD_LENGTH - 1) {
         memmove(&cmd[cursor_pos+1], &cmd[cursor_pos], cmd_len - cursor_pos + 1);
         cmd[cursor_pos] = ch;
         cursor_pos++;
         cmd_len++;
-        print_command(prefix, cmd, cursor_pos);
+        
+        // For a simple approach, clear and reprint everything
+        redraw_command_line(prefix, cmd, cursor_pos);
       }
     }
   }

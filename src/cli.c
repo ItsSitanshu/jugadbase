@@ -14,9 +14,9 @@
 #define ROOT_DIR "./data/clusters"
 
 int main(int argc, char* argv[]) {
-  const char* output_filename = NULL;
-  const char* default_db = "public";
-  const char* cluster_name = "default";
+  char* output_filename = NULL;
+  char* default_db = "public";
+  char* cluster_name = "default";
   bool create_default = true;
 
   for (int i = 1; i < argc; i++) {
@@ -129,9 +129,6 @@ int main(int argc, char* argv[]) {
         if (output_filename && result.exec.code == 0) {
           print_text_table_to_file(result.exec, result.cmd, output_filename);
         }
-        if (result.exec.message) {
-          free(result.exec.message);
-        }
       }
     } else {
       printf("No active database. Use .cluster commands to create or select a database.\n");
@@ -140,7 +137,6 @@ int main(int argc, char* argv[]) {
     free(input);
   }
 
-  cluster_manager_save(cluster_manager);
   cluster_manager_free(cluster_manager);
   
   for (int i = 0; i < history.size; i++) {
