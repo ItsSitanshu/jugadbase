@@ -310,6 +310,7 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val);
 bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
 
 bool infer_and_cast_va(size_t count, ...);
-bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type);
+bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def);
+bool infer_and_cast_value_raw(ColumnValue* col_val, uint8_t target_type);
  
 #endif // JQL_COMMAND_H

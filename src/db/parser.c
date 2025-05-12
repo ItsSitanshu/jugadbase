@@ -149,6 +149,11 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
     }
 
     column.type_varchar = (uint8_t)atoi(parser->cur->value);
+    if (column.type_varchar > 255) {
+      LOG_ERROR("Can not define a VARCHAR(>255) characters, use TEXT instead");
+      return false;
+    }
+    
     parser_consume(parser);
 
     if (parser->cur->type != TOK_RP) {
