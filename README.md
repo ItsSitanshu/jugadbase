@@ -42,14 +42,19 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Introduce lists <type>[]~~
   - ~~Design `/jb.core/` cluster directory structure~~
   - ~~Refactor `Context` => `Database` to include `cluster` and `active_db`~~
-  - Write `WALWriter` module with
+  - ~~Insure atomicity~~
+  - ~~Write `WALWriter` module with support for `INSERT`, `DELETE` and `UPDATE`~~
+  - Implement VARCHAR(n of chars)
+  - FIX BUG: Make sure `DELETE` and `SELECT` work as expected
+  - FIX BUG: Make sure arrays are stored as expected
+  - Implement array[] indexing
+  - Write tests for arrays and delete
+  - Implement `DEFAULT` values
   - Implement `apply_wal()` for recovery
   - Add crash recovery on startup using WAL
   - Build basic physical-backup for Yielded Archival of Known States (YAKS)
-  - Implement `DEFAULT` values
 - Implement foreign constraints
 - Design casading  
-- Implement actual VARCHAR
 - FIX BUG: Multiple inserts statements in same file when large contents are present
 - Implement `$variables` for cleaner SDK support
 - Implement `DROP` to remove tables
