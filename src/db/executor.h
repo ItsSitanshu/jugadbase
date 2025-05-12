@@ -32,7 +32,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd);
 ExecutionResult execute_update(Database* db, JQLCommand* cmd);
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd);
 
-ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx, uint8_t* out_type);
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx, ColumnDefinition* out);
 
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
 ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db);

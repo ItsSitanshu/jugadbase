@@ -380,7 +380,8 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
       max_len = (col_def->type_varchar == 0) ? 255 : col_def->type_varchar;
 
       if (str_len > max_len) {
-        str_len = max_len;
+        LOG_ERROR("Definition expects VARCHAR(<=%d) got VARCHAR(<=%d)", max_len, str_len);
+        break;
       }
 
       fwrite(&str_len, sizeof(uint16_t), 1, file);
@@ -521,7 +522,8 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
       max_len = (col_def->type_varchar == 0) ? 255 : col_def->type_varchar;
 
       if (str_len > max_len) {
-        str_len = max_len;
+        LOG_ERROR("Definition expects VARCHAR(<=%d) got VARCHAR(<=%d)", max_len, str_len);
+        break;
       }
 
       memcpy(buffer + offset, &str_len, sizeof(uint16_t));

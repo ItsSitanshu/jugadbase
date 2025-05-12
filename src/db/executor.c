@@ -266,12 +266,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
       free(primary_key_vals);
       free(inserted_rows);
 
-      char errbuf[256];
-      snprintf(errbuf, sizeof(errbuf),
-              "Inserted %d out of %d provided, could not insert %d row(s). Rolled back all inserts.",
-              inserted_count, cmd->row_count, (cmd->row_count - inserted_count));
-      LOG_ERROR("%s", errbuf);
-      return (ExecutionResult){1, errbuf};
+      return (ExecutionResult){1, "Insert failed"};
     }
 
     inserted_rows[inserted_count++] = *row_id;
@@ -284,7 +279,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   free(primary_key_vals);
   free(inserted_rows);
 
-  return (ExecutionResult){0, "All records inserted successfully"};
+  return (ExecutionResult){0, "Inserted successfully", .row_count =  inserted_count};
 }
 
 
@@ -338,7 +333,7 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     // printf("%s => %s | ", token_type_strings[cur.type], token_type_strings[schema->columns[i].type]); print_column_value(&cur); printf("\n");
 
-    bool valid_conversion = infer_and_cast_value(&cur, schema->columns[i].type);
+    bool valid_conversion = infer_and_cast_value(&cur, &schema->columns[i]);
 
     if (!valid_conversion) {
       LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -562,7 +557,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
 
         ColumnValue evaluated = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
         
-        if (!infer_and_cast_value(&evaluated, schema->columns[col_index].type)) {
+        if (!infer_and_cast_value(&evaluated, &schema->columns[col_index])) {
           free(update_cols);
           free(old_vals);
           free(new_vals);
@@ -678,13 +673,13 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   };
 }
 
-ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx, uint8_t* out_type) {
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx, ColumnDefinition* out){
   ColumnValue value = evaluate_expression(expr, row, schema, db, schema_idx);
 
   if (expr->type == EXPR_COLUMN) {
     int col_index = expr->column_index;
     value = row->values[col_index];
-    *out_type = schema->columns[col_index].type;
+    *out = schema->columns[col_index];
   }
 
   return value;
@@ -776,9 +771,11 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
 
 ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
+  ColumnDefinition defn;
   memset(&result, 0, sizeof(ColumnValue));
   
-  ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, schema, db, schema_idx, &result.type);
+  ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, schema, db, schema_idx, &defn);
+  result.type = defn.type;
 
   switch (expr->arth_unary.op) {
     case TOK_SUB:
@@ -984,11 +981,13 @@ ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int
 
 ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
+  ColumnDefinition defn;
   memset(&result, 0, sizeof(ColumnValue));
   uint8_t type = 0;
 
-  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &type);
-  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &type);
+  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &defn);
+  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &defn);
+  type = defn.type;
 
   switch (type) {
     case TOK_T_INT:
@@ -1013,11 +1012,14 @@ ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema*
 
 ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
+  ColumnDefinition defn;
   memset(&result, 0, sizeof(ColumnValue));
   uint8_t type = 0;
 
-  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &type);
-  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &type);
+
+  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &defn);
+  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &defn);
+  type = defn.type;
   
   if (expr->binary.op == TOK_EQ &&
       expr->binary.left->type == EXPR_COLUMN &&
@@ -1382,7 +1384,7 @@ bool infer_and_cast_va(size_t count, ...) {
 
   for (size_t i = 0; i < count; i++) {
     __c item = va_arg(args, __c);
-    valid = infer_and_cast_value(item.value, item.expected_type);
+    valid = infer_and_cast_value_raw(item.value, item.expected_type);
 
     if (!valid) {
       LOG_ERROR("Invalid conversion on item %zu", i);
@@ -1395,7 +1397,8 @@ bool infer_and_cast_va(size_t count, ...) {
   return true;
 }
 
-bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
+bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
+  uint8_t target_type = def->type;
   if (col_val->type == TOK_NL) {
     col_val->is_null = true;
     return true;
@@ -1528,7 +1531,15 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
         
         col_val->interval_value = interval;
       } else if (target_type == TOK_T_VARCHAR) {
-        (void)(0);  
+        size_t max_len = def->type_varchar;
+        size_t str_len = strlen(col_val->str_value);
+
+        if (str_len > max_len) {
+          LOG_ERROR("Definition expects VARCHAR(<=%d) got VARCHAR(<=%d)", max_len, str_len);
+          return false;
+        }
+
+        break;
       } else {
         return false;
       }
@@ -1676,6 +1687,287 @@ bool infer_and_cast_value(ColumnValue* col_val, uint8_t target_type) {
   return true;
 }
 
+bool infer_and_cast_value_raw(ColumnValue* col_val, uint8_t target_type) {
+  if (col_val->type == TOK_NL) {
+    col_val->is_null = true;
+    return true;
+  }
+
+  if (col_val->type == target_type) {
+    return true;
+  }
+
+  // LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
+
+  switch (col_val->type) {
+    case TOK_T_INT:
+    case TOK_T_UINT:
+    case TOK_T_SERIAL: {
+      if (target_type == TOK_T_FLOAT) {
+        col_val->float_value = (float)(col_val->int_value);
+      } else if (target_type == TOK_T_DOUBLE) {
+        col_val->double_value = (double)(col_val->int_value);
+      } else if (target_type == TOK_T_BOOL) {
+        col_val->bool_value = (col_val->int_value != 0);
+      } else if (target_type == TOK_T_INT || 
+                 target_type == TOK_T_UINT || 
+                 target_type == TOK_T_SERIAL) {
+          (void)(0);  
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_FLOAT: {
+      if (target_type == TOK_T_DOUBLE) {
+        col_val->double_value = (double)(col_val->float_value);
+      } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (int64_t)(col_val->float_value);
+      } else if (target_type == TOK_T_BOOL) {
+        col_val->bool_value = (col_val->float_value != 0.0f);
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_DOUBLE: {
+      if (target_type == TOK_T_FLOAT) {
+        col_val->float_value = (float)(col_val->double_value);
+      } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (int64_t)(col_val->double_value);
+      } else if (target_type == TOK_T_BOOL) {
+        col_val->bool_value = (col_val->double_value != 0.0);
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_BOOL: {
+      if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (col_val->bool_value ? 1 : 0);
+      } else if (target_type == TOK_T_FLOAT) {
+        col_val->float_value = (col_val->bool_value ? 1.0f : 0.0f);
+      } else if (target_type == TOK_T_DOUBLE) {
+        col_val->double_value = (col_val->bool_value ? 1.0 : 0.0);
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_CHAR: {
+      if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        col_val->int_value = (int64_t)(col_val->str_value[0]);
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_VARCHAR: {
+      if (target_type == TOK_T_STRING) {
+        (void)(0);  // No casting needed
+      }
+      break;
+    }
+    case TOK_T_STRING: {
+      if (target_type == TOK_T_CHAR) {
+        if (!(col_val->str_value && strlen(col_val->str_value) > 0)) {
+          return false;
+        }
+      } else if (target_type == TOK_T_TEXT || target_type == TOK_T_JSON || target_type == TOK_T_BLOB) {
+        return true;
+      } else if (target_type == TOK_T_INT || target_type == TOK_T_UINT || target_type == TOK_T_SERIAL) {
+        char* endptr;
+        col_val->int_value = strtoll(col_val->str_value, &endptr, 10);
+        if (*endptr != '\0') {
+          return false;
+        }
+      } else if (target_type == TOK_T_FLOAT) {
+        char* endptr;
+        col_val->float_value = strtof(col_val->str_value, &endptr);
+        if (*endptr != '\0') {
+          return false;
+        }
+      } else if (target_type == TOK_T_DOUBLE) {
+        char* endptr;
+        col_val->double_value = strtod(col_val->str_value, &endptr);
+        if (*endptr != '\0') {
+          return false;
+        }
+      } else if (target_type == TOK_T_BOOL) {
+        if (strcasecmp(col_val->str_value, "true") == 0 || 
+            strcmp(col_val->str_value, "1") == 0) {
+          col_val->bool_value = true;
+        } else if (strcasecmp(col_val->str_value, "false") == 0 || 
+                  strcmp(col_val->str_value, "0") == 0) {
+          col_val->bool_value = false;
+        } else {
+          return false;
+        }
+      } else if (target_type == TOK_T_INTERVAL) {
+        Interval interval = {0, 0, 0}; 
+        char* input = col_val->str_value;
+        bool valid = false;
+        
+        if (input[0] == 'P') {
+          valid = parse_iso8601_interval(input, &interval);
+        } else {
+          valid = parse_interval(input, &interval);
+        }
+        
+        if (!valid) {
+          return false;
+        }
+        
+        col_val->interval_value = interval;
+      } else if (target_type == TOK_T_VARCHAR) {
+        LOG_ERROR("Attempting to infer and case VARCHAR with method: RAW, Invalid.");
+        return false;
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_DATE: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = (int64_t)(col_val->date_value); 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", date_to_string(col_val->date_value));
+      } else if (target_type == TOK_T_TIMESTAMP) {
+        int y, m, d;
+        decode_date(col_val->date_value, &y, &m, &d);
+
+        __dt ts = {
+          .year = y,
+          .month = m,
+          .day = d,
+          .hour = 0,
+          .minute = 0,
+          .second = 0
+        };
+
+        col_val->timestamp_value = encode_timestamp(&ts);        
+      } else {
+        return false;
+      } 
+      break;
+    }
+    case TOK_T_TIME: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = (int64_t)(col_val->time_value); 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", time_to_string(col_val->time_value));
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_TIMESTAMP: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = col_val->timestamp_value.timestamp;
+      } else if (target_type == TOK_T_TIMESTAMP_TZ) {
+        col_val->timestamp_tz_value.timestamp = col_val->timestamp_value.timestamp;
+        col_val->timestamp_tz_value.time_zone_offset = 0; // assumes UTC 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", timestamp_to_string(col_val->timestamp_value));
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_TIMESTAMP_TZ: {
+      __dt dt;
+      decode_timestamp_TZ(col_val->timestamp_tz_value, &dt);
+
+      if (target_type == TOK_T_TIMESTAMP) {
+        col_val->timestamp_value.timestamp = col_val->timestamp_tz_value.timestamp;
+        col_val->type = TOK_T_TIMESTAMP;
+      } else if (target_type == TOK_T_DATE) {
+        col_val->date_value = encode_date(dt.year, dt.month, dt.day);
+        col_val->type = TOK_T_DATE;
+      } else if (target_type == TOK_T_TIME) {
+        col_val->time_value = encode_time(dt.hour, dt.minute, dt.second); 
+        col_val->type = TOK_T_TIME;
+      } else if (target_type == TOK_T_TIME_TZ) {
+        col_val->time_tz_value = encode_time_TZ(dt.hour, dt.minute, dt.second, dt.tz_offset);
+        col_val->type = TOK_T_TIME_TZ;
+      } else if (target_type == TOK_T_DATETIME) {
+        col_val->datetime_value = create_datetime(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second);
+        col_val->time_tz_value.time_zone_offset = col_val->timestamp_tz_value.time_zone_offset;
+        col_val->type = TOK_T_DATETIME;
+      } else if (target_type == TOK_T_DATETIME_TZ) {
+        col_val->datetime_tz_value = create_datetime_TZ(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, dt.tz_offset);        
+        col_val->type = TOK_T_DATETIME_TZ;
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", timestamp_tz_to_string(col_val->timestamp_tz_value));
+        col_val->type = target_type;
+      } else {
+        return false;
+      }
+      break;
+    }    
+    case TOK_T_TIME_TZ: {
+      if (target_type == TOK_T_TIME) {
+        col_val->time_value = col_val->timestamp_tz_value.timestamp;
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", time_tz_to_string(col_val->time_tz_value));
+      } else if (target_type == TOK_T_TIMESTAMP_TZ) {
+        int h, m, s;
+        decode_time(col_val->date_value, &h, &m, &s);
+
+        __dt ts_tz = {
+          .year = 0,
+          .month = 0,
+          .day = 0,
+          .hour = h,
+          .minute = m,
+          .second = s
+        };
+
+        col_val->timestamp_tz_value = encode_timestamp_TZ(&ts_tz, col_val->time_tz_value.time_zone_offset);
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_INTERVAL: {
+      if (target_type == TOK_T_INT) {
+        col_val->int_value = (int64_t)(col_val->interval_value.micros); 
+      } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", interval_to_string(&col_val->interval_value));
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_DATETIME: {
+      if (target_type == TOK_T_TIMESTAMP) {
+        col_val->timestamp_value = datetime_to_timestamp(col_val->datetime_value);
+      } else if (target_type == TOK_T_VARCHAR) { 
+        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", datetime_to_string(col_val->datetime_value));
+      } else {
+        return false;
+      }
+      break;
+    }
+    case TOK_T_DATETIME_TZ: {
+      if (target_type == TOK_T_TIMESTAMP_TZ) {
+        col_val->timestamp_tz_value = datetime_TZ_to_timestamp_TZ(col_val->datetime_tz_value);
+      } else {
+        return false;
+      }
+      break;
+    }    
+    case TOK_T_TEXT: {
+      if (!(target_type == TOK_T_BLOB || target_type == TOK_T_JSON)) return false;
+      break;       
+    }
+    default:
+      return false;
+  }
+
+  col_val->type = target_type;
+  return true;
+}
 
 size_t size_from_type(uint8_t column_type) {
   size_t size = 0;

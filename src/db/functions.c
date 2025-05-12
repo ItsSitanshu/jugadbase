@@ -85,7 +85,7 @@ ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
     result.int_value = abs(input.int_value);
     result.type = TOK_T_INT;
   } else {
-    bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+    bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
     if (!valid_conversion) {
       LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -104,7 +104,7 @@ ColumnValue fn_round(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true };
 
-  bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+  bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -145,7 +145,7 @@ ColumnValue fn_sin(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true };
 
-  bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+  bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -163,7 +163,7 @@ ColumnValue fn_cos(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true };
 
-  bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+  bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -181,7 +181,7 @@ ColumnValue fn_tan(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true };
 
-  bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+  bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -199,7 +199,7 @@ ColumnValue fn_log(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true };
 
-  bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+  bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -299,7 +299,7 @@ ColumnValue fn_length(ExprNode** args, uint8_t arg_count, Row* row, TableSchema*
   ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true, .type = TOK_T_INT };
 
-  bool valid_conversion = infer_and_cast_value(&str, TOK_T_STRING);
+  bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -319,7 +319,7 @@ ColumnValue fn_lower(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
-  bool valid_conversion = infer_and_cast_value(&str, TOK_T_STRING);
+  bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -343,7 +343,7 @@ ColumnValue fn_upper(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
-  bool valid_conversion = infer_and_cast_value(&str, TOK_T_STRING);
+  bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -367,7 +367,7 @@ ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
   ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
-  bool valid_conversion = infer_and_cast_value(&str, TOK_T_STRING);
+  bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -399,7 +399,7 @@ ColumnValue fn_replace(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   ColumnValue new_sub = evaluate_expression(args[2], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
-  bool valid_conversion = infer_and_cast_value(&str, TOK_T_STRING);
+  bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -713,7 +713,7 @@ ColumnValue fn_degrees(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
-  bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+  bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
@@ -730,7 +730,7 @@ ColumnValue fn_radians(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
-  bool valid_conversion = infer_and_cast_value(&input, TOK_T_DOUBLE);
+  bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to insert row");
