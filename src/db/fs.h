@@ -60,6 +60,7 @@ typedef struct {
   char* db_config_file;
   char* schema_file;
   char* logging_config_file;
+  char* wal_file;
 } FS;
 
 FS* fs_init(char* root_directory);

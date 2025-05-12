@@ -7,6 +7,7 @@
 #include "parser.h"
 #include "storage.h"
 #include "toast.h"
+#include "wal.h"
 
 #define MAX_COMMANDS 1024
 #define MAX_TABLES 256 // Prime to avoid hash collisons
@@ -27,6 +28,7 @@ typedef struct Database {
   FILE* tc_reader;
   FILE* tc_writer;
   FILE* tc_appender;
+  FILE* wal;
 
   FS* fs;
 } Database;

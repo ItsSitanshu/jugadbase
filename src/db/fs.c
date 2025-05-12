@@ -83,6 +83,9 @@ FS* fs_init(char* root_directory) {
   fs->logging_config_file = malloc(MAX_PATH_LENGTH);
   snprintf(fs->logging_config_file, MAX_PATH_LENGTH, "%s" SEP "config" SEP "logging_config.json", root_directory);
 
+  fs->wal_file = malloc(MAX_PATH_LENGTH);
+  snprintf(fs->wal_file, MAX_PATH_LENGTH, "%s" SEP "db.wal", root_directory);
+
   int any_directory_created = 0;
   
   log_directory_status(fs->root_dir, "<root>", &any_directory_created);
@@ -99,6 +102,7 @@ FS* fs_init(char* root_directory) {
   log_file_status(fs->global_transaction_log, "global_transaction_log");
   log_file_status(fs->db_config_file, "db_config.json");
   log_file_status(fs->logging_config_file, "logging_config.json");
+  log_file_status(fs->wal_file, "db.wal");
 
   log_schema_file_status(fs->schema_file);
 

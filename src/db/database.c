@@ -55,6 +55,7 @@ Database* db_init(char* dir) {
   db->tc_reader = io_init(db->fs->schema_file, FILE_READ, 1024);
   db->tc_writer = io_init(db->fs->schema_file, FILE_WRITE, 1024);
   db->tc_appender = io_init(db->fs->schema_file, FILE_APPEND, 1024);
+  db->wal = wal_open(db->fs->wal_file, "w+b");
 
   load_tc(db);
   if (!load_initial_schema(db)) {
@@ -820,103 +821,7 @@ void flush_lake(Database* db) {
       fclose(file);
     }
   }
-}
 
-void db_init_core(Database* db) {
-  process(db, "CREATE TABLE jb_constraint ("
-    "oid INT PRIMKEY,"
-    "conname VARCHAR(64) NOT NULL,"
-    "connamespace INT,"
-    "contype CHAR,"
-    "condeferrable BOOL,"
-    "condeferred BOOL,"
-    "convalidated BOOL,"
-    "conrelid INT,"
-    "contypid INT,"
-    "conindid INT,"
-    "conparentid INT,"
-    "confrelid INT,"
-    "confupdtype CHAR,"
-    "confdeltype CHAR,"
-    "confmatchtype CHAR,"
-    "conislocal BOOL,"
-    "coninhcount INT,"
-    "connoinherit BOOL,"
-    // "conkey INT[],"
-    // "confkey INT[],"
-    // "conpfeqop INT[],"
-    // "conppeqop INT[],"
-    // "conffeqop INT[],"
-    // "conexclop INT[],"
-    "conbin TEXT,"
-    "consrc TEXT"
-    ")");
-  
- 
-  process(db, "CREATE TABLE jb_authid ("
-    "oid INT PRIMKEY,"
-    "rolname VARCHAR(64) NOT NULL UNIQUE,"
-    "rolsuper BOOL,"
-    "rolinherit BOOL,"
-    "rolcreaterole BOOL,"
-    "rolcreatedb BOOL,"
-    "rolcanlogin BOOL,"
-    "rolreplication BOOL,"
-    "rolbypassrls BOOL,"
-    "rolconnlimit INT,"
-    "rolpassword VARCHAR(100),"
-    "rolvaliduntil TIMESTAMP"
-    ")");
-  
-  // process(db, "CREATE TABLE jg_statistic ("
-  //         "starelid INT,"
-  //         "staattnum INT,"
-  //         "stainherit BOOL,"
-  //         "stanullfrac FLOAT,"
-  //         "stawidth INT,"
-  //         "stadistinct FLOAT,"
-  //         "stakind1 SMALLINT,"
-  //         "stakind2 SMALLINT,"
-  //         "stakind3 SMALLINT,"
-  //         "stakind4 SMALLINT,"
-  //         "stakind5 SMALLINT,"
-  //         "staop1 INT,"
-  //         "staop2 INT,"
-  //         "staop3 INT,"
-  //         "staop4 INT,"
-  //         "staop5 INT,"
-  //         "stanumbers1 FLOAT[],"
-  //         "stanumbers2 FLOAT[],"
-  //         "stanumbers3 FLOAT[],"
-  //         "stanumbers4 FLOAT[],"
-  //         "stanumbers5 FLOAT[],"
-  //         "stavalues1 TEXT,"
-  //         "stavalues2 TEXT,"
-  //         "stavalues3 TEXT,"
-  //         "stavalues4 TEXT,"
-  //         "stavalues5 TEXT,"
-  //         "PRIMARY KEY (starelid, staattnum, stainherit)"
-  //         ")");
-  
-  
-  // process(db, "CREATE TABLE jg_trigger ("
-  //   "oid INT PRIMARY KEY,"
-  //   "tgrelid INT,"
-  //   "tgname VARCHAR(64) NOT NULL,"
-  //   "tgfoid INT,"
-  //   "tgtype INT,"
-  //   "tgenabled CHAR(1),"
-  //   "tgisinternal BOOL,"
-  //   "tgconstrrelid INT,"
-  //   "tgconstrindid INT,"
-  //   "tgconstraint INT,"
-  //   "tgdeferrable BOOL,"
-  //   "tginitdeferred BOOL,"
-  //   "tgnargs INT,"
-  //   "tgattr INT[],"
-  //   "tgargs BYTEA,"
-  //   "tgqual TEXT,"
-  //   "tgoldtable VARCHAR(64),"
-  //   "tgnewtable VARCHAR(64)"
-  //   ")");
+  FILE* wal = fopen(db->fs->wal_file, "wb");
+  fclose(wal);
 }
