@@ -24,7 +24,7 @@ Result process(Database* db, char* buffer);
 Result execute_cmd(Database* db, JQLCommand* cmd);
 ExecutionResult execute_create_table(Database* db, JQLCommand* cmd);
 ExecutionResult execute_insert(Database* db, JQLCommand* cmd);
-bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
+RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
   ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
   TableSchema* schema, uint8_t column_count,
   char** columns, uint8_t up_col_count, bool specified_order);
@@ -67,5 +67,12 @@ bool check_foreign_key(Database* db, ColumnDefinition def, ColumnValue val);
 bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValue val);
 
 ExecutionOrder* generate_execution_plan(JQLCommand* command);
+
+// WAL
+void write_update_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 
+  uint16_t* col_indices, ColumnValue* old_values, ColumnValue* new_values, 
+  uint16_t num_columns, TableSchema* schema);
+void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 
+  Row* row, TableSchema* schema);
 
 #endif // EXECUTOR_H

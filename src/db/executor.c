@@ -247,31 +247,48 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
 
   ColumnDefinition* primary_key_cols = malloc(sizeof(ColumnDefinition) * column_count);
   ColumnValue* primary_key_vals = malloc(sizeof(ColumnValue) * column_count);
+  RowID* inserted_rows = malloc(sizeof(RowID) * cmd->row_count);
+  uint32_t inserted_count = 0;
 
-  uint8_t success = 0;
+  uint8_t wal_buf[MAX_ROW_BUFFER];
+  uint32_t wal_len = 0;
 
   for (uint32_t i = 0; i < cmd->row_count; i++) {
-    if (execute_row_insert(cmd->values[i], db, schema_idx, primary_key_cols,
-        primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order)) {
-      success += 1;
+    RowID* row_id = execute_row_insert(cmd->values[i], db, schema_idx, primary_key_cols,
+      primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order);
+    
+    if (!row_id) {
+      for (uint32_t j = 0; j < inserted_count; j++) {
+        serialize_delete(&(db->lake[schema_idx]), inserted_rows[j]);  
+      }
+
+      free(primary_key_cols);
+      free(primary_key_vals);
+      free(inserted_rows);
+
+      char errbuf[256];
+      snprintf(errbuf, sizeof(errbuf),
+              "Inserted %d out of %d provided, could not insert %d row(s). Rolled back all inserts.",
+              inserted_count, cmd->row_count, (cmd->row_count - inserted_count));
+      LOG_ERROR("%s", errbuf);
+      return (ExecutionResult){1, errbuf};
     }
+
+    inserted_rows[inserted_count++] = *row_id;
+    wal_len += row_to_buffer(row_id, &(db->lake[schema_idx]), schema, wal_buf);
   }
 
-  if (success < cmd->row_count) {
-    char errbuf[256];
-    snprintf(errbuf, sizeof(errbuf),
-            "Inserted %d out of %d provided, could not insert %d row(s)",
-            success, cmd->row_count, (cmd->row_count - success));
+  wal_write(db->wal, WAL_INSERT, schema_idx, wal_buf, wal_len);
 
-    LOG_ERROR("%s", errbuf);
+  free(primary_key_cols);
+  free(primary_key_vals);
+  free(inserted_rows);
 
-    return (ExecutionResult){1, errbuf};
-  }
-
-  return (ExecutionResult){0, "Record inserted successfully"};
+  return (ExecutionResult){0, "All records inserted successfully"};
 }
 
-bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
+
+RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
                       ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
                       TableSchema* schema, uint8_t column_count,
                       char** columns, uint8_t up_col_count, bool specified_order) {
@@ -281,7 +298,7 @@ bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   row.values = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
 
   if (!row.values) {
-    return false;
+    return NULL;
   }
 
   row.id.row_id = 0; 
@@ -292,7 +309,7 @@ bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   
   if (!null_bitmap) {
     free(row.values);
-    return false;
+    return NULL;
   }
   
   memset(null_bitmap, 0, null_bitmap_size);
@@ -325,15 +342,14 @@ bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     if (!valid_conversion) {
       LOG_ERROR("Invalid conversion whilst trying to insert row");
-      return false;
+      return NULL;
     }
 
     if (schema->columns[i].is_foreign_key) {
       if (!check_foreign_key(db, schema->columns[i], cur)) {
         LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
           str_column_value(&cur), schema->columns[i].foreign_table, schema->columns[i].foreign_column);
-        
-        return false;
+        return NULL;
       }
     }
 
@@ -342,7 +358,7 @@ bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     if (is_struct_zeroed(&cur, sizeof(ColumnValue))) {
       free(row.values);
       free(row.null_bitmap);
-      return false;
+      return NULL;
     }
 
     if (cur.is_null && schema->columns[i].is_not_null) {
@@ -369,7 +385,7 @@ bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       if (!is_struct_zeroed(&res, sizeof(RowID))) {
         free(row.values);
         free(row.null_bitmap);
-        return false;
+        return NULL;
       }
     }
   }
@@ -393,12 +409,12 @@ bool execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       if (!btree_insert(db->tc[schema_idx].btree[idx], key, row_id)) {
         free(row.values);
         free(row.null_bitmap);
-        return false;
+        return NULL;
       }
     }
   }
 
-  return true;
+  return &(RowID){row_id.page_id, row_id.row_id};
 }
 
 ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
@@ -506,70 +522,88 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   };
 }
 
-
 ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
-
+  
   TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
-  if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
+  if (!schema) {
+    return (ExecutionResult){1, "Error: Invalid schema"};
+  }
 
   load_btree_cluster(db, schema->table_name);
-
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+
   BufferPool* pool = &db->lake[schema_idx];
-
   uint32_t rows_updated = 0;
-
-  for (uint16_t i = 0; i < pool->num_pages; i++) {
-    Page* page = pool->pages[i];
+  
+  for (uint16_t page_idx = 0; page_idx < pool->num_pages; ++page_idx) {
+    Page* page = pool->pages[page_idx];
     if (!page || page->num_rows == 0) continue;
-
-    for (uint16_t j = 0; j < page->num_rows; j++) {
-      Row* row = &page->rows[j];
-      Row* temp = malloc(sizeof(Row)); 
-
+  
+    for (uint16_t row_idx = 0; row_idx < page->num_rows; ++row_idx) {
+      Row* row = &page->rows[row_idx];
+  
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
-
-      for (int k = 0; k < cmd->value_counts[0]; k++) {
+  
+      int max_updates = cmd->value_counts[0];
+      uint16_t* update_cols = malloc(sizeof(uint16_t) * max_updates);
+      ColumnValue* old_vals = malloc(sizeof(ColumnValue) * max_updates);
+      ColumnValue* new_vals = malloc(sizeof(ColumnValue) * max_updates);
+  
+      int valid_updates = 0;
+      for (int k = 0; k < max_updates; ++k) {
         char* colname = cmd->columns[k];
         int col_index = find_column_index(schema, colname);
+        if (col_index < 0) continue;
+
+        ColumnValue evaluated = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
         
-        row->values[col_index] = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
-        bool valid_conversion = infer_and_cast_value(&row->values[col_index], schema->columns[col_index].type);
+        if (!infer_and_cast_value(&evaluated, schema->columns[col_index].type)) {
+          free(update_cols);
+          free(old_vals);
+          free(new_vals);
+          return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};
+        }
         
-        if (!valid_conversion) {          
-          return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};;
+        if (schema->columns[col_index].is_foreign_key && !check_foreign_key(db, schema->columns[col_index], evaluated)) {
+          free(update_cols);
+          free(old_vals);
+          free(new_vals);
+          return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};
         }
-
-        if (schema->columns[col_index].is_foreign_key) {
-          if (!check_foreign_key(db, schema->columns[col_index], row->values[col_index])) {
-            LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
-              str_column_value(&row->values[col_index]), schema->columns[col_index].foreign_table, schema->columns[i].foreign_column);
-
-            return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};            
-          }
-        }
-
-        row->null_bitmap = cmd->bitmap;
+        
+        update_cols[valid_updates] = col_index;
+        old_vals[valid_updates] = row->values[col_index];
+        new_vals[valid_updates] = evaluated;
+        valid_updates++;
       }
-
+      
+      if (valid_updates == 0) {
+        free(update_cols);
+        free(old_vals);
+        free(new_vals);
+        continue;
+      }
+      
+      write_update_wal(db->wal, schema_idx, page_idx, row_idx, update_cols, old_vals, new_vals, valid_updates, schema);
+      
+      for (int u = 0; u < valid_updates; ++u) {
+        row->values[update_cols[u]] = new_vals[u];
+      }
+      
+      row->null_bitmap = cmd->bitmap;
       rows_updated++;
-    }
-    
-    if (rows_updated > 0) {
       page->is_dirty = true;
+      free(update_cols);
+      free(old_vals);
+      free(new_vals);
     }
   }
-
-  return (ExecutionResult){
-    .code = 0,
-    .message = "Update executed successfully",
-    .row_count = rows_updated
-  };
+  return (ExecutionResult){0, "Update executed successfully", .row_count = rows_updated};
 }
 
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
@@ -579,7 +613,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
 
   TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
   if (!schema) {
-    return (ExecutionResult){1, "Error: Invcalid schema"};
+    return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
   load_btree_cluster(db, schema->table_name);
@@ -590,18 +624,20 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
 
   uint32_t rows_deleted = 0;
 
-  for (uint16_t i = 0; i < pool->num_pages; i++) {
-    Page* page = pool->pages[i];
+  for (uint16_t page_idx = 0; page_idx < pool->num_pages; page_idx++) {
+    Page* page = pool->pages[page_idx];
     if (!page || page->num_rows == 0) continue;
 
-    for (uint16_t j = 0; j < page->num_rows; j++) {
-      Row* row = &page->rows[j];
+    for (uint16_t row_idx = 0; row_idx < page->num_rows; row_idx++) {
+      Row* row = &page->rows[row_idx];
 
       if (is_struct_zeroed(row, sizeof(Row))) continue;
 
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
+
+      write_delete_wal(db->wal, schema_idx, page_idx, row_idx, row, schema);
 
       for (uint8_t k = 0; k < schema->column_count; k++) {
         if (schema->columns[k].is_primary_key) {
@@ -626,8 +662,11 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
         }
       }
 
-      RowID id = {i, j + 1};
+      RowID id = {page_idx, row_idx + 1};
       serialize_delete(pool, id);
+      
+      page->is_dirty = true;
+      
       rows_deleted++;
     }
   }
@@ -1854,3 +1893,144 @@ bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValu
 
 //   return order;
 // }
+
+void write_update_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 
+  uint16_t* col_indices, ColumnValue* old_values, ColumnValue* new_values, 
+  uint16_t num_columns, TableSchema* schema) {
+  /**
+  WAL Update Format:
+  [2B] Page Index
+  [2B] Row Index
+  [2B] Number of Updated Columns
+  
+  For each updated column:
+    [2B] Column Index
+    [4B] Old Value Size
+    [var] Old Value Data
+    [4B] New Value Size
+    [var] New Value Data
+  */
+
+  uint32_t header_size = sizeof(uint16_t) * 3;  // page_idx, row_idx, num_columns
+  uint32_t data_size = 0;
+  uint8_t temp_buf[1024];
+  
+  for (int i = 0; i < num_columns; i++) {
+    ColumnDefinition* def = &schema->columns[col_indices[i]];
+    uint32_t old_val_size = write_column_value_to_buffer(temp_buf, &old_values[i], def);
+    uint32_t new_val_size = write_column_value_to_buffer(temp_buf, &new_values[i], def);
+    
+    data_size += sizeof(uint16_t) +          // Column index
+                  sizeof(uint32_t) * 2 +      // Old and new value sizes
+                  old_val_size + new_val_size; // Actual values
+  }
+  
+  uint32_t total_size = header_size + data_size;
+  uint8_t* wal_buf = malloc(total_size);
+  if (!wal_buf) {
+    return; 
+  }
+  
+  uint32_t offset = 0;
+  memcpy(wal_buf + offset, &page_idx, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+  
+  memcpy(wal_buf + offset, &row_idx, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+  
+  memcpy(wal_buf + offset, &num_columns, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+  
+  for (int i = 0; i < num_columns; i++) {
+    ColumnDefinition* def = &schema->columns[col_indices[i]];
+    
+    memcpy(wal_buf + offset, &col_indices[i], sizeof(uint16_t));
+    offset += sizeof(uint16_t);
+    
+    uint32_t old_val_size = write_column_value_to_buffer(temp_buf, &old_values[i], def);
+    memcpy(wal_buf + offset, &old_val_size, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
+    
+    memcpy(wal_buf + offset, temp_buf, old_val_size);
+    offset += old_val_size;
+    
+    uint32_t new_val_size = write_column_value_to_buffer(temp_buf, &new_values[i], def);
+    memcpy(wal_buf + offset, &new_val_size, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
+    
+    memcpy(wal_buf + offset, temp_buf, new_val_size);
+    offset += new_val_size;
+  }
+  
+  wal_write(wal, WAL_UPDATE, schema_idx, wal_buf, total_size);
+  
+  free(wal_buf);
+}
+
+void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 
+  Row* row, TableSchema* schema) {
+  /**
+  WAL Delete Format:
+  [2B] Page Index
+  [2B] Row Index
+  [2B] Number of Columns
+  [2B] Null Bitmap
+  
+  For each column:
+    [2B] Column Index
+    [4B] Value Size
+    [var] Value Data
+  */
+
+  uint32_t header_size = sizeof(uint16_t) * 4;  // page_idx, row_idx, num_columns, null_bitmap
+  uint32_t data_size = 0;
+  uint8_t temp_buf[1024];
+  uint16_t num_columns = schema->column_count;
+  
+  for (uint16_t i = 0; i < num_columns; i++) {
+    ColumnDefinition* def = &schema->columns[i];
+    uint32_t val_size = write_column_value_to_buffer(temp_buf, &row->values[i], def);
+    
+    data_size += sizeof(uint16_t) +  // Column index
+                 sizeof(uint32_t) +  // Value size
+                 val_size;           // Actual value
+  }
+  
+  uint32_t total_size = header_size + data_size;
+  uint8_t* wal_buf = malloc(total_size);
+  if (!wal_buf) {
+    return; 
+  }
+  
+  uint32_t offset = 0;
+  
+  memcpy(wal_buf + offset, &page_idx, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+  
+  memcpy(wal_buf + offset, &row_idx, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+  
+  memcpy(wal_buf + offset, &num_columns, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+  
+  memcpy(wal_buf + offset, &row->null_bitmap, sizeof(uint16_t));
+  offset += sizeof(uint16_t);
+  
+  for (uint16_t i = 0; i < num_columns; i++) {
+    ColumnDefinition* def = &schema->columns[i];
+    
+    memcpy(wal_buf + offset, &i, sizeof(uint16_t));
+    offset += sizeof(uint16_t);
+    
+    uint32_t val_size = write_column_value_to_buffer(temp_buf, &row->values[i], def);
+    memcpy(wal_buf + offset, &val_size, sizeof(uint32_t));
+    offset += sizeof(uint32_t);
+    
+    memcpy(wal_buf + offset, temp_buf, val_size);
+    offset += val_size;
+  }
+  
+  wal_write(wal, WAL_DELETE, schema_idx, wal_buf, total_size);
+  
+  free(wal_buf);
+}
