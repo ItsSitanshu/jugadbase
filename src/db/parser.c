@@ -1542,7 +1542,6 @@ void print_column_value(ColumnValue* val) {
     return;
   }
 
-  printf("array<%s>[", get_token_type(val->type));
 
   if (val->is_array) {
     char buffer[1024];
@@ -1558,10 +1557,13 @@ void print_column_value(ColumnValue* val) {
     }
   
     snprintf(buffer + offset, sizeof(buffer) - offset, "]");
-  
-    printf("%s", buffer);
+    
+    printf("arr<%s>[%s]", buffer);
     return;
   }
+  
+  printf("<%s>[", get_token_type(val->type));
+
   
   switch (val->type) {
     case TOK_T_INT:
@@ -1899,7 +1901,7 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val) {
     // // }
 
     default:
-      snprintf(out, out_size, "NULL", val->type);
+      snprintf(out, out_size, "%s", "NULL");
       break;
   }
 }

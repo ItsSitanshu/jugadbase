@@ -17,6 +17,7 @@ typedef struct Row {
   uint8_t* null_bitmap; 
   
   ColumnValue* values; 
+  bool deleted;
 } Row;
 
 typedef struct Page {

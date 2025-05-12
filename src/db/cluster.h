@@ -33,15 +33,16 @@ typedef struct {
 
 ClusterManager* cluster_manager_init(char* root_dir);
 
+bool cluster_manager_save(ClusterManager* manager);
 void cluster_manager_free(ClusterManager* manager);
-bool cluster_create(ClusterManager* manager, const char* name);
-bool cluster_add_db(ClusterManager* manager, int cluster_idx, const char* db_path);
+bool cluster_create(ClusterManager* manager, char* name);
+bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path);
 bool cluster_switch(ClusterManager* manager, int cluster_idx);
 bool cluster_switch_db(ClusterManager* manager, int db_idx);
 Database* cluster_get_active_db(ClusterManager* manager);
-Result cluster_execute_all(ClusterManager* manager, const char* cmd);
+Result cluster_execute_all(ClusterManager* manager, char* cmd);
 Result cluster_list(ClusterManager* manager);
-bool process_cluster_cmd(ClusterManager* manager, Database** current_db, const char* input);
-bool is_cluster_cmd(const char* input);
+bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* input);
+bool is_cluster_cmd(char* input);
 
 #endif /* CLUSTER_H */

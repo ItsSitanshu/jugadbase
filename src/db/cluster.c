@@ -123,7 +123,7 @@ void cluster_manager_free(ClusterManager* manager) {
   LOG_INFO("Cluster manager freed");
 }
 
-bool cluster_create(ClusterManager* manager, const char* name) {
+bool cluster_create(ClusterManager* manager, char* name) {
   if (!manager || !name) {
     LOG_ERROR("Invalid parameters for cluster creation");
     return false;
@@ -168,10 +168,6 @@ bool cluster_create(ClusterManager* manager, const char* name) {
   
   LOG_INFO("Created cluster '%s' (index: %d)", name, idx);
   Result cluster_info = cluster_list(manager);
-  if (cluster_info.exec.code == 0 && cluster_info.exec.message) {
-    free(cluster_info.exec.message);
-  }
-  
     
   if (!cluster_add_db(manager, 0, "core")) {
     fprintf(stderr, "Failed to add jb.core database to cluster\n");
@@ -186,7 +182,7 @@ bool cluster_create(ClusterManager* manager, const char* name) {
   return true;
 }
 
-bool cluster_add_db(ClusterManager* manager, int cluster_idx, const char* db_path) {
+bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path) {
   if (!manager || !db_path || cluster_idx < 0 || cluster_idx >= (manager->cluster_count + 1)) {
     LOG_ERROR("Invalid parameters for adding database to cluster");
     return false;
@@ -282,7 +278,7 @@ Database* cluster_get_active_db(ClusterManager* manager) {
   return cluster->databases[cluster->active_db];
 }
 
-Result cluster_execute_all(ClusterManager* manager, const char* cmd) {
+Result cluster_execute_all(ClusterManager* manager, char* cmd) {
   ExecutionResult result = {0};
   
   if (!manager || manager->active_cluster < 0 || !cmd) {
@@ -353,10 +349,10 @@ Result cluster_list(ClusterManager* manager) {
   return (Result){result, NULL};
 }
 
-static bool parse_cluster_cmd(const char* input, char* cmd, char* arg1, char* arg2) {
+static bool parse_cluster_cmd(char* input, char* cmd, char* arg1, char* arg2) {
   if (!input || !cmd || !arg1 || !arg2) return false;
   
-  const char* ptr = input;
+  char* ptr = input;
   while (*ptr && isspace(*ptr)) ptr++;
   
   if (strncmp(ptr, "~ ", 2) == 0) {
@@ -392,7 +388,7 @@ static bool parse_cluster_cmd(const char* input, char* cmd, char* arg1, char* ar
   return true;
 }
 
-bool process_cluster_cmd(ClusterManager* manager, Database** current_db, const char* input) {
+bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* input) {
   if (!manager || !input || !current_db) return false;
   
   char cmd[32] = {0};
@@ -490,7 +486,7 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, const c
   return true;  
 }
 
-bool is_cluster_cmd(const char* input) {
+bool is_cluster_cmd(char* input) {
   if (!input) return false;
   
   while (*input && isspace(*input)) input++;

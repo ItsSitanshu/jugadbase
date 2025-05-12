@@ -622,6 +622,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   for (uint16_t page_idx = 0; page_idx < pool->num_pages; page_idx++) {
     Page* page = pool->pages[page_idx];
     if (!page || page->num_rows == 0) continue;
+    LOG_DEBUG("%d", page_idx);
 
     for (uint16_t row_idx = 0; row_idx < page->num_rows; row_idx++) {
       Row* row = &page->rows[row_idx];
@@ -631,7 +632,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
-
+      
       write_delete_wal(db->wal, schema_idx, page_idx, row_idx, row, schema);
 
       for (uint8_t k = 0; k < schema->column_count; k++) {
@@ -661,8 +662,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
       serialize_delete(pool, id);
       
       page->is_dirty = true;
-      
-      rows_deleted++;
+      rows_deleted += 1;
     }
   }
 
@@ -1046,10 +1046,9 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
       return result;
   }
 
-  bool valid_conversion = infer_and_cast_va(2,
-    (__c){&left, type},
-    (__c){&right, type}
-  );
+  bool valid_conversion = infer_and_cast_value(&left, &defn);
+  valid_conversion = infer_and_cast_value(&right, &defn);
+
 
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to evaluate conditions");
@@ -1075,8 +1074,9 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
 
 ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   uint8_t type = 0;
+  ColumnDefinition defn;
 
-  ColumnValue left = resolve_expr_value(expr->like.left, row, schema, db, schema_idx, &type);
+  ColumnValue left = resolve_expr_value(expr->like.left, row, schema, db, schema_idx, &defn);
   if (left.type != TOK_T_VARCHAR || left.str_value == NULL) {
     LOG_ERROR("LIKE can only be applied to VARCHAR values");
     return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
@@ -1087,12 +1087,12 @@ ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* sche
 }
 
 ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  uint8_t type = 0;
+  ColumnDefinition defn;
 
-  ColumnValue value = resolve_expr_value(expr->between.value, row, schema, db, schema_idx, &type);
-  ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, db, schema_idx, &type);
-  ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, db, schema_idx, &type);
-  
+  ColumnValue value = resolve_expr_value(expr->between.value, row, schema, db, schema_idx, &defn);
+  ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, db, schema_idx, &defn);
+  ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, db, schema_idx, &defn);
+
   bool valid_conversion = infer_and_cast_va(3,
     (__c){&lower, TOK_T_DOUBLE},
     (__c){&upper, TOK_T_DOUBLE},
@@ -1111,12 +1111,13 @@ ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* s
 }
 
 ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  uint8_t type = 0;
-  ColumnValue value = resolve_expr_value(expr->in.value, row, schema, db, schema_idx, &type);
+  ColumnDefinition defn;
+
+  ColumnValue value = resolve_expr_value(expr->in.value, row, schema, db, schema_idx, &defn);
   ColumnValue result = { .type = TOK_T_BOOL, .bool_value = false };
 
   for (size_t i = 0; i < expr->in.count; ++i) {
-    ColumnValue val = resolve_expr_value(expr->in.list[i], row, schema, db, schema_idx, &type);
+    ColumnValue val = resolve_expr_value(expr->in.list[i], row, schema, db, schema_idx, &defn);
 
     bool match = false;
     if (value.type == TOK_T_INT || value.type == TOK_T_UINT || value.type == TOK_T_SERIAL) {
@@ -1535,7 +1536,7 @@ bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
         size_t str_len = strlen(col_val->str_value);
 
         if (str_len > max_len) {
-          LOG_ERROR("Definition expects VARCHAR(<=%d) got VARCHAR(<=%d)", max_len, str_len);
+          LOG_ERROR("Definition expects VARCHAR(<=%zu) got VARCHAR(<=%zu)", max_len, str_len);
           return false;
         }
 
@@ -1549,7 +1550,11 @@ bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
       if (target_type == TOK_T_INT) {
         col_val->int_value = (int64_t)(col_val->date_value); 
       } else if (target_type == TOK_T_VARCHAR || target_type == TOK_T_TEXT) { 
-        snprintf(col_val->str_value, sizeof(col_val->str_value), "%s", date_to_string(col_val->date_value));
+        char* str = date_to_string(col_val->date_value);
+
+        size_t new_size = strlen(str) + 1;
+        col_val->str_value = calloc(1, new_size);
+        snprintf(col_val->str_value, new_size, "%s", str);
       } else if (target_type == TOK_T_TIMESTAMP) {
         int y, m, d;
         decode_date(col_val->date_value, &y, &m, &d);

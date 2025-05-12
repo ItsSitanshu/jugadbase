@@ -237,7 +237,7 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
     }
   }
 
-  LOG_DEBUG("Updating pool %u", page_number);
+  LOG_DEBUG("Updating pool %lu", page_number);
 }
 
 void write_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
@@ -670,11 +670,10 @@ bool serialize_delete(BufferPool* pool, RowID rid) {
       return false;
     }
 
-    page->num_rows--;
     page->free_space += row->row_length;
 
     memset(row, 0, sizeof(Row));
-
+    row->deleted = true;
     page->is_dirty = true;
 
     LOG_DEBUG("serialize_delete: Deleted row from page %u, slot %u", rid.page_id, rid.row_id);

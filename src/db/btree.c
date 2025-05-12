@@ -177,7 +177,7 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_off
   }
   
   if (node->num_keys < 0 || node->num_keys >= tree->btree_order) {
-    LOG_ERROR("Corrupted node in btree_insert_nonfull (num_keys=%d, order=%d)",
+    LOG_ERROR("Corrupted node in btree_insert_nonfull (num_keys=%d, order=%ld)",
               node->num_keys, tree->btree_order);
     return;
   }
