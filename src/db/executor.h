@@ -58,7 +58,8 @@ void quick_sort_rows(Row rows[], int low, int high, JQLCommand *cmd, TableSchema
 bool match_char_class(char** pattern_ptr, char* str);
 bool like_match(char* str, char* pattern);
 void* get_column_value_as_pointer(ColumnValue* col_val);
-size_t size_from_type(uint8_t column_type);
+size_t size_from_type(ColumnDefinition* fallback);
+size_t size_from_value(ColumnValue* val, ColumnDefinition* fallback);
 uint32_t get_table_offset(Database* db, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);
 

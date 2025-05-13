@@ -290,7 +290,7 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   uint8_t primary_key_count = 0;
 
   Row row = {0};
-  row.values = (ColumnValue*)malloc(sizeof(ColumnValue) * column_count);
+  row.values = (ColumnValue*)calloc(sizeof(ColumnValue), column_count);
 
   if (!row.values) {
     return NULL;
@@ -321,8 +321,6 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     row.values[i].is_null = true;
 
     null_bitmap[i / 8] |= (1 << (i % 8));
-
-    row.row_length += size_from_type(schema->columns[i].type);
   }
 
   for (uint8_t j = 0; j < up_col_count; j++) {
@@ -330,11 +328,9 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, db, schema_idx);
-
-    // printf("%s => %s | ", token_type_strings[cur.type], token_type_strings[schema->columns[i].type]); print_column_value(&cur); printf("\n");
-
-    bool valid_conversion = infer_and_cast_value(&cur, &schema->columns[i]);
-
+    
+    bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
+    
     if (!valid_conversion) {
       LOG_ERROR("Invalid conversion whilst trying to insert row");
       return NULL;
@@ -370,7 +366,11 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       primary_key_vals[primary_key_count] = cur;
       primary_key_count++;
     }
+
+    row.row_length += size_from_value(&row.values[i], &schema->columns[i]);
+    LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
   }
+
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (&primary_key_cols[i]) {
@@ -737,11 +737,13 @@ ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db) {
       uint32_t toast_id = toast_new_entry(db, value->str_value);
       value->is_toast = true;
       value->type = TOK_T_TEXT;
-      value->toast_object = toast_id;
+      value->toast_object = toast_id;      
     }
   } else if (value->is_toast) { 
     check_and_concat_toast(db, value);
   }
+
+  if (value->is_null) value->type = TOK_NL;
 
   return *value;
 }
@@ -757,7 +759,6 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
     
     if (col.is_toast) {
       check_and_concat_toast(db, &col);
-      printf("toast: "); print_column_value(&col); printf("\n");
     }
     
     col.type = schema->columns[expr->column_index].type;
@@ -1400,6 +1401,7 @@ bool infer_and_cast_va(size_t count, ...) {
 
 bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
   uint8_t target_type = def->type;
+
   if (col_val->type == TOK_NL) {
     col_val->is_null = true;
     return true;
@@ -1424,7 +1426,7 @@ bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
       } else if (target_type == TOK_T_INT || 
                  target_type == TOK_T_UINT || 
                  target_type == TOK_T_SERIAL) {
-          (void)(0);  
+          return true;
       } else {
         return false;
       }
@@ -1974,8 +1976,9 @@ bool infer_and_cast_value_raw(ColumnValue* col_val, uint8_t target_type) {
   return true;
 }
 
-size_t size_from_type(uint8_t column_type) {
+size_t size_from_type(ColumnDefinition* fallback) {
   size_t size = 0;
+  uint8_t column_type = fallback->type;
 
   switch (column_type) {
     case TOK_T_INT:
@@ -1995,16 +1998,34 @@ size_t size_from_type(uint8_t column_type) {
       size = sizeof(int) * 2 + MAX_DECIMAL_LEN; 
       break;
     case TOK_T_UUID:
-      size = 16; 
+      size = 16;
+      break;
+    case TOK_T_DATE:
+      size = sizeof(Date);
+      break;
+    case TOK_T_TIME:
+      size = sizeof(TimeStored);
+      break;
+    case TOK_T_TIME_TZ:
+      size = sizeof(Time_TZ);
       break;
     case TOK_T_TIMESTAMP:
-    case TOK_T_DATETIME:
-    case TOK_T_TIME:
-    case TOK_T_DATE:
-      size = sizeof(int);  
+      size = sizeof(Timestamp);
       break;
+    case TOK_T_TIMESTAMP_TZ:
+      size = sizeof(Timestamp_TZ);
+      break;
+    case TOK_T_DATETIME:
+      size = sizeof(DateTime);
+      break;
+    case TOK_T_DATETIME_TZ:
+      size = sizeof(DateTime_TZ);
+      break;
+    case TOK_T_INTERVAL:
+      return sizeof(Interval);
     case TOK_T_VARCHAR:
-      size = MAX_VARCHAR_SIZE;
+      size = fallback->type_varchar == 0 ? MAX_VARCHAR_SIZE : fallback->type_varchar;
+      size += sizeof(uint16_t);
       break;
     case TOK_T_CHAR:
       size = sizeof(uint8_t);
@@ -2013,14 +2034,76 @@ size_t size_from_type(uint8_t column_type) {
     case TOK_T_BLOB:
     case TOK_T_JSON:
       size = TOAST_CHUNK_SIZE;
+      size += sizeof(uint16_t);
       break;
     default:
-      size = 0;  
       break;
   }
 
   return size;
 }
+
+size_t size_from_value(ColumnValue* val, ColumnDefinition* fallback) {
+  if (!val) return -1;
+  if (val->is_null) {
+    return size_from_type(fallback);
+  }
+
+  switch (fallback->type) {
+    case TOK_T_INT:
+    case TOK_T_SERIAL:
+    case TOK_T_UINT:
+      return sizeof(int64_t);
+    case TOK_T_BOOL:
+      return sizeof(bool);
+    case TOK_T_FLOAT:
+      return sizeof(float);
+    case TOK_T_DOUBLE:
+      return sizeof(double);
+    case TOK_T_DECIMAL: {
+      size_t str_len = strlen(val->decimal.decimal_value);
+      return sizeof(int) * 2 + sizeof(uint16_t) + str_len;
+    }
+    case TOK_T_UUID:
+      return 16;
+    case TOK_T_DATE:
+      return sizeof(Date);
+    case TOK_T_TIME:
+      return sizeof(TimeStored);
+    case TOK_T_TIME_TZ:
+      return sizeof(Time_TZ);
+    case TOK_T_TIMESTAMP:
+      return sizeof(Timestamp);
+    case TOK_T_TIMESTAMP_TZ:
+      return sizeof(Timestamp_TZ);
+    case TOK_T_DATETIME:
+      return sizeof(DateTime);
+    case TOK_T_DATETIME_TZ:
+      return sizeof(DateTime_TZ);
+    case TOK_T_INTERVAL:
+      return sizeof(Interval);
+    case TOK_T_CHAR:
+      return sizeof(char);
+      break;
+    case TOK_T_VARCHAR:
+      return strlen(val->str_value) + sizeof(uint16_t);
+      break;
+    case TOK_T_TEXT:
+    case TOK_T_BLOB:
+    case TOK_T_JSON:
+      if (val->is_toast) {
+        return sizeof(bool) + sizeof(uint32_t);
+      }
+    
+      size_t len = strlen(val->str_value);
+
+      return sizeof(uint16_t) + len;
+      break;
+    default:
+      return size_from_type(fallback);
+  }
+}
+
 
 uint32_t get_table_offset(Database* db, const char* table_name) {
   for (int i = 0; i < db->table_count; i++) {
