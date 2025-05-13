@@ -101,6 +101,9 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
   col_val->type = col_def->type;
 
   switch (col_def->type) {
+    case TOK_T_CHAR:
+      fread(&col_val->str_value[0], sizeof(char), 1, file);
+      break;
     case TOK_T_INT:
     case TOK_T_SERIAL:
       fread(&col_val->int_value, sizeof(int64_t), 1, file);
@@ -172,8 +175,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       fread(&col_val->interval_value, sizeof(Interval), 1, file);
       break;
 
-    case TOK_T_VARCHAR:
-    case TOK_T_CHAR: {
+    case TOK_T_VARCHAR: {
       fread(&str_len, sizeof(uint16_t), 1, file);
       col_val->str_value = malloc(str_len + 1);
       fread(col_val->str_value, sizeof(char), str_len, file);
@@ -297,6 +299,9 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
   }
   
   switch (col_def->type) {
+    case TOK_T_CHAR:
+      fwrite(&col_val->str_value[0], sizeof(char), 1, file);
+      break;
     case TOK_T_INT:
     case TOK_T_SERIAL:
       fwrite(&col_val->int_value, sizeof(int64_t), 1, file);
@@ -375,7 +380,6 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
       break;
 
     case TOK_T_VARCHAR:
-    case TOK_T_CHAR:
       str_len = (uint16_t)strlen(col_val->str_value);
       max_len = (col_def->type_varchar == 0) ? 255 : col_def->type_varchar;
 
