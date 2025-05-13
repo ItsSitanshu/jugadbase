@@ -1430,6 +1430,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   ExprNode* node = calloc(1, sizeof(ExprNode));
   node->type = EXPR_LITERAL;
   node->literal = val;
+
   return node;
 }
 
