@@ -46,8 +46,9 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Write `WALWriter` module with support for `INSERT`, `DELETE` and `UPDATE`~~
   - ~~Implement VARCHAR(n of chars)~~
   - ~~FIX BUG: Make sure `DELETE` and `SELECT` work as expected~~
-  - FIX BUG: Arrays are stored weirdly, row-length isn't representative and compacting has issues
+  - ~~FIX BUG: Arrays are stored weirdly, row-length isn't representative~~
   - Implement array[] indexing
+  - Impelemtn compacting
   - Write tests for arrays and delete
   - Implement `DEFAULT` values
   - Implement `apply_wal()` for recovery
