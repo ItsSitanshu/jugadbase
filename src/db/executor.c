@@ -1411,7 +1411,11 @@ bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
     return true;
   }
 
-  // LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
+  if (col_val->is_array) {
+    return true;    
+  }
+
+  LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
 
   switch (col_val->type) {
     case TOK_T_INT:

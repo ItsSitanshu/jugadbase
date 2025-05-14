@@ -271,12 +271,16 @@ uint32_t write_array_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Colu
 
   ColumnDefinition base_def = *col_def;
   base_def.is_array = false;
+  // base_def.type = col_val->array.array_type;
 
   for (int i = 0; i < len; i++) {
-    ColumnValue* elem = &col_val->array.array_value[i];
-    elem->is_array = false;
+    ColumnValue elem = col_val->array.array_value[i];
+    (&elem)->is_array = false;
 
-    uint32_t written = write_column_value_to_buffer(buffer + offset, elem, &base_def);
+    LOG_DEBUG("! %d %s", i, token_type_strings[elem.type]);
+    LOG_DEBUG("> %s", token_type_strings[base_def.type]);
+
+    uint32_t written = write_column_value_to_buffer(buffer + offset, &elem, &base_def);
     offset += written;
   }
 
@@ -303,6 +307,7 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
       fwrite(&col_val->str_value[0], sizeof(char), 1, file);
       break;
     case TOK_T_INT:
+    case TOK_T_UINT:
     case TOK_T_SERIAL:
       fwrite(&col_val->int_value, sizeof(int64_t), 1, file);
       break;
@@ -429,15 +434,15 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
 
   switch (col_def->type) {
     case TOK_T_INT:
+    case TOK_T_UINT:
     case TOK_T_SERIAL:
       memcpy(buffer + offset, &col_val->int_value, sizeof(int64_t));
       offset += sizeof(int64_t);
       break;
 
     case TOK_T_BOOL: {
-      uint8_t bool_value = col_val->bool_value ? 1 : 0;
-      memcpy(buffer + offset, &bool_value, sizeof(uint8_t));
-      offset += sizeof(uint8_t);
+      memcpy(buffer + offset, &col_val->bool_value, sizeof(bool));
+      offset += sizeof(bool);
       break;
     }
 
@@ -560,7 +565,7 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
     }
 
     default:
-      LOG_ERROR("Error: Unsupported data type.\n");
+      LOG_ERROR("Error: Unsupported data type. %d\n", col_def->type);
       return 0;
   }
 

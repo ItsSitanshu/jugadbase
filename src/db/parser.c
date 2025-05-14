@@ -1014,7 +1014,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         array_contents[value_len] = '\0';
 
         size_t count = 0;
-        ColumnValue* array = malloc(MAX_ARRAY_SIZE * sizeof(ColumnValue));
+        col_val->array.array_value = calloc(MAX_ARRAY_SIZE, sizeof(ColumnValue));
 
         uint32_t array_type = -1; 
 
@@ -1030,7 +1030,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
 
           ColumnValue element_val;
           if (!parser_parse_value(tmp_parser, &element_val)) {
-            free(array);
+            free(col_val->array.array_value);
             return false;
           }
 
@@ -1038,8 +1038,9 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
             array_type = element_val.type;
           }
 
-          array[count] = element_val;
+          col_val->array.array_value[count] = element_val;
           count++;
+
           if (tmp_parser->cur->type != TOK_EOF 
             || tmp_parser->cur->type == TOK_COM) {
             parser_consume(tmp_parser);
@@ -1050,7 +1051,6 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
 
         parser_free(tmp_parser);
 
-        col_val->array.array_value = array;
         col_val->array.array_size = count;
         col_val->array.array_type = array_type;
 
@@ -1556,10 +1556,8 @@ void print_column_value(ColumnValue* val) {
       offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_str);
       free(elem_str);
     }
-  
-    snprintf(buffer + offset, sizeof(buffer) - offset, "]");
-    
-    printf("arr<%s>[%s]", buffer);
+      
+    printf("arr<%s>[%s]", get_token_type(val->type), buffer);
     return;
   }
   
@@ -1657,14 +1655,14 @@ void print_column_value(ColumnValue* val) {
         const char* s = val->str_value;
         size_t len = strlen(s);
       
-        if (len <= 8) {
+        if (len <= 20) {
           printf("\"%s\"", s);
         }
       
         char preview[12]; 
         memcpy(preview, s, 8);
-        strcpy(preview + 8, "...");
-        printf("\"%s (%zu chars)\"", preview, len - 8);
+        strcpy(preview + 8, ".");
+        printf("\"%s +%zu\"", preview, len - 8);
       }      
       break;
     }
