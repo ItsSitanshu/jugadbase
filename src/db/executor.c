@@ -368,7 +368,7 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     }
 
     row.row_length += size_from_value(&row.values[i], &schema->columns[i]);
-    LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
+    // LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
   }
 
 
@@ -429,7 +429,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   BufferPool* pool = &db->lake[schema_idx];
 
   RowID row_start = {0};
-  Row* collected_rows = malloc(sizeof(Row) * 100);
+  Row* collected_rows = calloc(100, sizeof(Row));
   if (!collected_rows) {
     return (ExecutionResult){1, "Memory allocation failed for result rows"};
   }
@@ -451,7 +451,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
         continue;
 
       collected_rows[total_found] = *row;
-      total_found++;
+      total_found++;  
       
       if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0)
         break;
@@ -467,7 +467,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   uint32_t available = (start < total_found) ? (total_found - start) : 0;
   uint32_t out_count = (available < max_out) ? available : max_out;
 
-  Row* result_rows = malloc(sizeof(Row) * out_count);
+  Row* result_rows = calloc(out_count, sizeof(Row));
   if (!result_rows) {
     free(collected_rows);
     return (ExecutionResult){1, "Memory allocation failed for limited result rows"};
@@ -497,15 +497,14 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       if (!expr) {
         ColumnValue raw = src->values[j];
         dst->values[j] = raw; 
-        dst->values[j].column_index = j;
+        dst->values[j].column.index = j;
       } else {
         ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
-        dst->values[val.column_index] = val;
+        dst->values[j] = val;
       }
     }
   }
   
-
   free(collected_rows);
 
   return (ExecutionResult){
@@ -622,7 +621,6 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   for (uint16_t page_idx = 0; page_idx < pool->num_pages; page_idx++) {
     Page* page = pool->pages[page_idx];
     if (!page || page->num_rows == 0) continue;
-    LOG_DEBUG("%d", page_idx);
 
     for (uint16_t row_idx = 0; row_idx < page->num_rows; row_idx++) {
       Row* row = &page->rows[row_idx];
@@ -677,7 +675,7 @@ ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Da
   ColumnValue value = evaluate_expression(expr, row, schema, db, schema_idx);
 
   if (expr->type == EXPR_COLUMN) {
-    int col_index = expr->column_index;
+    int col_index = expr->column.index;
     value = row->values[col_index];
     *out = schema->columns[col_index];
   }
@@ -702,6 +700,8 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, D
   switch (expr->type) {
     case EXPR_LITERAL:
       return evaluate_literal_expression(expr, db);
+    case EXPR_ARRAY_ACCESS:
+      return evaluate_array_access_expression(expr, row, schema, db, schema_idx);
     case EXPR_COLUMN:
       return evaluate_column_expression(expr, row, schema, db);
     case EXPR_UNARY_OP:
@@ -752,21 +752,53 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   
-  result.column_index = expr->column_index;
+  result.column.index = expr->column.index;
 
-  if (row && expr->column_index < schema->column_count) {
-    ColumnValue col = row->values[expr->column_index];
+  if (row && expr->column.index < schema->column_count) {
+    ColumnValue col = row->values[expr->column.index];
     
     if (col.is_toast) {
       check_and_concat_toast(db, &col);
     }
     
-    col.type = schema->columns[expr->column_index].type;
-    col.column_index = expr->column_index;
+    col.type = schema->columns[expr->column.index].type;
+    col.column.index = expr->column.index;
     return col;
   }
   
-  result.type = schema->columns[expr->column_index].type;
+  result.type = schema->columns[expr->column.index].type;
+  return result;
+}
+
+ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+  ColumnValue result = {0};
+
+  if (!expr || expr->type != EXPR_ARRAY_ACCESS) {
+    LOG_ERROR("Invalid array access expression");
+    return result;
+  }
+
+  ColumnValue array_index = evaluate_expression(expr->column.array_idx, row, schema, db, schema_idx);
+
+  if (!schema->columns[expr->column.index].is_array) {
+    LOG_ERROR("Attempted to index into non-array type.");
+    return result;
+  }
+
+  if (array_index.type != TOK_T_INT && array_index.type != TOK_T_UINT) {
+    LOG_ERROR("Array index must be an integer.");
+    return result;
+  }
+
+  int idx = array_index.int_value;
+  if (idx < 0 || idx >= row->values[expr->column.index].array.array_size) {
+    LOG_WARN("Array index out of bounds: %d (len = %d)", idx, row->values[expr->column.index].array.array_size);
+    return result;
+  }
+
+  result = row->values[expr->column.index].array.array_value[idx];
+  // LOG_DEBUG("%d[%d] = %s", expr->column.index, idx, str_column_value(&result));
+
   return result;
 }
 
@@ -1025,10 +1057,10 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
   if (expr->binary.op == TOK_EQ &&
       expr->binary.left->type == EXPR_COLUMN &&
       expr->binary.right->type == EXPR_LITERAL &&
-      schema->columns[expr->binary.left->column_index].is_primary_key && db) {
+      schema->columns[expr->binary.left->column.index].is_primary_key && db) {
     
     void* key = get_column_value_as_pointer(&right);
-    uint8_t btree_idx = hash_fnv1a(schema->columns[expr->binary.left->column_index].name, MAX_COLUMNS);
+    uint8_t btree_idx = hash_fnv1a(schema->columns[expr->binary.left->column.index].name, MAX_COLUMNS);
     RowID rid = btree_search(db->tc[schema_idx].btree[btree_idx], key);
 
     result.type = TOK_T_BOOL;
@@ -1415,7 +1447,7 @@ bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
     return true;    
   }
 
-  LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
+  // LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
 
   switch (col_val->type) {
     case TOK_T_INT:
