@@ -74,14 +74,19 @@ typedef struct ColumnValue {
     Interval interval_value;
     struct cv__Array { 
       ColumnValue* array_value;
-      uint8_t array_size;
+      uint16_t array_size;
       uint16_t array_type;
     } array;
+    struct cv__Column {
+      uint16_t index;
+      int16_t array_idx;
+    } column;
   };
 } ColumnValue;
 
 typedef enum {
   EXPR_COLUMN,
+  EXPR_ARRAY_ACCESS,
   EXPR_LITERAL,
   EXPR_UNARY_OP,
   EXPR_BINARY_OP,
@@ -100,7 +105,11 @@ typedef struct ExprNode {
 
   union {
     ColumnValue literal;
-    uint16_t column_index;
+    struct column {
+      uint16_t index;
+      ExprNode* array_idx;
+    } column;
+    
     struct {
       struct ExprNode* left;
       struct ExprNode* right;

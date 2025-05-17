@@ -622,12 +622,10 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
     for (int j = 0; j < db->tc[idx].schema->column_count; j++) {
       ExprNode* id_expr = malloc(sizeof(ExprNode));
       id_expr->type = EXPR_COLUMN;
-      id_expr->column_index = j;
+      id_expr->column.index = j;
       
       command.sel_columns[j].expr = id_expr;
-      // strncpy(cmd->sel_columns[j].alias, schema->columns[j].name, MAX_COLUMN_NAME);
     }
-    
     parser_consume(parser);
   } else {
     int column_count = 0;
@@ -755,7 +753,7 @@ void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, ui
         command->order_by[command->order_by_count].decend = true;      
       }
 
-      command->order_by[command->order_by_count].col = ord_expr->column_index;
+      command->order_by[command->order_by_count].col = ord_expr->column.index;
       command->order_by[command->order_by_count].type = ord_expr->type;
       command->order_by_count++;
 
@@ -1372,7 +1370,6 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   if (parser->cur->type == TOK_ID) {
     char* ident = strdup(parser->cur->value);
     parser_consume(parser);
-    
 
     if (parser->cur->type == TOK_LP) {
       ExprNode* node = calloc(1, sizeof(ExprNode));
@@ -1381,7 +1378,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
       node->fn.name = ident;
       node->fn.arg_count = 0;
 
-      parser_consume(parser); 
+      parser_consume(parser);
 
       if (parser->cur->type != TOK_RP) {
         while (true) {
@@ -1393,8 +1390,8 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
           ExprNode* arg = parser_parse_expression(parser, schema);
           if (!arg) return NULL;
 
-          node->fn.args[node->fn.arg_count] = arg;
-          node->fn.arg_count += 1;
+          node->fn.args[node->fn.arg_count++] = arg;
+
           if (parser->cur->type == TOK_COM) {
             parser_consume(parser);
           } else {
@@ -1418,10 +1415,28 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
       return NULL;
     }
 
-    ExprNode* node = calloc(1, sizeof(ExprNode));
-    node->type = EXPR_COLUMN;
-    node->column_index = col_index;
-    return node;
+    ExprNode* base = calloc(1, sizeof(ExprNode));
+    base->type = EXPR_COLUMN;
+    base->column.index = col_index;
+
+    while (parser->cur->type == TOK_LB) {
+      parser_consume(parser);  
+
+      ExprNode* index_expr = parser_parse_expression(parser, schema);
+      if (!index_expr) return NULL;
+
+      if (parser->cur->type != TOK_RB) {
+        REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RBRACK");
+        return NULL;
+      }
+      parser_consume(parser);
+
+      base->type = EXPR_ARRAY_ACCESS;
+      base->column.index = base->column.index;
+      base->column.array_idx = index_expr;
+    }
+
+    return base;
   }
 
   ColumnValue val;
@@ -1543,7 +1558,6 @@ void print_column_value(ColumnValue* val) {
     return;
   }
 
-
   if (val->is_array) {
     char buffer[1024];
     size_t offset = 0;
@@ -1554,7 +1568,6 @@ void print_column_value(ColumnValue* val) {
         offset += snprintf(buffer + offset, sizeof(buffer) - offset, ", ");
       }
       offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_str);
-      free(elem_str);
     }
       
     printf("arr<%s>[%s]", get_token_type(val->type), buffer);
@@ -1677,7 +1690,22 @@ void print_column_value(ColumnValue* val) {
 
 char* str_column_value(ColumnValue* val) {
   if (val->is_null) {
-    return strdup("NULL");
+    return "NULL";
+  }
+
+  if (val->is_array) {
+    char buffer[1024];
+    size_t offset = 0;
+    
+    for (size_t i = 0; i < val->array.array_size; i++) {
+      char* elem_str = str_column_value(&val->array.array_value[i]);
+      if (i > 0) {
+        offset += snprintf(buffer + offset, sizeof(buffer) - offset, ", ");
+      }
+      offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_str);
+    }
+
+    return strdup(buffer) ;
   }
 
   char buffer[256];
