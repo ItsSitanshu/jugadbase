@@ -277,9 +277,6 @@ uint32_t write_array_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Colu
     ColumnValue elem = col_val->array.array_value[i];
     (&elem)->is_array = false;
 
-    LOG_DEBUG("! %d %s", i, token_type_strings[elem.type]);
-    LOG_DEBUG("> %s", token_type_strings[base_def.type]);
-
     uint32_t written = write_column_value_to_buffer(buffer + offset, &elem, &base_def);
     offset += written;
   }
