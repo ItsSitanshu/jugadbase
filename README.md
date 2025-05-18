@@ -48,7 +48,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~FIX BUG: Make sure `DELETE` and `SELECT` work as expected~~
   - ~~FIX BUG: Arrays are stored weirdly, row-length isn't representative~~
   - ~~Implement array[] indexing~~
-  - Improve how select returns rows
+  - ~~Improve how select returns rows~~
   - Impelement compacting
   - Write tests for arrays and delete
   - Implement `DEFAULT` values
