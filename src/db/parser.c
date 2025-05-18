@@ -615,11 +615,12 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   
   uint8_t value_count = 0;
   
-  if (parser->cur->type == TOK_MUL) {
+  if (parser->cur->type == TOK_MUL) {   
     value_count = db->tc[idx].schema->column_count;
-    command.sel_columns = calloc(value_count, sizeof(SelectColumn));
-    
-    for (int j = 0; j < db->tc[idx].schema->column_count; j++) {
+
+    command.sel_columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));  // 🛠️ fix added
+
+    for (int j = 0; j < value_count; j++) {
       ExprNode* id_expr = malloc(sizeof(ExprNode));
       id_expr->type = EXPR_COLUMN;
       id_expr->column.index = j;
@@ -629,7 +630,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
     parser_consume(parser);
   } else {
     int column_count = 0;
-    command.sel_columns = calloc(MAX_COLUMNS, sizeof(ExprNode*));
+    command.sel_columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
     
     while (true) {
       ExprNode* expr = parser_parse_expression(parser, db->tc[idx].schema);
@@ -661,6 +662,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
     }
     value_count = column_count;
   }
+
   
   if (parser->cur->type != TOK_FRM) {
     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_FROM");

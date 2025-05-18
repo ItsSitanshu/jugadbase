@@ -10,6 +10,7 @@ typedef struct {
   int code;
   const char* message;
   Row* rows;
+  char** aliases;
   uint32_t row_count;
   uint8_t owns_rows;
 } ExecutionResult;

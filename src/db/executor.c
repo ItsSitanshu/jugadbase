@@ -57,12 +57,15 @@ Result execute_cmd(Database* db, JQLCommand* cmd) {
 
       printf("Row %u [%u.%u]: ", i + 1, row->id.page_id, row->id.row_id);
 
+      uint8_t alias_count = 0;
       for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
         ColumnDefinition col = cmd->schema->columns[c];
         ColumnValue val = row->values[c];
+  
         
         if (!val.is_null) {
-          printf("%s=", col.name);
+          printf("%s: ", result.exec.aliases[alias_count]);
+          alias_count++;
         }
         print_column_value(&val);
 
@@ -468,6 +471,11 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   uint32_t out_count = (available < max_out) ? available : max_out;
 
   Row* result_rows = calloc(out_count, sizeof(Row));
+  char** aliases = malloc(sizeof(char*) * cmd->value_counts[0]);
+  for (int i = 0; i < cmd->value_counts[0]; i++) {
+    aliases[i] = malloc(256);
+  }
+  
   if (!result_rows) {
     free(collected_rows);
     return (ExecutionResult){1, "Memory allocation failed for limited result rows"};
@@ -491,18 +499,35 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     }
   
     int col_count = cmd->value_counts[0];
-  
+
     for (int j = 0; j < col_count; j++) {
       ExprNode* expr = cmd->sel_columns[j].expr;
+
+      if (cmd->sel_columns[j].alias) {
+        aliases[j] = strdup(cmd->sel_columns[j].alias);
+      } else if (expr->type == EXPR_ARRAY_ACCESS) {
+        int base_idx = expr->column.index;
+        int array_idx = expr->column.array_idx->literal.int_value;
+
+        const char* base_name = cmd->schema->columns[base_idx].name;
+        char buffer[256];
+
+        snprintf(buffer, sizeof(buffer), "%s[%d]", base_name, array_idx);
+        aliases[j] = strdup(buffer);
+      } else {
+        aliases[j] = strdup(cmd->schema->columns[expr->column.index].name);
+      }
+
       if (!expr) {
         ColumnValue raw = src->values[j];
         dst->values[j] = raw; 
         dst->values[j].column.index = j;
       } else {
         ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
+        // LOG_DEBUG("printing using eval %d w. %d %d > %s", j, src->id.page_id, src->id.row_id, str_column_value(&val));      
         dst->values[j] = val;
       }
-    }
+    }  
   }
   
   free(collected_rows);
@@ -511,6 +536,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     .code = 0,
     .message = "Select executed successfully",
     .rows = result_rows,
+    .aliases = aliases,
     .row_count = out_count,
     .owns_rows = 1
   };
@@ -754,15 +780,16 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
   
   result.column.index = expr->column.index;
 
+
   if (row && expr->column.index < schema->column_count) {
     ColumnValue col = row->values[expr->column.index];
+
+    LOG_DEBUG("%d %d: %s", row->id.page_id, row->id.row_id, str_column_value(&col));
     
     if (col.is_toast) {
       check_and_concat_toast(db, &col);
     }
     
-    col.type = schema->columns[expr->column.index].type;
-    col.column.index = expr->column.index;
     return col;
   }
   
