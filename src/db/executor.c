@@ -64,7 +64,9 @@ Result execute_cmd(Database* db, JQLCommand* cmd) {
   
         
         if (!val.is_null) {
-          printf("%s: ", result.exec.aliases[alias_count]);
+          char* name = result.exec.aliases[alias_count] ? 
+            result.exec.aliases[alias_count] : col.name;
+          printf("%s: ", name);
           alias_count++;
         }
         print_column_value(&val);
@@ -576,11 +578,10 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   
       int valid_updates = 0;
       for (int k = 0; k < max_updates; ++k) {
-        char* colname = cmd->columns[k];
-        int col_index = find_column_index(schema, colname);
-        if (col_index < 0) continue;
+        int col_index = cmd->update_columns->index;
 
         ColumnValue evaluated = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
+        ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
         
         if (!infer_and_cast_value(&evaluated, &schema->columns[col_index])) {
           free(update_cols);
@@ -595,8 +596,16 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
           free(new_vals);
           return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};
         }
-        
+
         update_cols[valid_updates] = col_index;
+
+        if (!is_struct_zeroed(&array_idx, sizeof(ColumnValue))) {
+          old_vals[valid_updates] = row->values[col_index];
+          new_vals[valid_updates] = old_vals[valid_updates];
+          new_vals[valid_updates].array.array_value[array_idx.int_value] = evaluated;
+          continue;
+        }
+        
         old_vals[valid_updates] = row->values[col_index];
         new_vals[valid_updates] = evaluated;
         valid_updates++;
