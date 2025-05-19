@@ -62,8 +62,6 @@ ClusterManager* cluster_manager_init(char* root_dir) {
 
     cluster_switch(manager, 0);
     cluster_switch_db(manager, 1);
-
-    LOG_DEBUG("WORKS!");
   } else {
     LOG_INFO("No cluster configuration found, initialized empty manager");
   }

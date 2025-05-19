@@ -451,9 +451,8 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       }
 
       if (is_struct_zeroed(row, sizeof(Row))) continue;
-
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx))
-        continue;
+      if (row->deleted) continue;
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx))  continue;
 
       collected_rows[total_found] = *row;
       total_found++;  
@@ -566,7 +565,8 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   
     for (uint16_t row_idx = 0; row_idx < page->num_rows; ++row_idx) {
       Row* row = &page->rows[row_idx];
-  
+      
+      if (row->deleted) continue;
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
@@ -578,7 +578,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   
       int valid_updates = 0;
       for (int k = 0; k < max_updates; ++k) {
-        int col_index = cmd->update_columns->index;
+        int col_index = cmd->update_columns[k].index;
 
         ColumnValue evaluated = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
         ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
@@ -661,10 +661,8 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
       Row* row = &page->rows[row_idx];
 
       if (is_struct_zeroed(row, sizeof(Row))) continue;
-
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
-        continue;
-      }
+      if (row->deleted) continue;
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) continue;
       
       write_delete_wal(db->wal, schema_idx, page_idx, row_idx, row, schema);
 
@@ -792,8 +790,6 @@ ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* sc
 
   if (row && expr->column.index < schema->column_count) {
     ColumnValue col = row->values[expr->column.index];
-
-    LOG_DEBUG("%d %d: %s", row->id.page_id, row->id.row_id, str_column_value(&col));
     
     if (col.is_toast) {
       check_and_concat_toast(db, &col);

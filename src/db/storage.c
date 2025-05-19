@@ -209,16 +209,24 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       break;
   }
 }
-
 void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc) {
+  if (!file || !page) return;
+
   fseek(file, page_number * PAGE_SIZE, SEEK_SET);
 
   fwrite(&page->page_id, sizeof(page->page_id), 1, file);
-  fwrite(&page->num_rows, sizeof(page->num_rows), 1, file);
+
+  long num_rows_offset = ftell(file);
+  uint16_t placeholder = 0;
+  fwrite(&placeholder, sizeof(uint16_t), 1, file);
+
   fwrite(&page->free_space, sizeof(page->free_space), 1, file);
+
+  uint16_t actual_row_count = 0;
 
   for (int i = 0; i < page->num_rows; i++) {
     Row* row = &page->rows[i];
+    if (row->deleted) continue;
 
     fwrite(&row->id.page_id, sizeof(row->id.page_id), 1, file);
     fwrite(&row->id.row_id, sizeof(row->id.row_id), 1, file);
@@ -226,21 +234,28 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
     fwrite(&row->row_length, sizeof(row->row_length), 1, file);
 
     fwrite(&row->null_bitmap_size, sizeof(row->null_bitmap_size), 1, file);
-    if (row->null_bitmap != NULL) {
+    if (row->null_bitmap && row->null_bitmap_size > 0) {
       fwrite(row->null_bitmap, row->null_bitmap_size, 1, file);
     }
 
     for (int j = 0; j < tc.schema->column_count; j++) {
       ColumnDefinition* col_def = &tc.schema->columns[j];
-
       if (!row->values[j].is_null && col_def) {
         write_column_value(file, &row->values[j], col_def);
       }
     }
+
+    actual_row_count++;
   }
 
-  LOG_DEBUG("Updating pool %lu", page_number);
+  fseek(file, num_rows_offset, SEEK_SET);
+  fwrite(&actual_row_count, sizeof(actual_row_count), 1, file);
+
+  fseek(file, (page_number + 1) * PAGE_SIZE, SEEK_SET);
+
+  LOG_DEBUG("write_page: Page %lu written with %u active rows", page_number, actual_row_count);
 }
+
 
 void write_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def) {
   if (!col_val || !file || !col_val->array.array_value || col_val->array.array_size == 0) return;
@@ -661,33 +676,31 @@ uint32_t row_to_buffer(RowID* row_id, BufferPool* pool, TableSchema* schema, uin
 }
 
 bool serialize_delete(BufferPool* pool, RowID rid) {
-  if (!pool || rid.row_id == 0) return false;
+  if (!pool) return false;
 
-  for (int i = 0; i < POOL_SIZE; i++) {
-    Page* page = pool->pages[i];
-    if (!page || page->page_id != rid.page_id) continue;
-
-    if (rid.row_id == 0 || rid.row_id > page->num_rows) return false;
-
-    Row* row = &page->rows[rid.row_id - 1];
-
-    if (is_struct_zeroed(row, sizeof(Row))) {
-      LOG_WARN("serialize_delete: Row already deleted (page_id=%u, row_id=%u)", rid.page_id, rid.row_id);
-      return false;
-    }
-
-    page->free_space += row->row_length;
-
-    memset(row, 0, sizeof(Row));
-    row->deleted = true;
-    page->is_dirty = true;
-
-    LOG_DEBUG("serialize_delete: Deleted row from page %u, slot %u", rid.page_id, rid.row_id);
-    return true;
+  Page* page = pool->pages[rid.page_id];
+  if (!page) {
+    LOG_ERROR("serialize_delete: Page %u not found", rid.page_id);
+    return false;
   }
 
-  LOG_ERROR("serialize_delete: Page %u not found", rid.page_id);
-  return false;
+  if (rid.row_id > page->num_rows) return false;
+
+  Row* row = &page->rows[rid.row_id - 1];
+
+  if (is_struct_zeroed(row, sizeof(Row))) {
+    LOG_WARN("serialize_delete: Row already deleted (page_id=%u, row_id=%u)", rid.page_id, rid.row_id);
+    return false;
+  }
+
+  page->free_space += row->row_length;
+
+  memset(row, 0, sizeof(Row));
+  row->deleted = true;
+  page->is_dirty = true;
+
+  LOG_DEBUG("serialize_delete: Deleted row from page %u, slot %u", rid.page_id, rid.row_id);
+  return true;
 }
 
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
