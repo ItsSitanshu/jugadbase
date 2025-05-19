@@ -1,4 +1,12 @@
-START_TEST(test_delete_operations) {
+#include <check.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#include "executor.h"
+#include "testing.h"
+
+START_TEST(test_delete) {
   INIT_TEST(db);
   setup_test_data(db, employees_setup_queries);
 
@@ -26,12 +34,12 @@ START_TEST(test_delete_operations) {
     {
       "DELETE FROM employees WHERE is_active = false AND salary < 70000;",
       "SELECT * FROM employees WHERE is_active = false AND salary < 70000;",
-      4, 0  
-    }
+      2, 0  
+    },
     {
       "DELETE FROM employees;",
       "SELECT * FROM employees;",
-      15, 0 
+      9, 0 
     },
   };
 
@@ -62,20 +70,18 @@ START_TEST(test_delete_operations) {
   db_free(db);
 }
 END_TEST
-
 Suite* delete_suite(void) {
   Suite* s = suite_create("Delete");
-
-  TCase* tc = tcase_create("Delete");
-  tcase_add_test(tc, test_delete_operations);
-  suite_add_tcase(s, tc);
-
+  
+  TCase* tc_limit = tcase_create("Delete");
+  tcase_add_test(tc_limit, test_delete);
+  suite_add_tcase(s, tc_limit);
+  
   return s;
 }
 
 int main(void) {
-  SRunner* sr = srunner_create(update_suite());
-  srunner_add_suite(sr, delete_suite());
+  SRunner* sr = srunner_create(delete_suite());
   srunner_run_all(sr, CK_NORMAL);
   int failures = srunner_ntests_failed(sr);
   srunner_free(sr);

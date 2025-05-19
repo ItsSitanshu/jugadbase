@@ -44,6 +44,8 @@ set(TEST_UNIT_SOURCES
   test/unit/test_select_offset.c
   test/unit/test_select_order.c
   test/unit/test_update.c
+  test/unit/test_delete.c
+  test/unit/test_array.c
 )
 
 foreach(test_src IN LISTS TEST_UNIT_SOURCES)
