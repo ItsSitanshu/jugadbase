@@ -782,11 +782,10 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
     return command;
   }
 
-  command.schema = malloc(sizeof(TableSchema));
-  strcpy(command.schema->table_name, parser->cur->value);
-  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
-
-  if (is_struct_zeroed(&db->tc[idx].schema, sizeof(TableSchema))) {
+  uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
+  command.schema = db->tc[idx].schema;
+  
+  if (is_struct_zeroed(command.schema, sizeof(TableSchema))) {
     return command;
   }
 
@@ -803,19 +802,25 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
   command.values = calloc(1, sizeof(ExprNode*));
   command.row_count = 1;
 
-  command.columns = calloc(db->tc[idx].schema->column_count, sizeof(char*));
-  command.values[0] = calloc(db->tc[idx].schema->column_count, sizeof(ExprNode));
+  command.update_columns = calloc(command.schema->column_count, sizeof(UpdateColumn));
+  command.values[0] = calloc(command.schema->column_count, sizeof(ExprNode));
 
-  uint8_t null_bitmap_size = (db->tc[idx].schema->column_count + 7) / 8;
+  uint8_t null_bitmap_size = (command.schema->column_count + 7) / 8;
   command.bitmap = (uint8_t*)malloc(null_bitmap_size);
   if (!command.bitmap) {
     return command;
   }
   memset(command.bitmap, 0, null_bitmap_size);
 
+  ExprNode* expr = NULL;
   while (parser->cur->type == TOK_ID) {
-    char* column_name = strdup(parser->cur->value);
-    parser_consume(parser);
+    expr = parser_parse_primary(parser, command.schema);
+    if (!expr || !(expr->type == EXPR_COLUMN || expr->type == EXPR_ARRAY_ACCESS)) {
+      REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_EQUAL_IN_SET");
+      return command;
+    }
+
+    int col_index = expr->column.index;
   
     if (parser->cur->type != TOK_EQ) {
       REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_EQUAL_IN_SET");
@@ -823,21 +828,15 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
     }
     parser_consume(parser); 
     
-    ExprNode* value = parser_parse_expression(parser, db->tc[idx].schema);
+    ExprNode* value = parser_parse_expression(parser, command.schema);
     if (!value) {
       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUE_IN_SET");
-      free(column_name);
       return command;
     }
   
-    int col_index = find_column_index(db->tc[idx].schema, column_name);
-    if (col_index == -1) {
-      REPORT_ERROR(parser->lexer, "SYE_E_UNKNOWN_COLUMN_IN_SET");
-      free(column_name);
-      return command;
-    }
-  
-    command.columns[value_count] = column_name;
+    command.update_columns[value_count].index = col_index;
+    command.update_columns[value_count].array_idx = expr->type == EXPR_ARRAY_ACCESS ? 
+                         expr->column.array_idx : NULL;
     command.values[0][value_count] = value;
 
     value_count++;
@@ -850,17 +849,10 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
   }
 
   for (int i = 0; i < value_count; ++i) {
-    char* col_name = command.columns[i];
     ExprNode* val = command.values[0][i];
   
-    int col_index = find_column_index(db->tc[idx].schema, col_name);
-    if (col_index == -1) {
-      LOG_ERROR("Column '%s' not found in schema", col_name);
-      return command;
-    }
-  
-    if (db->tc[idx].schema->columns[col_index].is_not_null /* && val->is_null */) {
-      LOG_ERROR("Column '%s' is NOT NULL but attempted to set NULL", col_name);
+    if (command.schema->columns[command.update_columns[i].index].is_not_null /* && val->is_null */) {
+      LOG_ERROR("Column is NOT NULL but attempted to set NULL");
       return command;
     }
   }  

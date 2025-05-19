@@ -194,10 +194,15 @@ typedef struct {
   bool is_populated;
 } TableCatalogEntry;
 
-typedef struct {
+typedef struct SelectColumn {
   ExprNode* expr;
   char* alias;
 } SelectColumn;
+
+typedef struct UpdateColumn {
+  uint16_t index;
+  ExprNode* array_idx;
+} UpdateColumn;
 
 typedef struct {
   ColumnValue* value;
@@ -219,6 +224,8 @@ typedef struct {
 
   SelectColumn* sel_columns;
   bool select_all;
+
+  UpdateColumn* update_columns;
 
   ExprNode* where;
   bool has_where;
