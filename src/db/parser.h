@@ -162,7 +162,7 @@ typedef struct {
   bool is_auto_increment;
 
   bool has_default;
-  char default_value[MAX_IDENTIFIER_LEN];
+  ColumnValue* default_value;
 
   bool has_check;
   char check_expr[MAX_IDENTIFIER_LEN];

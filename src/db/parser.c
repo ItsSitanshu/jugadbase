@@ -314,13 +314,15 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
       case TOK_DEF:
         parser_consume(parser);
         
-        ColumnValue col_val;
-        if (!(parser_parse_value(parser, &col_val))) {
+        ExprNode* expr = NULL;
+        expr = parser_parse_primary(parser, command->schema);
+
+        if (!expr || expr->type != EXPR_LITERAL) {
           REPORT_ERROR(parser->lexer, "SYE_E_VDEFVAL");
           return false;
         }
-
-        // column.default_value = memcpy(&column.default_value, &col_val, sizeof(col_val));
+        
+        column.default_value = memcpy(&column.default_value, &expr->literal, sizeof(expr->literal));
         column.has_default = true;
         
         break;
