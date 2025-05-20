@@ -538,6 +538,7 @@ bool load_schema_tc(Database* db, char* table_name) {
     io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
     io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
 
+    io_read(io, &col->has_constraints, sizeof(bool));
     io_read(io, &col->is_primary_key, sizeof(bool));
     io_read(io, &col->is_unique, sizeof(bool));
     io_read(io, &col->is_not_null, sizeof(bool));
@@ -688,8 +689,9 @@ bool load_initial_schema(Database* db) {
       io_read(io, &col->type_varchar, sizeof(uint8_t));
       io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
       io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
-      io_read(io, &col->is_primary_key, sizeof(bool));
 
+      io_read(io, &col->has_constraints, sizeof(bool));
+      io_read(io, &col->is_primary_key, sizeof(bool));
       io_read(io, &col->is_unique, sizeof(bool));
       io_read(io, &col->is_not_null, sizeof(bool));
       io_read(io, &col->is_array, sizeof(bool));
