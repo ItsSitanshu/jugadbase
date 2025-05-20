@@ -13,14 +13,32 @@
 -- Constraints such as PRIMARY KEY (PRIMKEY), FOREIGN KEY (FRNKEY), and optional defaults are used to ensure
 -- relational integrity. Arrays and expression columns are used for multi-column constraints and index definitions.
 
+CREATE TABLE jb_sequences (
+  id SERIAL PRIMKEY,
+  name TEXT NOT NULL UNIQUE,
+  current_value INT DEFAULT 1,
+  increment_by INT DEFAULT 1,
+  min_value INT DEFAULT 1,
+  max_value INT,
+  cycle BOOL DEFAULT false
+);
+
+INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) 
+VALUES (0, "__core_jb_sequence", 0, 1, 0, NULL, false);
 
 CREATE TABLE jb_tables (
   id SERIAL PRIMKEY,
   name TEXT NOT NULL UNIQUE,
-  schema_name TEXT DEFAULT 'public',
+  database_name TEXT DEFAULT 'public',
   owner TEXT,
   created_at TIMESTAMP 
 );
+
+CREATE TABLE jb_toast (
+  id SERIAL,
+  seq SERIAL,
+  data TEXT
+); 
 
 CREATE TABLE jb_columns (
   id SERIAL PRIMKEY,
@@ -60,15 +78,13 @@ CREATE TABLE jb_constraints (
   created_at TIMESTAMP
 );
 
-
-CREATE TABLE jb_sequences (
+CREATE TABLE jb_attrdef (
   id SERIAL PRIMKEY,
-  name TEXT NOT NULL UNIQUE,
-  current_value INT DEFAULT 1,
-  increment_by INT DEFAULT 1,
-  min_value INT DEFAULT 1,
-  max_value INT,
-  cycle BOOL DEFAULT false
+  table_id INT NOT NULL,
+  column_name TEXT NOT NULL,
+  default_expr TEXT NOT NULL,
+  seq_key INT FRNKEY REF jb_sequences(id),
+  created_at TIMESTAMP
 );
 
 CREATE TABLE jb_roles (

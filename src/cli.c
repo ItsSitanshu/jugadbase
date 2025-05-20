@@ -74,6 +74,7 @@ int main(int argc, char* argv[]) {
 
   DbCluster cluster = cluster_manager->clusters[cluster_manager->active_cluster];
   db = cluster.databases[cluster.active_db];
+  db->core = cluster.databases[0];
 
   char* input = NULL;
   CommandHistory history = { .current = 1, .size = 0 };
