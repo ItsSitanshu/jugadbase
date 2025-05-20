@@ -35,7 +35,7 @@ void io_write(FILE* file, const void* data, size_t size) {
     if (written != size) {
       LOG_ERROR("Write failed, expected %zu bytes, wrote %zu bytes", size, written);
     } else {
-      LOG_DEBUG("io_write: wrote %zu bytes", size);
+      // LOG_DEBUG("io_write: wrote %zu bytes", size);
     }
   }
 }
@@ -43,7 +43,7 @@ void io_write(FILE* file, const void* data, size_t size) {
 size_t io_read(FILE* file, void* buffer, size_t size) {
   if (file && buffer) {
     size_t bytes_read = fread(buffer, 1, size, file);
-    LOG_DEBUG("io_read: read %zu bytes", bytes_read);
+    // LOG_DEBUG("io_read: read %zu bytes", bytes_read);
     return bytes_read;
   }
   return 0;
@@ -53,7 +53,7 @@ void io_seek(FILE* file, long offset, int whence) {
   if (!file) return;
 
   fseek(file, offset, whence);
-  LOG_DEBUG("io_seek: moved to offset %ld", offset);
+  // LOG_DEBUG("io_seek: moved to offset %ld", offset);
 }
 
 void io_seek_write(FILE* file, long offset, const void* data, size_t size, int whence) {
@@ -75,6 +75,6 @@ long io_tell(FILE* file) {
   if (!file) return -1;
 
   long pos = ftell(file);
-  LOG_DEBUG("io_tell: current position is %ld", pos);
+  // LOG_DEBUG("io_tell: current position is %ld", pos);
   return pos;
 }
