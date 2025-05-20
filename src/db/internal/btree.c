@@ -1,5 +1,5 @@
-#include "btree.h"
-#include "datetime.h"
+#include "internal/btree.h"
+#include "internal/datetime.h"
 
 BTree* btree_create(uint8_t key_type) {
   BTree* tree = (BTree*)malloc(sizeof(BTree));

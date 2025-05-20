@@ -8,8 +8,8 @@
 #include "utils/log.h"
 #include "utils/jugadline.h"
 
-#include "executor.h"
-#include "cluster.h"
+#include "kernel/executor.h"
+#include "storage/cluster.h"
 
 #define ROOT_DIR "./data/clusters"
 

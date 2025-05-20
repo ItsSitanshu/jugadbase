@@ -1,12 +1,13 @@
 #ifndef JQL_COMMAND_H
 #define JQL_COMMAND_H
 
-#include "lexer.h"
-#include "io.h"
-#include "btree.h"
-#include "datetime.h"
+#include "parser/lexer.h"
+#include "utils/io.h"
 
-#include "../utils/security.h"
+#include "internal/btree.h"
+#include "internal/datetime.h"
+
+#include "utils/security.h"
 
 #define MAX_COLUMNS 256
 #define MAX_OPERATIONS 128

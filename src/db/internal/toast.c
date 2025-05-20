@@ -1,5 +1,5 @@
-#include "toast.h"
-#include "executor.h"
+#include "internal/toast.h"
+#include "kernel/executor.h"
 
 uint32_t toast_new_entry(Database* db, const char* data) {
   if (!db || !data) {

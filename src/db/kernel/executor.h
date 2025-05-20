@@ -1,8 +1,11 @@
 #ifndef EXECUTOR_H
 #define EXECUTOR_H
 
-#include "database.h"
-#include "functions.h"
+#include "storage/database.h"
+#include "internal/functions.h"
+
+#include "utils/log.h"
+#include "utils/security.h"
 
 #include <stdarg.h>
 
@@ -68,8 +71,6 @@ bool column_name_in_list(const char* name, char** list, uint8_t list_len);
 void check_and_concat_toast(Database* db, ColumnValue* value);
 bool check_foreign_key(Database* db, ColumnDefinition def, ColumnValue val);
 bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValue val);
-
-ExecutionOrder* generate_execution_plan(JQLCommand* command);
 
 // WAL
 void write_update_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 

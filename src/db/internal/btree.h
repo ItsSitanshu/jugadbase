@@ -1,8 +1,8 @@
 #ifndef BTREE_H
 #define BTREE_H
 
-#include "io.h"
-#include "token.h"
+#include "utils/io.h"
+#include "parser/token.h"
 
 #include <stdint.h>
 

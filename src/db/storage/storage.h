@@ -1,9 +1,9 @@
 #ifndef STORAGE_H
 #define STORAGE_H
 
-#include "io.h"
-#include "fs.h"
-#include "parser.h"
+#include "utils/io.h"
+#include "storage/fs.h"
+#include "parser/parser.h"
 
 #define PAGE_SIZE 8192
 #define POOL_SIZE 32

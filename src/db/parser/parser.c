@@ -1,5 +1,5 @@
-#include "parser.h"
-#include "database.h"
+#include "parser/parser.h"
+#include "storage/database.h"
 
 Parser* parser_init(Lexer* lexer) {
   Parser* parser = malloc(sizeof(Parser));

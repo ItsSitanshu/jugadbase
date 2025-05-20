@@ -13,17 +13,49 @@ if (DEFINED CMAKE_EXE_LINKER_FLAGS)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 endif()
 
-include_directories(src/db src/utils src/tests)
+cmake_minimum_required(VERSION 3.14)
+project(jugadbase C)
 
-file(GLOB DB_SOURCES src/db/*.c)
-file(GLOB UTILS_SOURCES src/utils/*.c)
+set(CMAKE_C_STANDARD 11)
+
+# === Sources ===
+
+set(DB_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/lexer.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/parser.c
+
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/commands.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/core.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/expression.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/utils.c
+
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/btree.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/datetime.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/functions.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/toast.c
+  
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/cluster.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/database.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/fs.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/storage.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/wal.c
+)
+
+set(UTILS_SOURCES
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/io.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/log.c
+)
 
 add_library(jugadbase STATIC ${DB_SOURCES} ${UTILS_SOURCES})
 
-add_executable(jugad-cli src/cli.c)
+target_include_directories(jugadbase PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db
+)
+
+add_executable(jugad-cli ${CMAKE_CURRENT_SOURCE_DIR}/src/db/cli.c)
 target_link_libraries(jugad-cli PRIVATE jugadbase m) 
 
-add_executable(jugad-svr src/server.c)
+add_executable(jugad-svr ${CMAKE_CURRENT_SOURCE_DIR}/src/db/server.c)
 target_link_libraries(jugad-svr PRIVATE jugadbase m)
 
 enable_testing()

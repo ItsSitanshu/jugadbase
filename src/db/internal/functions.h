@@ -7,8 +7,8 @@
 #include <ctype.h>
 #include <time.h>
 
-#include "parser.h"
-#include "storage.h"
+#include "parser/parser.h"
+#include "storage/storage.h"
 
 typedef struct Database Database;
 

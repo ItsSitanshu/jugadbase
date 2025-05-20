@@ -2,7 +2,7 @@
 #define DB_CLUSTER_H
 
 #include <stdbool.h>
-#include "executor.h" 
+#include "kernel/executor.h" 
 
 #define MAX_DBS_PER_CLUSTER 256
 #define MAX_CLUSTERS 8
@@ -10,7 +10,7 @@
 
 #define CONFIG_FILE "cluster.jbconf"
 #ifndef CORE_JDL_PATH
-  #define CORE_JDL_PATH "src/core.jcl"
+  #define CORE_JDL_PATH "src/db/core.jcl"
 #endif
 
 typedef struct {

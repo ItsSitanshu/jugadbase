@@ -1,5 +1,5 @@
-#include "fs.h"
-#include "database.h"
+#include "storage/fs.h"
+#include "storage/database.h"
 
 #include "../utils/log.h"
 

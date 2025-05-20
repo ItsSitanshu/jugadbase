@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "executor.h"
-#include "testing.h"
+#include "kernel/executor.h"
+#include "utils/testing.h"
 
 START_TEST(test_combined_select_features) {
   INIT_TEST(db);

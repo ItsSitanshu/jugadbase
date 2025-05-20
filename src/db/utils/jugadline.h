@@ -1,7 +1,7 @@
 #ifndef JUGADLINE_H
 #define JUGADLINE_H 
 
-#include "fs.h"
+#include "storage/fs.h"
 
 #include <stdio.h>
 #include <stdlib.h>

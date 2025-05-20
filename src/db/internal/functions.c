@@ -1,5 +1,4 @@
-#include "functions.h"
-#include "datetime.h"
+#include "internal/functions.h"
 
 FunctionRegistry global_function_registry = {NULL, 0, 0};
 

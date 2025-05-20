@@ -1,12 +1,12 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 
-#include "fs.h"
-#include "io.h"
-#include "btree.h"
-#include "parser.h"
+#include "storage/fs.h"
+#include "utils/io.h"
+#include "internal/btree.h"
+#include "parser/parser.h"
 #include "storage.h"
-#include "toast.h"
+#include "internal/toast.h"
 #include "wal.h"
 
 #define MAX_COMMANDS 1024

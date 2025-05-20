@@ -1,8 +1,8 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#include "token.h"
-#include "bit128.h"
+#include "parser/token.h"
+#include "utils/bit128.h"
 
 #include <ctype.h>
 #include <stddef.h>

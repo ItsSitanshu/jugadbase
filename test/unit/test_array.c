@@ -4,8 +4,8 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-#include "executor.h"
-#include "testing.h"
+#include "kernel/executor.h"
+#include "utils/testing.h"
 
 START_TEST(test_array_column_access_and_update) {
   INIT_TEST(db);

@@ -1,6 +1,6 @@
-#include "database.h"
-#include "executor.h"
-#include "uuid.h"
+#include "storage/database.h"
+#include "kernel/executor.h"
+#include "utils/uuid.h"
 
 #include "../utils/log.h"
 #include "../utils/security.h"

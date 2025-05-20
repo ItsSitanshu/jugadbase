@@ -1,6 +1,6 @@
-#include "datetime.h"
+#include "internal/datetime.h"
 
-#include "../utils/log.h"
+#include "utils/log.h"
 
 #include <stdio.h>
 #include <stdlib.h>

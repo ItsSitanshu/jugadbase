@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "executor.h"
-#include "testing.h"
+#include "kernel/executor.h"
+#include "utils/testing.h"
 
 START_TEST(test_select_with_like) {
   INIT_TEST(db);
