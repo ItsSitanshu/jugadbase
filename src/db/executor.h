@@ -86,6 +86,7 @@ bool insert_default_value(Database* db, int table_id, const char* column_name, c
 bool sequence_next_val(Database* db, int table_id, int id_);
 
 bool create_squence(char* name, uint64_t increment_by, uint64_t max_value, bool cycle);
-bool create_sequence_link(ColumnDefinition* def, char* name, uint64_t min_value, uint64_t increment_by, uint64_t max_value, bool cycle);
+bool create_sequence_link(Database* db, ColumnDefinition* def, char* name, uint64_t min_value,
+  uint64_t increment_by, uint64_t max_value, bool cycle);
 
 #endif // EXECUTOR_H

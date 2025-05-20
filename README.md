@@ -51,13 +51,15 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Improve how select returns rows~~
   - ~~Impelement compacting~~
   - ~~Write tests for arrays and delete~~
-  - Implement `DEFAULT` values
-  - Implement `apply_wal()` for recovery
-  - Add crash recovery on startup using WAL
-  - Build basic physical-backup for Yielded Archival of Known States (YAKS)
+- Implement the `RETURNING` sub-clause for `INSERT`
+- Implement `SERIAL` sequences
+- Migrate attribute definitions binary (schema) => jb_core 
+- Implement `DEFAULT` values
 - Implement foreign constraints
 - Design casading  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
+- Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
+- Implement locking boosted sequences
 - Implement `$variables` for cleaner SDK support
 - Implement `DROP` to remove tables
 - Add indexing for performance optimization  
@@ -66,11 +68,12 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Optimize `JOIN` performance  
 - Implement functions for dynamic types (DATETIME/JSON/BLOB/TEXT)
 - Benchmark query execution speed  
-- Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
+- Implement `apply_wal()` for recovery
+- Add crash recovery on startup using WAL
+- Build basic physical-backup for Yielded Archival of Known States (YAKS)
 - Add support for stored procedures  
 - Implement triggers  
 - Add replication and sharding for scalability  
-- Add 
 - Add support for database-specific file management, including backing up and restoring individual files
 - Implement composite primary keys
 - Custom importable C-written functions with <dlfcn.h>

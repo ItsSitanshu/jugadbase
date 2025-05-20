@@ -13,6 +13,14 @@
 -- Constraints such as PRIMARY KEY (PRIMKEY), FOREIGN KEY (FRNKEY), and optional defaults are used to ensure
 -- relational integrity. Arrays and expression columns are used for multi-column constraints and index definitions.
 
+CREATE TABLE jb_tables (
+  id SERIAL PRIMKEY,
+  name TEXT NOT NULL UNIQUE,
+  database_name TEXT DEFAULT 'public',
+  owner TEXT,
+  created_at TIMESTAMP 
+);
+
 CREATE TABLE jb_sequences (
   id SERIAL PRIMKEY,
   name TEXT NOT NULL UNIQUE,
@@ -21,17 +29,6 @@ CREATE TABLE jb_sequences (
   min_value INT DEFAULT 1,
   max_value INT,
   cycle BOOL DEFAULT false
-);
-
-INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) 
-VALUES (0, "__core_jb_sequence", 0, 1, 0, NULL, false);
-
-CREATE TABLE jb_tables (
-  id SERIAL PRIMKEY,
-  name TEXT NOT NULL UNIQUE,
-  database_name TEXT DEFAULT 'public',
-  owner TEXT,
-  created_at TIMESTAMP 
 );
 
 CREATE TABLE jb_toast (

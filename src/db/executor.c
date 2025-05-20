@@ -142,7 +142,6 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   uint8_t column_count = (uint8_t)schema->column_count;
   io_write(tca_io, &column_count, sizeof(uint8_t));
 
-
   insert_table(db, schema->table_name);
 
   for (int i = 0; i < column_count; i++) {
@@ -2493,6 +2492,8 @@ bool insert_table(Database* db, char* name) {
     LOG_ERROR("Invalid parameters to insert_table");
     return false;
   }
+  
+  if (!db->core) return true;
 
   char query[2048];
 
@@ -2504,12 +2505,9 @@ bool insert_table(Database* db, char* name) {
     db->uuid
   );
 
-  free(col_names_str);
-  free(ref_cols_str);
-
   bool success = (process(db->core, query)).exec.code == 0;
   if (!success) {
-    LOG_ERROR("Failed to insert constraint '%s'", name);
+    LOG_ERROR("Failed to insert table '%s'", name);
     return false;
   }
 
@@ -2629,9 +2627,6 @@ bool create_sequence_link(Database* db, ColumnDefinition* def, char* name, uint6
   );
 
   bool success = (process(db->core, query)).exec.code == 0;
-  if (!success) {
-    LOG_ERROR("Failed to insert default value for column '%s'", column_name);
-  }
 
   return success;
 }
