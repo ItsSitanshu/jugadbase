@@ -155,6 +155,7 @@ typedef struct {
   uint8_t type_decimal_precision;
   uint8_t type_decimal_scale;
 
+  bool has_constraints;
   bool is_primary_key;
   bool is_unique;
   bool is_not_null;

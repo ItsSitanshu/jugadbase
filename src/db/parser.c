@@ -213,11 +213,13 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
     switch (parser->cur->type) {
       case TOK_PK:
         column.is_primary_key = true;
+        column.has_constraints = true;
         column.is_unique = true;
         column.is_not_null = true;
         parser_consume(parser);
         break;
       case TOK_FK: {
+        column.has_constraints = true;
         column.is_foreign_key = true;
         parser_consume(parser);
         
@@ -297,6 +299,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         break;
       }
       case TOK_UNQ:
+        column.has_constraints = true;
         column.is_unique = true;
         parser_consume(parser);
         break;
@@ -309,6 +312,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         }
 
         column.is_not_null = true;
+        column.has_constraints = true;
         parser_consume(parser);
         break;
       case TOK_DEF:
