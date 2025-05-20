@@ -78,4 +78,14 @@ void write_update_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
 void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 
   Row* row, TableSchema* schema);
 
+bool insert_table(Database* db, char* name);
+bool insert_constraint(Database* db, int table_id, const char* name, int constraint_type, const char** column_names, int column_count,
+  const char* check_expr, const char* ref_table, const char** ref_columns, int ref_column_count, const char* on_delete, const char* on_update,
+  bool is_deferrable, bool is_deferred);
+bool insert_default_value(Database* db, int table_id, const char* column_name, const char* default_expr);
+bool sequence_next_val(Database* db, int table_id, int id_);
+
+bool create_squence(char* name, uint64_t increment_by, uint64_t max_value, bool cycle);
+bool create_sequence_link(ColumnDefinition* def, char* name, uint64_t min_value, uint64_t increment_by, uint64_t max_value, bool cycle);
+
 #endif // EXECUTOR_H
