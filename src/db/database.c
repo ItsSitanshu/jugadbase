@@ -65,7 +65,6 @@ Database* db_init(char* dir) {
   LOG_INFO("Successfully loaded %lu table(s) from catalog", db->table_count);
   
   register_builtin_functions();
-  toast_create(db);
 
   return db;
 }
@@ -547,14 +546,14 @@ bool load_schema_tc(Database* db, char* table_name) {
     io_read(io, &col->is_auto_increment, sizeof(bool));
 
     io_read(io, &col->has_default, sizeof(bool));
-    if (col->has_default) {
-      if (io_read(io, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-        LOG_ERROR("Failed to read default value.");
-        free(schema->columns);
-        free(schema);
-        return false;
-      }
-    }
+    // if (col->has_default) {
+    //   if (io_read(io, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+    //     LOG_ERROR("Failed to read default value.");
+    //     free(schema->columns);
+    //     free(schema);
+    //     return false;
+    //   }
+    // }
 
     io_read(io, &col->has_check, sizeof(bool));
     if (col->has_check) {
@@ -698,14 +697,14 @@ bool load_initial_schema(Database* db) {
       io_read(io, &col->is_auto_increment, sizeof(bool));
 
       io_read(io, &col->has_default, sizeof(bool));
-      if (col->has_default) {
-        if (io_read(io, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-          LOG_ERROR("Failed to read default value.");
-          free(schema->columns);
-          free(schema);
-          return false;
-        }
-      }
+      // if (col->has_default) {
+      //   if (io_read(io, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+      //     LOG_ERROR("Failed to read default value.");
+      //     free(schema->columns);
+      //     free(schema);
+      //     return false;
+      //   }
+      // }
 
       io_read(io, &col->has_check, sizeof(bool));
       if (col->has_check) {

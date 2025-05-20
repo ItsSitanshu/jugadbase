@@ -10,8 +10,10 @@
 #include "wal.h"
 
 #define MAX_COMMANDS 1024
-#define MAX_TABLES 256 // Prime to avoid hash collisons
+#define MAX_TABLES 256 
 #define DB_INIT_MAGIC 0x4A554741  // "JUGA" 
+
+typedef struct Database Database;
 
 typedef struct Database {
   Lexer* lexer;
@@ -31,6 +33,7 @@ typedef struct Database {
   FILE* wal;
 
   FS* fs;
+  Database* core;
 } Database;
 
 Database* db_init(char* dir);

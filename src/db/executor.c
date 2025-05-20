@@ -162,9 +162,9 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col->is_auto_increment, sizeof(bool));
 
     io_write(tca_io, &col->has_default, sizeof(bool));
-    if (col->has_default) {
-      io_write(tca_io, col->default_value, MAX_IDENTIFIER_LEN);
-    }
+    // if (col->has_default) {
+    //   io_write(tca_io, col->default_value, MAX_IDENTIFIER_LEN);
+    // }
 
     io_write(tca_io, &col->has_check, sizeof(bool));
     if (col->has_check) {
