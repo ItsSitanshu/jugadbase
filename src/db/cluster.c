@@ -48,6 +48,11 @@ ClusterManager* cluster_manager_init(char* root_dir) {
         DbCluster* cluster = &manager->clusters[i];
         for (int j = 0; j < cluster->db_count; j++) {
           cluster->databases[j] = db_init(cluster->db_paths[j]);
+
+          if (j > 0) {
+            cluster->databases[j]->core = cluster->databases[0];
+          }
+          
           if (!cluster->databases[j]) {
             LOG_ERROR("Failed to initialize database at '%s'", cluster->db_paths[j]);
           }
@@ -212,7 +217,11 @@ bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path) {
     LOG_ERROR("Failed to initialize database at '%s'", full_path);
     return false;
   }
-  
+
+  if (manager->cluster_count > 0) {
+    db->core = cluster->databases[0];
+  } 
+
   int db_idx = cluster->db_count;
   cluster->databases[db_idx] = db;
   strncpy(cluster->db_paths[db_idx], full_path, 255);
