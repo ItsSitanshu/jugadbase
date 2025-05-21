@@ -641,10 +641,8 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   return (RowID){ row.id.page_id, row.id.row_id };
 }
 
-uint32_t row_to_buffer(RowID* row_id, BufferPool* pool, TableSchema* schema, uint8_t* buffer) {
-  if (!row_id || !pool || !buffer) return 0;
-
-  Row* row = &(pool->pages[row_id->page_id]->rows[row_id->row_id - 1]);
+uint32_t row_to_buffer(Row* row, BufferPool* pool, TableSchema* schema, uint8_t* buffer) {
+  if (!row || !pool || !buffer) return 0;
   
   uint32_t offset = 0;
 

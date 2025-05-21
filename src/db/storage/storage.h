@@ -51,7 +51,7 @@ uint32_t write_array_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Colu
 void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_def);
 uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, ColumnDefinition* col_def);
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc);
-uint32_t row_to_buffer(RowID* row_id, BufferPool* pool, TableSchema* schema, uint8_t* buffer);
+uint32_t row_to_buffer(Row* row, BufferPool* pool, TableSchema* schema, uint8_t* buffer);
 bool serialize_delete(BufferPool* pool, RowID rid);
 
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc);

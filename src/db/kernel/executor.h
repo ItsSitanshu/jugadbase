@@ -12,9 +12,13 @@
 typedef struct {
   int code;
   const char* message;
+
   Row* rows;
-  char** aliases;
   uint32_t row_count;
+
+  char** aliases;
+  size_t alias_limit;
+
   uint8_t owns_rows;
 } ExecutionResult;
 
@@ -28,7 +32,7 @@ Result process(Database* db, char* buffer);
 Result execute_cmd(Database* db, JQLCommand* cmd);
 ExecutionResult execute_create_table(Database* db, JQLCommand* cmd);
 ExecutionResult execute_insert(Database* db, JQLCommand* cmd);
-RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
+Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
   ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
   TableSchema* schema, uint8_t column_count,
   char** columns, uint8_t up_col_count, bool specified_order);

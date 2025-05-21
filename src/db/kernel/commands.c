@@ -58,15 +58,20 @@ Result execute_cmd(Database* db, JQLCommand* cmd) {
       for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
         ColumnDefinition col = cmd->schema->columns[c];
         ColumnValue val = row->values[c];
-  
-        
-        if (!val.is_null) {
+
+        // LOG_DEBUG("%d : alias: %s norm: %s", c, result.exec.aliases[alias_count], col.name);
+
+        if (!val.is_null && result.exec.aliases[alias_count]) {
           char* name = result.exec.aliases[alias_count] ? 
             result.exec.aliases[alias_count] : col.name;
           printf("%s: ", name);
           alias_count++;
         }
         print_column_value(&val);
+
+        if (alias_count >= result.exec.alias_limit) {
+          break;
+        }
 
         if ((c < cmd->value_counts[0] - 1) && (!val.is_null))  {
           printf(", ");
@@ -139,7 +144,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   uint8_t column_count = (uint8_t)schema->column_count;
   io_write(tca_io, &column_count, sizeof(uint8_t));
 
-  insert_table(db, schema->table_name);
+  // insert_table(db, schema->table_name);
 
   for (int i = 0; i < column_count; i++) {
     ColumnDefinition* col = &schema->columns[i];
@@ -259,13 +264,17 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   uint8_t wal_buf[MAX_ROW_BUFFER];
   uint32_t wal_len = 0;
 
+  Row* ret_rows = malloc(sizeof(Row) * cmd->row_count);
+
+  Row* row = NULL;
+  
   for (uint32_t i = 0; i < cmd->row_count; i++) {
-    RowID* row_id = execute_row_insert(cmd->values[i], db, schema_idx, primary_key_cols,
+    row = execute_row_insert(cmd->values[i], db, schema_idx, primary_key_cols,
       primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order);
-    
-    if (!row_id) {
+
+    if (!row) {
       for (uint32_t j = 0; j < inserted_count; j++) {
-        serialize_delete(&(db->lake[schema_idx]), inserted_rows[j]);  
+        serialize_delete(cmd->schema, inserted_rows[j]);  
       }
 
       free(primary_key_cols);
@@ -275,8 +284,12 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
       return (ExecutionResult){1, "Insert failed"};
     }
 
-    inserted_rows[inserted_count++] = *row_id;
-    wal_len += row_to_buffer(row_id, &(db->lake[schema_idx]), schema, wal_buf);
+    inserted_rows[inserted_count] = row->id;
+    ret_rows[inserted_count] = *row; 
+
+    inserted_count++;
+    wal_len += row_to_buffer(row, cmd->schema, schema, wal_buf);
+    row = NULL;
   }
 
   wal_write(db->wal, WAL_INSERT, schema_idx, wal_buf, wal_len);
@@ -284,47 +297,54 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   free(primary_key_cols);
   free(primary_key_vals);
   free(inserted_rows);
-
-  return (ExecutionResult){0, "Inserted successfully", .row_count =  inserted_count};
+  
+  return (ExecutionResult) {
+    .code = 0,
+    .message = "Inserted successfully",
+    .row_count = inserted_count,
+    .rows = cmd->ret_col_count > 0 ? ret_rows : NULL,
+    .aliases = cmd->returning_columns,
+    .alias_limit = cmd->ret_col_count
+  };
 }
 
 
-RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
+Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
                       ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
                       TableSchema* schema, uint8_t column_count,
                       char** columns, uint8_t up_col_count, bool specified_order) {
   uint8_t primary_key_count = 0;
 
-  Row row = {0};
-  row.values = (ColumnValue*)calloc(sizeof(ColumnValue), column_count);
+  Row* row = malloc(sizeof(Row));
+  row->values = (ColumnValue*)calloc(sizeof(ColumnValue), column_count);
 
-  if (!row.values) {
+  if (!row->values) {
     return NULL;
   }
 
-  row.id.row_id = 0; 
-  row.id.page_id = 0; 
+  row->id.row_id = 0; 
+  row->id.page_id = 0; 
 
   uint8_t null_bitmap_size = (column_count + 7) / 8;
   uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
   
   if (!null_bitmap) {
-    free(row.values);
+    free(row->values);
     return NULL;
   }
   
   memset(null_bitmap, 0, null_bitmap_size);
 
-  row.null_bitmap_size = null_bitmap_size;
-  row.null_bitmap = null_bitmap;
-  row.row_length = sizeof(row.id) + null_bitmap_size;
+  row->null_bitmap_size = null_bitmap_size;
+  row->null_bitmap = null_bitmap;
+  row->row_length = sizeof(row->id) + null_bitmap_size;
   
   if (specified_order) up_col_count = column_count;
 
   // Initialize all columns as NULL
   for (uint8_t i = 0; i < column_count; i++) {
-    row.values[i].type = schema->columns[i].type;
-    row.values[i].is_null = true;
+    row->values[i].type = schema->columns[i].type;
+    row->values[i].is_null = true;
 
     null_bitmap[i / 8] |= (1 << (i % 8));
   }
@@ -350,11 +370,11 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       }
     }
 
-    row.values[i] = cur;
+    row->values[i] = cur;
 
     if (is_struct_zeroed(&cur, sizeof(ColumnValue))) {
-      free(row.values);
-      free(row.null_bitmap);
+      free(row->values);
+      free(row->null_bitmap);
       return NULL;
     }
 
@@ -364,7 +384,7 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     if (!cur.is_null) {
       null_bitmap[i / 8] &= ~(1 << (i % 8));
-      row.values[i].is_null = false;
+      row->values[i].is_null = false;
     }
 
     if (schema->columns[i].is_primary_key) {
@@ -373,7 +393,7 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       primary_key_count++;
     }
 
-    row.row_length += size_from_value(&row.values[i], &schema->columns[i]);
+    row->row_length += size_from_value(&row->values[i], &schema->columns[i]);
     // LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
   }
 
@@ -384,8 +404,8 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       void* key = get_column_value_as_pointer(&primary_key_vals[i]);
       RowID res = btree_search(db->tc[schema_idx].btree[idx], key);
       if (!is_struct_zeroed(&res, sizeof(RowID))) {
-        free(row.values);
-        free(row.null_bitmap);
+        free(row->values);
+        free(row->null_bitmap);
         return NULL;
       }
     }
@@ -400,7 +420,7 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     initialize_buffer_pool(pool, schema_idx, row_file);
   }
 
-  RowID row_id = serialize_insert(pool, row, db->tc[schema_idx]);
+  RowID row_id = serialize_insert(pool, *row, db->tc[schema_idx]);
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (&primary_key_cols[i]) {
@@ -408,14 +428,14 @@ RowID* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       void* key = get_column_value_as_pointer(&primary_key_vals[i]);
     
       if (!btree_insert(db->tc[schema_idx].btree[idx], key, row_id)) {
-        free(row.values);
-        free(row.null_bitmap);
+        free(row->values);
+        free(row->null_bitmap);
         return NULL;
       }
     }
   }
 
-  return &(RowID){row_id.page_id, row_id.row_id};
+  return (Row*)row;  
 }
 
 ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
@@ -846,29 +866,29 @@ void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
   free(wal_buf);
 }
 
-bool insert_table(Database* db, char* name) {
-  if (!db || !name) {
-    LOG_ERROR("Invalid parameters to insert_table");
-    return false;
-  }
+// bool insert_table(Database* db, char* name) {
+//   if (!db || !name) {
+//     LOG_ERROR("Invalid parameters to insert_table");
+//     return false;
+//   }
   
-  if (!db->core) return true;
+//   if (!db->core) return true;
 
-  char query[2048];
+//   char query[2048];
 
-  snprintf(query, sizeof(query),
-    "INSERT INTO jb_tables "
-    "(name, database, owner, created_at) "
-    "VALUES (%s, %s, NULL, NOW())",
-    name,
-    db->uuid
-  );
+//   snprintf(query, sizeof(query),
+//     "INSERT INTO jb_tables "
+//     "(name, database, owner) "
+//     "VALUES ('%s', '%s', NULL)",
+//     name,
+//     db->uuid
+//   );
 
-  bool success = (process(db->core, query)).exec.code == 0;
-  if (!success) {
-    LOG_ERROR("Failed to insert table '%s'", name);
-    return false;
-  }
+//   bool success = (process(db->core, query)).exec.code == 0;
+//   if (!success) {
+//     LOG_ERROR("Failed to insert table '%s'", name);
+//     return false;
+//   }
 
-  return true;
-}
+//   return true;
+// }
