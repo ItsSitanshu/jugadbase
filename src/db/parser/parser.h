@@ -221,7 +221,11 @@ typedef struct {
   ExprNode** (*values);
   uint8_t row_count;
   uint8_t col_count;
+  uint8_t ret_col_count;
+
+  char** returning_columns;
   char** columns;
+
   bool specified_order;
 
   SelectColumn* sel_columns;

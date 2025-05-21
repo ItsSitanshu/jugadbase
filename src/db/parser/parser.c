@@ -477,9 +477,12 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
   command.col_count = 0;
   command.schema = malloc(sizeof(TableSchema));
+ 
   strcpy(command.schema->table_name, parser->cur->value);
   parser_consume(parser); 
+
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+  command.schema = db->tc[idx].schema;
 
   if (parser->cur->type == TOK_LP) { 
     parser_consume(parser);
@@ -576,6 +579,30 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     
     if (command.row_count >= MAX_OPERATIONS) {
       LOG_ERROR("Too many rows in INSERT");
+      return command;
+    }
+  }
+
+  if (parser->cur->type != TOK_RETURNING) {
+    command.is_invalid = false;
+    return command;
+  }
+  
+  parser_consume(parser);
+    command.returning_columns = calloc(command.col_count, sizeof(char *));
+
+  while (parser->cur->type == TOK_ID) {
+    command.returning_columns[command.ret_col_count] = strdup(parser->cur->value);
+    command.ret_col_count++;
+
+    parser_consume(parser);
+
+    if (parser->cur->type == TOK_COM) {
+      parser_consume(parser);
+    } else if (parser->cur->type == TOK_SC) {
+      break;
+    } else {
+      REPORT_ERROR(parser->lexer, "SYE_E_INVALID_RET_COLUMN_LIST");
       return command;
     }
   }
