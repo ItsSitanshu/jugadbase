@@ -13,7 +13,7 @@
   #define CORE_JDL_PATH "src/db/core.jcl"
 #endif
 
-typedef struct {
+typedef struct DbCluster {
   char name[MAX_CLUSTER_NAME];
   Database* databases[MAX_DBS_PER_CLUSTER];
   char db_paths[MAX_DBS_PER_CLUSTER][256];
@@ -22,7 +22,7 @@ typedef struct {
   bool initialized;
 } DbCluster;
 
-typedef struct {
+typedef struct ClusterManager {
   DbCluster clusters[MAX_CLUSTERS];
   int cluster_count;
   int active_cluster;  

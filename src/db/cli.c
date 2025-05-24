@@ -75,6 +75,7 @@ int main(int argc, char* argv[]) {
   DbCluster cluster = cluster_manager->clusters[cluster_manager->active_cluster];
   db = cluster.databases[cluster.active_db];
   db->core = cluster.databases[0];
+  db->core->core = db->core;
 
   char* input = NULL;
   CommandHistory history = { .current = 1, .size = 0 };
@@ -125,11 +126,12 @@ int main(int argc, char* argv[]) {
     if (is_cluster_cmd(input)) {
       process_cluster_cmd(cluster_manager, &db, input);
     } else if (db) {
-      if (!process_dot_cmd(db, input)) {
+      if (!process_cmd(cluster_manager, db, input)) {
         Result result = process(db, input);
         if (output_filename && result.exec.code == 0) {
           print_text_table_to_file(result.exec, result.cmd, output_filename);
         }
+        free_result(&result);
       }
     } else {
       printf("No active database. Use .cluster commands to create or select a database.\n");

@@ -14,6 +14,7 @@
 #define DB_INIT_MAGIC 0x4A554741  // "JUGA" 
 
 typedef struct Database Database;
+typedef struct ClusterManager ClusterManager;
 
 typedef struct Database {
   Lexer* lexer;
@@ -39,7 +40,7 @@ typedef struct Database {
 Database* db_init(char* dir);
 void db_free(Database* db);
 
-bool process_dot_cmd(Database* db, char* input);
+bool process_cmd(ClusterManager* cm, Database* db, char* input);
 void list_tables(Database* db);
 void process_file(Database* db, char* filename);
 

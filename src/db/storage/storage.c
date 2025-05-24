@@ -47,7 +47,8 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
     row->null_bitmap = malloc(row->null_bitmap_size);
     fread(row->null_bitmap, row->null_bitmap_size, 1, file);
 
-    row->values = malloc(sizeof(ColumnValue) * tc.schema->column_count);
+    row->values = calloc(tc.schema->column_count, sizeof(ColumnValue));
+    row->n_values = tc.schema->column_count;
     for (int j = 0; j < tc.schema->column_count; j++) {
       row->values[j].is_null = (row->null_bitmap[j / 8] >> (j % 8)) & 1;
     }
@@ -241,7 +242,8 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
     for (int j = 0; j < tc.schema->column_count; j++) {
       ColumnDefinition* col_def = &tc.schema->columns[j];
       if (!row->values[j].is_null && col_def) {
-        write_column_value(file, &row->values[j], col_def);
+        LOG_DEBUG("%s %s", str_column_value(&row->values[j]), col_def->type);
+        // write_column_value(file, &row->values[j], col_def);
       }
     }
 
@@ -584,7 +586,6 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
   return offset;
 }
 
-
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
   Page* page = NULL;
 
@@ -634,9 +635,13 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc) {
 
   page->rows[page->num_rows] = row;
 
+  // for (int j = 0; j < page->rows[page->num_rows].n_values; j++) {
+  //   LOG_DEBUG("!! %d - %s", j, str_column_value(&page->rows[page->num_rows].values[j]));
+  // }
+
   page->num_rows++;
   page->free_space -= row.row_length;
-  page->is_dirty = true;
+  page->is_dirty = true;  
 
   return (RowID){ row.id.page_id, row.id.row_id };
 }

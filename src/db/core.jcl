@@ -11,7 +11,7 @@
 -- - jb_role_members: Maps role memberships (i.e., role inheritance) with self-referencing foreign keys on jb_roles.
 -- 
 -- Constraints such as PRIMARY KEY (PRIMKEY), FOREIGN KEY (FRNKEY), and optional defaults are used to ensure
--- relational integrity. Arrays and expression columns are used for multi-column constraints and index definitions.
+-- relational integ rity. Arrays and expression columns are used for multi-column constraints and index definitions.
 
 CREATE TABLE jb_tables (
   id SERIAL PRIMKEY,
@@ -31,11 +31,15 @@ CREATE TABLE jb_sequences (
   cycle BOOL DEFAULT false
 );
 
+INSERT INTO jb_tables VALUES (0, "jb_sequences", "core", "su", NULL);
+INSERT INTO jb_sequences VALUES (0, "jb_tablesid", 0, 1, 0, NULL, false);
+INSERT INTO jb_sequences VALUES (1, "jb_sequencesid", 0, 1, 0, NULL, false);
+
 CREATE TABLE jb_toast (
   id SERIAL,
   seq SERIAL,
   data TEXT
-); 
+);
 
 CREATE TABLE jb_columns (
   id SERIAL PRIMKEY,

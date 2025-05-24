@@ -28,6 +28,7 @@ typedef struct Result {
 } Result;
 
 Result process(Database* db, char* buffer);
+Result process_core(Database* db, char* buffer);
 
 Result execute_cmd(Database* db, JQLCommand* cmd);
 ExecutionResult execute_create_table(Database* db, JQLCommand* cmd);
@@ -88,10 +89,13 @@ bool insert_constraint(Database* db, int table_id, const char* name, int constra
   const char* check_expr, const char* ref_table, const char** ref_columns, int ref_column_count, const char* on_delete, const char* on_update,
   bool is_deferrable, bool is_deferred);
 bool insert_default_value(Database* db, int table_id, const char* column_name, const char* default_expr);
-bool sequence_next_val(Database* db, int table_id, int id_);
 
-bool create_squence(char* name, uint64_t increment_by, uint64_t max_value, bool cycle);
-bool create_sequence_link(Database* db, ColumnDefinition* def, char* name, uint64_t min_value,
-  uint64_t increment_by, uint64_t max_value, bool cycle);
+int64_t sequence_next_val(Database* db, char* name);
+int64_t create_default_squence(Database* db, char* name);
+int64_t find_sequence(Database* db, char* name);
+
+void free_row(Row* row);
+void free_execution_result(ExecutionResult* result);
+void free_result(Result* result);
 
 #endif // EXECUTOR_H

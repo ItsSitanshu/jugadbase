@@ -151,10 +151,7 @@ Token* lexer_next_token(Lexer* lexer) {
 }
 
 char* lexer_peek(Lexer* lexer, int8_t offset) {
-  /*
-  Extracts provided # of characters ahead of the current lexer position
-  Returns: NULL (EOF), EXIT_FAILURE (alloc error), char* (valid peek)
-  */
+  if (!lexer) return NULL;
 
   if (offset < 0 && (size_t)(-offset) > lexer->i) {
     return NULL;
@@ -167,20 +164,8 @@ char* lexer_peek(Lexer* lexer, int8_t offset) {
     return NULL;
   }
 
-  size_t mem = peek_length + 1;
-  char* info = calloc(mem, sizeof(char));
-  if (!info) {
-    free(info);
-    perror("Failed to allocate memory for peek");
-    exit(EXIT_FAILURE);
-  }
-
-  strncpy(info, lexer->buf + peek_start, peek_length);
-  info[peek_length] = '\0';
-
-  return info;
+  return lexer->buf + peek_start;
 }
-
 
 char lexer_peep(Lexer* lexer, int8_t offset) {
   /*
@@ -322,12 +307,16 @@ Token* lexer_handle_alpha(Lexer* lexer) {
     if (!buf) {
       exit(EXIT_FAILURE);
     }
-    
+
     if (len > MAX_IDENTIFIER_LEN) {
       REPORT_ERROR(lexer, "E_SHORTER_LENIDEN", MAX_IDENTIFIER_LEN);
       lexer_handle_error(lexer);
       free(buf);
-      return lexer_next_token(lexer);
+
+      Token* token = lexer_next_token(lexer);
+      if (token) token_free(token); 
+
+      return lexer_next_token(lexer); 
     }
 
     buf[len] = lexer->c;
@@ -348,7 +337,6 @@ Token* lexer_handle_alpha(Lexer* lexer) {
       return token;
     }
   }
-
 
   Token* token = lexer_token_init(lexer, buf, TOK_ID);
   free(buf);

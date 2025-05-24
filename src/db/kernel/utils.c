@@ -1027,3 +1027,36 @@ bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValu
 
   return true;
 }
+
+void free_row(Row* row) {
+  if (!row || !row->values) return;
+  for (uint32_t i = 0; i < row->n_values; i++) {
+    free_column_value(&row->values[i]);
+  }
+  free(row->values);
+}
+
+void free_execution_result(ExecutionResult* result) {
+  if (!result) return;
+
+  if (result->aliases) {
+    for (size_t i = 0; i < result->alias_limit; i++) {
+      if (result->aliases[i]) {
+        free(result->aliases[i]);
+      }
+    }
+    free(result->aliases);
+  }
+
+  if (result->rows && result->alias_limit > 0) {
+    for (uint32_t i = 0; i < result->row_count; i++) {
+      free_row(&result->rows[i]);
+    }
+    free(result->rows);
+  }
+}
+
+void free_result(Result* result) {
+  // free_jql_command(result->cmd);
+  free_execution_result(&result->exec);
+}

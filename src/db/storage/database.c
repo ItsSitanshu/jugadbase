@@ -63,7 +63,7 @@ Database* db_init(char* dir) {
   }
   load_lake(db);
   LOG_INFO("Successfully loaded %lu table(s) from catalog", db->table_count);
-  
+
   register_builtin_functions();
 
   return db;
@@ -98,9 +98,24 @@ void db_free(Database* db) {
     }
   }
 
+  for (int i = 0; i < MAX_TABLES; i++) {
+    TableSchema* schema = db->tc[i].schema;
+
+    if (!schema) {
+      continue;
+    }
+    
+    LOG_DEBUG("cleaning schema at idx %d", i);  
+  
+    for (int k = 0; k < schema->column_count; k++) {
+      free_column_definition(&(schema->columns[k]));
+    }
+  }
+
   parser_free(db->parser);
   fs_free(db->fs);
   free(db->uuid);
+  free(db->core);
 
   if (db->tc_reader) io_close(db->tc_reader);
   if (db->tc_writer) io_close(db->tc_writer);
@@ -109,7 +124,7 @@ void db_free(Database* db) {
   free(db);
 }
 
-bool process_dot_cmd(Database* db, char* input) {
+bool process_cmd(ClusterManager* cm, Database* db, char* input) {
   if (strcmp(input, ".help") == 0 || tolower(input[0]) == 'h') {
     LOG_INFO("Available commands:\n"
       "  tables       - List all tables\n"
@@ -128,8 +143,9 @@ bool process_dot_cmd(Database* db, char* input) {
     return true;
   } else if (strcmp(input, ".quit") == 0 || tolower(input[0]) == 'q') {
     LOG_INFO("Exiting...");
-    db_free(db);
+    cluster_manager_free(cm);
     exit(0);
+    return true;
   } else if (strcmp(input, "clear") == 0) {
     clear_screen();
     return true;
@@ -208,28 +224,15 @@ void process_file(Database* db, char* filename) {
   buffer[bytes_read] = '\0';
 
   LOG_INFO("Processing file: %s", filename);
-  Result* res_list = malloc(sizeof(Result) * 5);
-  size_t res_n = 0;
-  size_t res_capacity = 5; 
   
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
   
   JQLCommand cmd = parser_parse(db);
   while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
-    res_list[res_n] = execute_cmd(db, &cmd);
-  
-    if (res_n + 1 >= res_capacity) {
-      res_capacity *= 2; 
-      res_list = realloc(res_list, sizeof(Result) * res_capacity);
-      if (!res_list) {
-        LOG_ERROR("Memory allocation failed during reallocation");
-        return;
-      }
-    }
-  
-    res_n++;
-    cmd = parser_parse(db); 
+    Result res = execute_cmd(db, &cmd);
+    free_result(&res);
+    cmd = parser_parse(db);
   }
 
   free(buffer);
@@ -427,7 +430,6 @@ void load_btree_cluster(Database* db, char* name) {
   db->btree_idx_stack[db->loaded_btree_clusters] = idx;
   db->loaded_btree_clusters++;
 
-
   return;
 }
 
@@ -478,6 +480,8 @@ bool load_schema_tc(Database* db, char* table_name) {
 
   FILE* io = db->tc_reader;
   TableSchema* schema = malloc(sizeof(TableSchema));
+  memset(schema, 0, sizeof(TableSchema));
+
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
     return false;
@@ -537,6 +541,17 @@ bool load_schema_tc(Database* db, char* table_name) {
     io_read(io, &col->type_varchar, sizeof(uint8_t));
     io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
     io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
+
+    io_read(io, &col->has_sequence, sizeof(bool));
+    if (col->has_sequence) {
+      char seq_name[MAX_IDENTIFIER_LEN * 2];
+      sprintf(seq_name, "%s%s", schema->table_name, col->name);
+      col->sequence_id = find_sequence(db, seq_name);
+
+      if (col->sequence_id == -1) {
+        return false;
+      }
+    }
 
     io_read(io, &col->has_constraints, sizeof(bool));
     io_read(io, &col->is_primary_key, sizeof(bool));

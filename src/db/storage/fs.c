@@ -59,7 +59,7 @@ void log_file_status(char* file_path, const char* file_name) {
 }
 
 FS* fs_init(char* root_directory) {
-  FS* fs = malloc(sizeof(FS));
+  FS* fs = calloc(1, sizeof(FS));
 
   fs->root_dir = strdup(root_directory);
   fs->tables_dir = malloc(MAX_PATH_LENGTH);
@@ -110,15 +110,18 @@ FS* fs_init(char* root_directory) {
 }
 
 void fs_free(FS* fs) {
-  if (fs) {
-    free(fs->root_dir);
-    free(fs->tables_dir);
-    free(fs->logs_dir);
-    free(fs->backups_dir);
-    free(fs->config_dir);
-    free(fs->global_transaction_log);
-    free(fs->db_config_file);
-    free(fs->logging_config_file);
-    free(fs);
-  }
+  if (!fs) return;
+
+  free(fs->root_dir);
+  free(fs->tables_dir);
+  free(fs->logs_dir);
+  free(fs->backups_dir);
+  free(fs->config_dir);
+  free(fs->global_transaction_log);
+  free(fs->db_config_file);
+  free(fs->logging_config_file);
+  free(fs->wal_file);
+  free(fs->schema_file);
+
+  free(fs);
 }

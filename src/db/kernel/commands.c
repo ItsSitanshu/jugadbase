@@ -12,6 +12,24 @@ Result process(Database* db, char* buffer) {
   return execute_cmd(db, &cmd);
 }
 
+Result process_core(Database* db, char* buffer) {
+  lexer_set_buffer(db->core->lexer, buffer);
+  parser_reset(db->core->parser);
+
+  Lexer* original_lexer = db->lexer;
+  Parser* original_parser = db->parser;
+
+  db->lexer = db->core->lexer;
+  db->parser = db->core->parser;
+
+  JQLCommand cmd = parser_parse(db);
+
+  db->lexer = original_lexer;
+  db->parser = original_parser;
+
+  return execute_cmd(db, &cmd);
+}
+
 Result execute_cmd(Database* db, JQLCommand* cmd) {
   if (cmd->is_invalid) {
     return (Result){(ExecutionResult){1, "Invalid command"}, NULL};
@@ -39,10 +57,9 @@ Result execute_cmd(Database* db, JQLCommand* cmd) {
       result = (Result){(ExecutionResult){1, "Unknown command type"}, NULL};
   }
 
-
   printf("%s (effected %u rows)\n", result.exec.message, result.exec.row_count);
 
-  if (result.exec.rows && result.exec.row_count > 0) {
+  if (result.exec.rows && result.exec.alias_limit > 0 && result.exec.row_count > 0) {
     printf("-> Returned %u row(s):\n", result.exec.row_count);
 
     for (uint32_t i = 0; i < result.exec.row_count; i++) {
@@ -81,7 +98,7 @@ Result execute_cmd(Database* db, JQLCommand* cmd) {
       printf("\n");
     }
   }
-
+  
   return result;
 }
 
@@ -123,7 +140,12 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
 
   FILE* tca_io = db->tc_appender;
   TableSchema* schema = cmd->schema;
-  
+
+  bool res = insert_table(db, schema->table_name);
+  if (!res) { 
+    return (ExecutionResult){1, "Invalid execution context or command"};
+  }
+
   uint32_t table_count;
   io_seek(tca_io, sizeof(uint32_t), SEEK_SET);
   if (io_read(tca_io, &table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
@@ -144,8 +166,6 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   uint8_t column_count = (uint8_t)schema->column_count;
   io_write(tca_io, &column_count, sizeof(uint8_t));
 
-  // insert_table(db, schema->table_name);
-
   for (int i = 0; i < column_count; i++) {
     ColumnDefinition* col = &schema->columns[i];
 
@@ -158,6 +178,17 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col->type_decimal_precision, sizeof(uint8_t));
     io_write(tca_io, &col->type_decimal_scale, sizeof(uint8_t));
 
+    io_write(tca_io, &col->has_sequence, sizeof(bool));
+    if (col->has_sequence) {
+      char seq_name[MAX_IDENTIFIER_LEN * 2];
+      sprintf(seq_name, "%s%s", schema->table_name, col->name);
+      col->sequence_id = create_default_squence(db, seq_name);
+
+      if (col->sequence_id == -1) {
+        return (ExecutionResult){0, "Table creation failed"};;
+      }
+    }
+
     io_write(tca_io, &col->has_constraints, sizeof(bool));
     // if (col->has_constraints) insert_constraint(db, )
     io_write(tca_io, &col->is_primary_key, sizeof(bool));
@@ -168,9 +199,9 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col->is_auto_increment, sizeof(bool));
 
     io_write(tca_io, &col->has_default, sizeof(bool));
-    if (col->has_default) {
-      io_write(tca_io, col->default_value, MAX_IDENTIFIER_LEN);
-    }
+    // if (col->has_default) {
+    //   io_write(tca_io, col->default_value, MAX_IDENTIFIER_LEN);
+    // }
 
     io_write(tca_io, &col->has_check, sizeof(bool));
     if (col->has_check) {
@@ -256,16 +287,15 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   uint8_t column_count = schema->column_count;
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
 
-  ColumnDefinition* primary_key_cols = malloc(sizeof(ColumnDefinition) * column_count);
-  ColumnValue* primary_key_vals = malloc(sizeof(ColumnValue) * column_count);
-  RowID* inserted_rows = malloc(sizeof(RowID) * cmd->row_count);
+  ColumnDefinition* primary_key_cols = calloc(column_count, sizeof(ColumnDefinition));
+  ColumnValue* primary_key_vals = calloc(column_count, sizeof(ColumnValue));
+  RowID* inserted_rows = calloc(cmd->row_count, sizeof(RowID));
   uint32_t inserted_count = 0;
 
   uint8_t wal_buf[MAX_ROW_BUFFER];
   uint32_t wal_len = 0;
 
-  Row* ret_rows = malloc(sizeof(Row) * cmd->row_count);
-
+  Row* ret_rows = calloc(cmd->row_count, sizeof(Row));
   Row* row = NULL;
   
   for (uint32_t i = 0; i < cmd->row_count; i++) {
@@ -288,7 +318,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
     ret_rows[inserted_count] = *row; 
 
     inserted_count++;
-    wal_len += row_to_buffer(row, cmd->schema, schema, wal_buf);
+    wal_len += row_to_buffer(row, cmd->schema, schema, wal_buf + wal_len);
     row = NULL;
   }
 
@@ -297,12 +327,16 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   free(primary_key_cols);
   free(primary_key_vals);
   free(inserted_rows);
+
+  if (cmd->ret_col_count <= 0) {
+    free(ret_rows);
+  } 
   
   return (ExecutionResult) {
     .code = 0,
     .message = "Inserted successfully",
     .row_count = inserted_count,
-    .rows = cmd->ret_col_count > 0 ? ret_rows : NULL,
+    .rows = ret_rows,
     .aliases = cmd->returning_columns,
     .alias_limit = cmd->ret_col_count
   };
@@ -315,8 +349,9 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
                       char** columns, uint8_t up_col_count, bool specified_order) {
   uint8_t primary_key_count = 0;
 
-  Row* row = malloc(sizeof(Row));
-  row->values = (ColumnValue*)calloc(sizeof(ColumnValue), column_count);
+  Row* row = calloc(1, sizeof(Row));
+  row->n_values = column_count;
+  row->values = (ColumnValue*)calloc(column_count, sizeof(ColumnValue));
 
   if (!row->values) {
     return NULL;
@@ -348,6 +383,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     null_bitmap[i / 8] |= (1 << (i % 8));
   }
+
+  bool sequence_confirmations[column_count];
 
   for (uint8_t j = 0; j < up_col_count; j++) {
     int i = specified_order ? j : find_column_index(schema, columns[j]);
@@ -395,6 +432,17 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     row->row_length += size_from_value(&row->values[i], &schema->columns[i]);
     // LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
+  }
+  
+  for (uint8_t i = 0; i < column_count; i++) {
+    if (row->values[i].type == TOK_T_SERIAL) {
+      row->values[i].is_null = false;
+      char seq_name[MAX_IDENTIFIER_LEN * 2];
+      sprintf(seq_name, "%s%s", schema->table_name, schema->columns[i].name);
+      row->values[i].int_value = sequence_next_val(db, seq_name);
+      row->values[i].int_value = sequence_next_val(db, seq_name);
+      null_bitmap[i / 8] &= ~(1 << (i % 8));
+    }
   }
 
 
@@ -510,6 +558,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     memset(dst, 0, sizeof(Row));
     dst->id = src->id;
     dst->values = calloc(schema->column_count, sizeof(ColumnValue));
+    dst->n_values = schema->column_count;
     if (!dst->values) {
       free(collected_rows);
       free(result_rows);
@@ -560,6 +609,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     .rows = result_rows,
     .aliases = aliases,
     .row_count = out_count,
+    .alias_limit = cmd->value_counts[0],
     .owns_rows = 1
   };
 }
@@ -866,29 +916,164 @@ void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
   free(wal_buf);
 }
 
-// bool insert_table(Database* db, char* name) {
-//   if (!db || !name) {
-//     LOG_ERROR("Invalid parameters to insert_table");
-//     return false;
-//   }
-  
-//   if (!db->core) return true;
+bool insert_table(Database* db, char* name) {
+  if (!db || !name) {
+    LOG_ERROR("Invalid parameters to insert_table");
+    return false;
+  }
 
-//   char query[2048];
+  if (strcmp(name, "jb_tables") == 0
+      || strcmp(name, "jb_sequences") == 0) {
+    return true;
+  }
 
-//   snprintf(query, sizeof(query),
-//     "INSERT INTO jb_tables "
-//     "(name, database, owner) "
-//     "VALUES ('%s', '%s', NULL)",
-//     name,
-//     db->uuid
-//   );
+  if (!db->core) db->core = db;
 
-//   bool success = (process(db->core, query)).exec.code == 0;
-//   if (!success) {
-//     LOG_ERROR("Failed to insert table '%s'", name);
-//     return false;
-//   }
+  ParserState state = parser_save_state(db->core->parser);
 
-//   return true;
-// }
+  char query[2048];
+  snprintf(query, sizeof(query),
+    "INSERT INTO jb_tables "
+    "(name, database_name, owner) "
+    "VALUES ('%s', '%s', NULL);",
+    name,
+    db->uuid
+  );
+
+  Result res = process(db->core, query);
+  bool success = res.exec.code == 0;
+  free_result(&res);
+
+  if (!success) {
+    LOG_ERROR("Failed to insert table '%s'", name);
+    return false;
+  }
+  free_result(&res);
+
+  parser_restore_state(db->core->parser, state);
+
+  return true;
+}
+
+int64_t sequence_next_val(Database* db, char* name) {
+  if (!db || !name) {
+    LOG_ERROR("Invalid parameters to insert_table");
+    return -1;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  char pquery[2048];
+  snprintf(pquery, sizeof(pquery),
+    "UPDATE jb_sequences SET current_value = current_value + increment_by "
+    "WHERE name = '%s'; ",
+    name
+  );
+
+  Result pres = process(db->core, pquery);
+  bool psuccess = pres.exec.code == 0;
+  if (!psuccess) {
+    LOG_ERROR("Failed to update the sequence '%s'", name);
+    return -1;
+  }
+
+  char query[2048];
+  snprintf(query, sizeof(query),
+    "SELECT current_value, increment_by FROM jb_sequences "
+    "WHERE name = '%s'; ",
+    name
+  );
+
+  Result res = process(db->core, query);
+  bool success = res.exec.code == 0;
+  if (!success) {
+    LOG_ERROR("Failed to find a valid sequence '%s'", name);
+    return -1;
+  }
+
+  int table_idx = hash_fnv1a("jb_sequences", MAX_TABLES);
+  int cv_idx = find_column_index(db->core->tc[table_idx].schema, "current_value");
+
+  parser_restore_state(db->core->parser, state);
+
+  return res.exec.rows[0].values[0].int_value;
+}
+
+int64_t create_default_squence(Database* db, char* name) {
+  if (!db || !name) {
+    LOG_ERROR("Invalid parameters to insert_table");
+    return -1;
+  }
+
+  if (strcmp(name, "jb_tablesid") == 0) {
+    return 0;
+  }
+
+  if (strcmp(name, "jb_sequencesid") == 0) {
+    return 1;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  char query[2048];
+
+  snprintf(query, sizeof(query),
+    "INSERT INTO jb_sequences "
+    "(name, current_value, increment_by, min_value, max_value, cycle)"
+    "VALUES ('%s', 0, 1, 0, NULL, false)"
+    "RETURNING id;",
+    name
+  );
+
+  Result res = process(db->core, query);
+  bool success = res.exec.code == 0;
+  if (!success || res.exec.alias_limit == 0) {
+    LOG_ERROR("Failed to create a default sequence '%s'", name);
+    return -1;
+  }
+
+  parser_restore_state(db->core->parser, state);
+
+  return res.exec.rows[0].values[0].int_value;
+}
+
+
+int64_t find_sequence(Database* db, char* name) {
+  if (!db || !name) {
+    LOG_ERROR("Invalid parameters to insert_table");
+    return -1;
+  }
+
+  if (strcmp(name, "jb_tablesid") == 0) {
+    return 0;
+  }
+
+  if (strcmp(name, "jb_sequencesid") == 0) {
+    return 1;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+  char query[2048];
+
+  snprintf(query, sizeof(query),
+    "SELECT id FROM jb_sequences"
+    "WHERE name = '%s';",
+    name
+  );
+
+  Result res = process(db->core, query);
+  bool success = res.exec.code == 0;
+  if (!success) {
+    LOG_ERROR("Failed to find a valid sequence '%s'", name);
+    return -1;
+  }
+
+  parser_restore_state(db->core->parser, state);
+  return res.exec.rows[0].values[0].int_value;
+}

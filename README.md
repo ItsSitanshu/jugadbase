@@ -51,13 +51,14 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Improve how select returns rows~~
   - ~~Impelement compacting~~
   - ~~Write tests for arrays and delete~~
-- Implement the `RETURNING` sub-clause for `INSERT`
+- ~~Implement the `RETURNING` sub-clause for `INSERT`~~
 - Implement `SERIAL` sequences
 - Migrate attribute definitions binary (schema) => jb_core 
 - Implement `DEFAULT` values
 - Implement foreign constraints
 - Design casading  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
+- Implement a permission check layer
 - Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
 - Implement locking boosted sequences
 - Implement `$variables` for cleaner SDK support

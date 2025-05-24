@@ -156,6 +156,9 @@ typedef struct {
   uint8_t type_decimal_precision;
   uint8_t type_decimal_scale;
 
+  bool has_sequence;
+  int64_t sequence_id;
+
   bool has_constraints;
   bool is_primary_key;
   bool is_unique;
@@ -176,6 +179,7 @@ typedef struct {
   char foreign_column[MAX_IDENTIFIER_LEN];
   FKAction on_delete, on_update;
 } ColumnDefinition;
+
 
 typedef struct {
   char table_name[MAX_IDENTIFIER_LEN]; 
@@ -264,11 +268,14 @@ typedef struct {
   bool is_invalid;
 } JQLCommand;
 
-
 typedef struct {
   size_t lexer_position;
-  size_t lexer_line;
-  size_t lexer_column;
+  int lexer_line;
+  int lexer_column;
+
+  char* buffer_copy;
+  size_t buffer_size;
+
   Token* current_token;
 } ParserState;
 
@@ -322,8 +329,6 @@ ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left)
 ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* left);
 ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* left);
 
-void free_expr_node(ExprNode* node);
-
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
 void print_column_value(ColumnValue* val);
@@ -334,5 +339,10 @@ bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
 bool infer_and_cast_va(size_t count, ...);
 bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def);
 bool infer_and_cast_value_raw(ColumnValue* col_val, uint8_t target_type);
- 
+
+void free_expr_node(ExprNode* node);
+void free_column_value(ColumnValue* val);
+void free_column_definition(ColumnDefinition* col_def);
+void free_jql_command(JQLCommand* cmd);
+
 #endif // JQL_COMMAND_H

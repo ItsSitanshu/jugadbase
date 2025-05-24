@@ -17,6 +17,8 @@ typedef struct Row {
   uint8_t* null_bitmap; 
   
   ColumnValue* values; 
+  size_t n_values;
+
   bool deleted;
 } Row;
 

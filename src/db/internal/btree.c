@@ -17,13 +17,9 @@ BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
   node->is_leaf = is_leaf;
   node->num_keys = 0;
 
-  node->keys = (void**)malloc(sizeof(void*) * (btree_order - 1));  
-  node->row_pointers = (RowID*)malloc(sizeof(RowID) * (btree_order - 1));  
-  node->children = (BTreeNode**)malloc(sizeof(BTreeNode*) * btree_order);  
-
-  memset(node->keys, 0, sizeof(void*) * (btree_order - 1));
-  memset(node->row_pointers, 0, sizeof(RowID) * (btree_order - 1));
-  memset(node->children, 0, sizeof(BTreeNode*) * btree_order);
+  node->keys = (void**)calloc(btree_order - 1, sizeof(void*));  
+  node->row_pointers = (RowID*)calloc(btree_order - 1, sizeof(RowID));  
+  node->children = (BTreeNode**)calloc(btree_order, sizeof(BTreeNode*));  
 
   return node;
 }
@@ -271,21 +267,37 @@ bool btree_insert(BTree* tree, void* key, RowID row_offset) {
   return true; 
 }
 
-void btree_free_node(BTreeNode* node) {
+void btree_free_node(BTreeNode* node, size_t btree_order) {
   if (!node) return;
 
   if (!node->is_leaf) {
-    for (int i = 0; i <= node->num_keys; i++) {
-      btree_free_node(node->children[i]);
+    for (size_t i = 0; i < btree_order; i++) {
+      if (node->children[i]) {
+        btree_free_node(node->children[i], btree_order);
+      }
     }
   }
+
+  if (node->keys) {
+    for (size_t i = 0; i < node->num_keys; i++) {
+      if (node->keys[i]) {
+        free(node->keys[i]); 
+      }
+    }
+    free(node->keys);
+  }
+
+  free(node->row_pointers);
+
+  free(node->children);
 
   free(node);
 }
 
 void btree_destroy(BTree* tree) {
   if (!tree) return;
-  btree_free_node(tree->root);
+
+  btree_free_node(tree->root, tree->btree_order);
   free(tree);
 }
 
@@ -342,6 +354,8 @@ BTreeNode* load_tree_node(FILE* db_file, uint8_t key_type) {
 }
 
 void save_btree(BTree* btree, FILE* db_file) {
+  if (!btree || db_file) return;
+
   fwrite(&btree->id, sizeof(uint32_t), 1, db_file);  
 
   fwrite(&btree->btree_order, sizeof(long), 1, db_file);  

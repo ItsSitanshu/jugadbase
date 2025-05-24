@@ -111,7 +111,6 @@ JQLCommand parser_parse(Database* db) {
   }
 
   parser_consume(db->parser);
-
   return command;
 }
 
@@ -318,17 +317,9 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
       case TOK_DEF:
         parser_consume(parser);
         
-        ExprNode* expr = NULL;
-        expr = parser_parse_primary(parser, command->schema);
-
-        if (!expr || expr->type != EXPR_LITERAL) {
-          REPORT_ERROR(parser->lexer, "SYE_E_VDEFVAL");
-          return false;
-        }
-        
-        column.default_value = memcpy(&column.default_value, &expr->literal, sizeof(expr->literal));
+        parser_parse_value(parser, &column.default_value);
         column.has_default = true;
-        
+
         break;
       case TOK_CHK:
         parser_consume(parser);
@@ -371,7 +362,7 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
   command.type = CMD_CREATE;
   command.is_invalid = true;
 
-  command.schema = malloc(sizeof(TableSchema));
+  command.schema = calloc(1, sizeof(TableSchema));
 
   parser_consume(parser);
 
@@ -456,7 +447,7 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
 
 JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   JQLCommand command;  
-
+  
   memset(&command, 0, sizeof(JQLCommand));
   command.type = CMD_INSERT;
   command.is_invalid = true;
@@ -476,12 +467,9 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   }
 
   command.col_count = 0;
-  command.schema = malloc(sizeof(TableSchema));
  
-  strcpy(command.schema->table_name, parser->cur->value);
+  uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
   parser_consume(parser); 
-
-  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
   command.schema = db->tc[idx].schema;
 
   if (parser->cur->type == TOK_LP) { 
@@ -529,18 +517,21 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     : command.col_count;
 
   while (parser->cur->type == TOK_LP) {
-    ExprNode** row = calloc(db->tc[idx].schema->column_count, sizeof(ExprNode*));
+    ExprNode** row = calloc(command.col_count, sizeof(ExprNode*));
 
     parser_consume(parser); 
 
     uint8_t value_count = 0; 
 
     while (value_count < command.col_count) {
-
-      int row_idx = command.specified_order ? 
-        value_count 
+      int row_idx = command.specified_order ? value_count 
         : find_column_index(db->tc[idx].schema, command.columns[value_count]);
-      
+
+      if (row_idx < 0) {
+        LOG_DEBUG("Internal: Row index for '%s' was evaluated incorrectly", command.columns[value_count]);
+        return command;
+      }
+
       row[row_idx] = parser_parse_expression(parser, db->tc[idx].schema);
       if (!row[row_idx]) return command;
       value_count++;
@@ -561,11 +552,11 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
     if (parser->cur->type != TOK_RP) {
       LOG_ERROR("Mismatch in number of expected attributes %d and actual attributes %d",
-        command.col_count, value_count);
+        command.col_count, value_count - 1);
       return command;
     }
 
-    parser_consume(parser);  
+    parser_consume(parser);   
 
     command.value_counts[command.row_count] = value_count;
     command.values[command.row_count] = row;
@@ -589,7 +580,7 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   }
   
   parser_consume(parser);
-    command.returning_columns = calloc(command.col_count, sizeof(char *));
+  command.returning_columns = calloc(command.col_count, sizeof(char *));
 
   while (parser->cur->type == TOK_ID) {
     command.returning_columns[command.ret_col_count] = strdup(parser->cur->value);
@@ -1021,7 +1012,9 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       break;
     case TOK_L_STRING:
       char temp_str[MAX_IDENTIFIER_LEN] = {0};
-      memcpy(temp_str, parser->cur->value, MAX_IDENTIFIER_LEN);
+      strncpy(temp_str, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
+      temp_str[MAX_IDENTIFIER_LEN - 1] = '\0'; 
+
       size_t value_len = strlen(parser->cur->value);
 
       DateTime dt;
@@ -1199,14 +1192,26 @@ ParserState parser_save_state(Parser* parser) {
   state.lexer_position = parser->lexer->i;
   state.lexer_line = parser->lexer->cl;
   state.lexer_column = parser->lexer->cc;
+
+  state.buffer_size = parser->lexer->buf_size;
+  state.buffer_copy = malloc(state.buffer_size);
+  memcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
+
   state.current_token = token_clone(parser->cur);
+
   return state;
 }
 
 void parser_restore_state(Parser* parser, ParserState state) {
   parser->lexer->i = state.lexer_position;
   parser->lexer->cl = state.lexer_line;
-  parser->lexer->cc = state.lexer_column;
+    parser->lexer->cc = state.lexer_column;
+
+  free(parser->lexer->buf);
+
+  parser->lexer->buf_size = state.buffer_size;
+  parser->lexer->buf = malloc(state.buffer_size);
+  memcpy(parser->lexer->buf, state.buffer_copy, state.buffer_size);
 
   parser->lexer->c = (parser->lexer->i < parser->lexer->buf_size) ?
                      parser->lexer->buf[parser->lexer->i] : '\0';
@@ -1215,8 +1220,8 @@ void parser_restore_state(Parser* parser, ParserState state) {
   parser->cur = token_clone(state.current_token);
 
   token_free(state.current_token);
+  free(state.buffer_copy);
 }
-
 
 Token* parser_peek_ahead(Parser* parser, int offset) {
   ParserState state = parser_save_state(parser);
@@ -1548,22 +1553,6 @@ ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) 
   node->in.count = count;
 
   return node;
-}
-
-void free_expr_node(ExprNode* node) {
-  if (!node) return;
-  if (node->type == EXPR_BINARY_OP || node->type == EXPR_LOGICAL_AND || node->type == EXPR_LOGICAL_OR || node->type == EXPR_COMPARISON) {
-    free_expr_node(node->binary.left);
-    free_expr_node(node->binary.right);
-  } else if (node->type == EXPR_LOGICAL_NOT) {
-    free_expr_node(node->binary.right);
-  } else if (node->type == EXPR_FUNCTION) {
-    for (uint8_t i = 0; i < node->fn.arg_count; i++) {
-      free_expr_node(node->fn.args[i]);
-    }
-    free(node->fn.args);
-  }
-  free(node);
 }
 
 int find_column_index(TableSchema* schema, const char* name) {
@@ -1975,4 +1964,158 @@ bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr) {
   }
 
   return true;
+}
+
+void free_expr_node(ExprNode* node) {
+  if (!node) return;
+
+
+  switch (node->type) {
+    case EXPR_LITERAL:
+      if (node->literal.is_array && node->literal.array.array_value) {
+        for (uint16_t i = 0; i < node->literal.array.array_size; i++) {
+          free_expr_node((ExprNode*)&node->literal.array.array_value[i]);
+        }
+        free(node->literal.array.array_value);
+      }
+      break;
+
+    case EXPR_COLUMN:
+      free_expr_node(node->column.array_idx);
+      break;
+
+    case EXPR_UNARY_OP:
+      free_expr_node(node->unary);
+      free_expr_node(node->arth_unary.expr);
+      break;
+
+    case EXPR_BINARY_OP:
+      free_expr_node(node->binary.left);
+      free_expr_node(node->binary.right);
+      break;
+
+    case EXPR_FUNCTION:
+      if (node->fn.name) free(node->fn.name);
+      for (uint8_t i = 0; i < node->fn.arg_count; i++) {
+        free_expr_node(node->fn.args[i]);
+      }
+      free(node->fn.args);
+      break;
+
+    case EXPR_LIKE:
+      free_expr_node(node->like.left);
+      if (node->like.pattern) free(node->like.pattern);
+      break;
+
+    case EXPR_BETWEEN:
+      free_expr_node(node->between.value);
+      free_expr_node(node->between.lower);
+      free_expr_node(node->between.upper);
+      break;
+
+    case EXPR_IN:
+      free_expr_node(node->in.value);
+      for (size_t i = 0; i < node->in.count; i++) {
+        free_expr_node(node->in.list[i]);
+      }
+      free(node->in.list);
+      break;
+
+    case EXPR_LOGICAL_NOT:
+      free_expr_node(node->arth_unary.expr);
+      break;
+
+    case EXPR_LOGICAL_AND:
+    case EXPR_LOGICAL_OR:
+    case EXPR_COMPARISON:
+      free_expr_node(node->binary.left);
+      free_expr_node(node->binary.right);
+      break;
+
+    default:
+      break;
+  }
+
+  free(node);
+}
+
+void free_column_value(ColumnValue* val) {
+  if (!val) return;
+
+  if (val->is_array && val->array.array_value) {
+    for (uint16_t i = 0; i < val->array.array_size; i++) {
+      free_column_value(&val->array.array_value[i]);
+    }
+    free(val->array.array_value);
+  } else if (val->str_value) {
+    free(val->str_value);
+  } 
+}
+
+void free_column_definition(ColumnDefinition* col_def) {
+  if (!col_def) return;
+
+  if (col_def->has_default && col_def->default_value) {
+    free_column_value(col_def->default_value);
+    free(col_def->default_value);
+    col_def->default_value = NULL;
+  }
+
+  free(col_def);
+}
+
+void free_jql_command(JQLCommand* cmd) {
+  if (!cmd) return;
+
+  if (cmd->schema_name) free(cmd->schema_name);
+  if (cmd->bitmap) free(cmd->bitmap);
+
+  if (cmd->values) {
+    for (uint8_t i = 0; i < cmd->row_count; i++) {
+      if (cmd->values[i]) {
+        for (uint8_t j = 0; j < cmd->col_count; j++) {
+          free_expr_node(cmd->values[i][j]);
+        }
+        free(cmd->values[i]);
+      }
+    }
+    free(cmd->values);
+  }
+
+  if (cmd->returning_columns) {
+    for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
+      if (cmd->returning_columns[i]) free(cmd->returning_columns[i]);
+    }
+    free(cmd->returning_columns);
+  }
+
+  if (cmd->columns) {
+    for (uint8_t i = 0; i < cmd->col_count; i++) {
+      if (cmd->columns[i]) free(cmd->columns[i]);
+    }
+    free(cmd->columns);
+  }
+
+  if (cmd->sel_columns) {
+    for (uint8_t i = 0; i < cmd->col_count; i++) {
+      if (cmd->sel_columns[i].alias) free(cmd->sel_columns[i].alias);
+      if (cmd->sel_columns[i].expr) free_expr_node(cmd->sel_columns[i].expr);
+    }
+    free(cmd->sel_columns);
+  }
+
+  if (cmd->update_columns) {
+    for (uint8_t i = 0; i < cmd->col_count; i++) {
+      free_expr_node(cmd->update_columns[i].array_idx);
+    }
+    free(cmd->update_columns);
+  }
+
+  if (cmd->where) {
+    free_expr_node(cmd->where);
+  }
+
+  if (cmd->order_by) {
+    free(cmd->order_by);
+  }
 }

@@ -109,22 +109,23 @@ bool cluster_manager_save(ClusterManager* manager) {
 
 void cluster_manager_free(ClusterManager* manager) {
   if (!manager) return;
-  
+
   cluster_manager_save(manager);
-  
+
   for (int i = 0; i < manager->cluster_count; i++) {
     DbCluster* cluster = &manager->clusters[i];
     for (int j = 0; j < cluster->db_count; j++) {
       if (cluster->databases[j]) {
         db_free(cluster->databases[j]);
-        cluster->databases[j] = NULL;
       }
     }
+    free(cluster->databases);
   }
-  
+
+  free(manager->clusters); 
   free(manager);
-  LOG_INFO("Cluster manager freed");
 }
+
 
 bool cluster_create(ClusterManager* manager, char* name) {
   if (!manager || !name) {
@@ -170,7 +171,6 @@ bool cluster_create(ClusterManager* manager, char* name) {
   cluster_manager_save(manager);
   
   LOG_INFO("Created cluster '%s' (index: %d)", name, idx);
-  Result cluster_info = cluster_list(manager);
     
   if (!cluster_add_db(manager, 0, "core")) {
     fprintf(stderr, "Failed to add jb.core database to cluster\n");
@@ -215,6 +215,7 @@ bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path) {
   Database* db = db_init(full_path);
   if (!db) {
     LOG_ERROR("Failed to initialize database at '%s'", full_path);
+    db_free(db);
     return false;
   }
 

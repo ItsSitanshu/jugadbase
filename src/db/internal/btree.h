@@ -33,7 +33,7 @@ bool delete_from_node(BTreeNode* node, void* key, uint8_t key_type, size_t order
 bool btree_insert(BTree* tree, void* key, RowID row_offset);
 void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_offset);
 void btree_split_child(BTreeNode* parent, int index, BTreeNode* child, size_t btree_order);
-void btree_free_node(BTreeNode* node);
+void btree_free_node(BTreeNode* node, size_t btree_order);
 void btree_destroy(BTree* tree);
 
 BTree* load_btree(FILE* file);
