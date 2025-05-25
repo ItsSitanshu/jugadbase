@@ -18,6 +18,11 @@ START_TEST(test_read_table_schema) {
     "role_id INT FRNKEY REF roles(id)"
     ");",
 
+    "CREATE TABLE categories ("
+    "category_id SERIAL PRIMKEY, "
+    "category_name VARCHAR(50) NOT NULL"
+    ");",
+
     "CREATE TABLE products ("
     "product_id SERIAL PRIMKEY, "
     "product_name VARCHAR(100) NOT NULL, "
@@ -33,10 +38,6 @@ START_TEST(test_read_table_schema) {
     "total_amount DECIMAL(10, 2) CHECK(total_amount >= 0)"
     ");",
 
-    "CREATE TABLE categories ("
-    "category_id SERIAL PRIMKEY, "
-    "category_name VARCHAR(50) NOT NULL"
-    ");",
 
     "CREATE TABLE   payments ("
     "payment_id SERIAL PRIMKEY, "
@@ -85,7 +86,21 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema->columns[4].foreign_table, "roles");
   ck_assert_str_eq(schema->columns[4].foreign_column, "id");
 
-  free(schema->columns);
+  // --- Validation for 'categories' table ---
+
+  TableSchema* schema_categories = find_table_schema_tc(db, "categories");
+  ck_assert_str_eq(schema_categories->table_name, "categories");
+  ck_assert_int_eq(schema_categories->column_count, 2);
+
+  ck_assert_str_eq(schema_categories->columns[0].name, "category_id");
+  ck_assert_int_eq(schema_categories->columns[0].type, TOK_T_SERIAL);
+  ck_assert_int_eq(schema_categories->columns[0].is_primary_key, 1);
+  ck_assert_int_eq(schema_categories->columns[0].is_auto_increment, 1);
+
+  ck_assert_str_eq(schema_categories->columns[1].name, "category_name");
+  ck_assert_int_eq(schema_categories->columns[1].type, TOK_T_VARCHAR);
+  ck_assert_int_eq(schema_categories->columns[1].type_varchar, 50);
+  ck_assert_int_eq(schema_categories->columns[1].is_not_null, 1);
 
   // --- Validation for 'products' table ---
   TableSchema* schema_products = find_table_schema_tc(db, "products");
@@ -115,8 +130,6 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_products->columns[4].foreign_table, "categories");
   ck_assert_str_eq(schema_products->columns[4].foreign_column, "id");
 
-  free(schema_products->columns);
-
   // --- Validation for 'orders' table ---
   TableSchema* schema_orders = find_table_schema_tc(db, "orders");
   ck_assert_str_eq(schema_orders->table_name, "orders");
@@ -140,25 +153,6 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_orders->columns[3].name, "total_amount");
   ck_assert_int_eq(schema_orders->columns[3].type, TOK_T_DECIMAL);
   ck_assert_str_eq(schema_orders->columns[3].check_expr, "total_amount>=0");
-
-  free(schema_orders->columns);
-
-  // --- Validation for 'categories' table ---
-  TableSchema* schema_categories = find_table_schema_tc(db, "categories");
-  ck_assert_str_eq(schema_categories->table_name, "categories");
-  ck_assert_int_eq(schema_categories->column_count, 2);
-
-  ck_assert_str_eq(schema_categories->columns[0].name, "category_id");
-  ck_assert_int_eq(schema_categories->columns[0].type, TOK_T_SERIAL);
-  ck_assert_int_eq(schema_categories->columns[0].is_primary_key, 1);
-  ck_assert_int_eq(schema_categories->columns[0].is_auto_increment, 1);
-
-  ck_assert_str_eq(schema_categories->columns[1].name, "category_name");
-  ck_assert_int_eq(schema_categories->columns[1].type, TOK_T_VARCHAR);
-  ck_assert_int_eq(schema_categories->columns[1].type_varchar, 50);
-  ck_assert_int_eq(schema_categories->columns[1].is_not_null, 1);
-
-  free(schema_categories->columns);
 
   // --- Validation for 'payments' table ---
   TableSchema* schema_payments = find_table_schema_tc(db, "payments");
@@ -184,8 +178,6 @@ START_TEST(test_read_table_schema) {
   ck_assert_int_eq(schema_payments->columns[3].type, TOK_T_VARCHAR);
   ck_assert_int_eq(schema_payments->columns[3].type_varchar, 20);
   ck_assert_int_eq(schema_payments->columns[3].is_not_null, 1);
-
-  free(schema_payments->columns);
 
   db_free(db);
 }
