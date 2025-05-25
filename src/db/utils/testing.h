@@ -1,9 +1,11 @@
 #include <string.h>
-#include "storage/database.h"
 
+#include "utils/setup.h"
+#include "storage/database.h"
 
 #define INIT_TEST(db_var)                                                  \
   char path[MAX_PATH_LENGTH];                                                \
+  char* argv[2];                                                            \
   do {                                                                      \
     *verbosity_level = 2;                                                    \
     const char* __file = __FILE__;                                           \
@@ -17,8 +19,12 @@
       *__dot = '\0';                                                         \
     }                                                                        \
     snprintf(path, sizeof(path), "%s" SEP "%s", DB_ROOT_DIRECTORY, __basename); \
+    argv[1] = "__test";                                       \
+    argv[1] = "--root";                                       \
+    argv[2] = path;                                            \
   } while (0);                                                               \
-  Database* db_var = db_init(path);                                         \
+  SetupResult setup = perform_setup(3, argv);             \
+  Database* db_var = setup.db;                               \
   ck_assert_ptr_nonnull(db_var);                                    
   
 #define ck_assert_ptr_nonnull(X) _ck_assert_ptr_null(X, !=)
