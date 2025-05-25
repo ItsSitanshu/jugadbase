@@ -10,7 +10,7 @@
 
 #define CONFIG_FILE "cluster.jbconf"
 #ifndef CORE_JDL_PATH
-  #define CORE_JDL_PATH "src/db/core.jcl"
+  #define CORE_JDL_PATH "core.jcl"
 #endif
 
 typedef struct DbCluster {

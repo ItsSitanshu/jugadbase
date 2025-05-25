@@ -239,6 +239,7 @@ if [ "$CLEAN" -eq 1 ]; then
 fi
 
 mkdir -p "$BUILD_DIR"
+cp src/db/core.jcl $BUILD_DIR
 
 CMAKE_CMD="cmake -B $BUILD_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_MODULE_PATH=/usr/share/doc/check/examples/cmake" 
 [ -n "$CMAKE_ARGS" ] && CMAKE_CMD="$CMAKE_CMD $CMAKE_ARGS"
