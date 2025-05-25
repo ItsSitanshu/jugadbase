@@ -318,11 +318,11 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
     ret_rows[inserted_count] = *row; 
 
     inserted_count++;
-    wal_len += row_to_buffer(row, cmd->schema, schema, wal_buf + wal_len);
+    // wal_len += row_to_buffer(row, cmd->schema, schema, wal_buf + wal_len);
     row = NULL;
   }
 
-  wal_write(db->wal, WAL_INSERT, schema_idx, wal_buf, wal_len);
+  // wal_write(db->wal, WAL_INSERT, schema_idx, wal_buf, wal_len);
 
   free(primary_key_cols);
   free(primary_key_vals);
@@ -598,6 +598,8 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
         // LOG_DEBUG("printing using eval %d w. %d %d > %s", j, src->id.page_id, src->id.row_id, str_column_value(&val));      
         dst->values[j] = val;
       }
+
+      free_expr_node(expr);
     }  
   }
   
@@ -942,7 +944,6 @@ bool insert_table(Database* db, char* name) {
 
   Result res = process(db->core, query);
   bool success = res.exec.code == 0;
-  free_result(&res);
 
   if (!success) {
     LOG_ERROR("Failed to insert table '%s'", name);
@@ -979,6 +980,8 @@ int64_t sequence_next_val(Database* db, char* name) {
     return -1;
   }
 
+  free_result(&pres);
+
   char query[2048];
   snprintf(query, sizeof(query),
     "SELECT current_value, increment_by FROM jb_sequences "
@@ -996,9 +999,12 @@ int64_t sequence_next_val(Database* db, char* name) {
   int table_idx = hash_fnv1a("jb_sequences", MAX_TABLES);
   int cv_idx = find_column_index(db->core->tc[table_idx].schema, "current_value");
 
+  int copy = res.exec.rows[0].values[0].int_value;
+  // free_result(&res);
+
   parser_restore_state(db->core->parser, state);
 
-  return res.exec.rows[0].values[0].int_value;
+  return copy;
 }
 
 int64_t create_default_squence(Database* db, char* name) {

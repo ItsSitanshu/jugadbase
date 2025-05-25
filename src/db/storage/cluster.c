@@ -115,15 +115,11 @@ void cluster_manager_free(ClusterManager* manager) {
   for (int i = 0; i < manager->cluster_count; i++) {
     DbCluster* cluster = &manager->clusters[i];
     for (int j = 0; j < cluster->db_count; j++) {
-      if (cluster->databases[j]) {
-        db_free(cluster->databases[j]);
-      }
+      db_free(cluster->databases[j]);
     }
-    free(cluster->databases);
   }
 
   free(manager->clusters); 
-  free(manager);
 }
 
 

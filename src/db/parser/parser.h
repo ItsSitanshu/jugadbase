@@ -343,6 +343,7 @@ bool infer_and_cast_value_raw(ColumnValue* col_val, uint8_t target_type);
 void free_expr_node(ExprNode* node);
 void free_column_value(ColumnValue* val);
 void free_column_definition(ColumnDefinition* col_def);
+void free_table_schema(TableSchema* schema);
 void free_jql_command(JQLCommand* cmd);
 
 #endif // JQL_COMMAND_H

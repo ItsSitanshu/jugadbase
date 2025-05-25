@@ -70,8 +70,11 @@ Database* db_init(char* dir) {
 }
 
 void db_free(Database* db) {
-  if (!db) return;
+  if (!db || db == NULL) return;
 
+  io_close(db->tc_reader);
+  io_close(db->tc_writer);
+  io_close(db->tc_appender);
   flush_lake(db);
 
   for (int i = 0; i < BTREE_LIFETIME_THRESHOLD; i++) {
@@ -100,28 +103,12 @@ void db_free(Database* db) {
 
   for (int i = 0; i < MAX_TABLES; i++) {
     TableSchema* schema = db->tc[i].schema;
-
-    if (!schema) {
-      continue;
-    }
-    
-    LOG_DEBUG("cleaning schema at idx %d", i);  
-  
-    for (int k = 0; k < schema->column_count; k++) {
-      free_column_definition(&(schema->columns[k]));
-    }
+    free_table_schema(schema);
   }
 
   parser_free(db->parser);
   fs_free(db->fs);
   free(db->uuid);
-  free(db->core);
-
-  if (db->tc_reader) io_close(db->tc_reader);
-  if (db->tc_writer) io_close(db->tc_writer);
-  if (db->tc_appender) io_close(db->tc_appender);
-
-  free(db);
 }
 
 bool process_cmd(ClusterManager* cm, Database* db, char* input) {

@@ -1048,15 +1048,15 @@ void free_execution_result(ExecutionResult* result) {
     free(result->aliases);
   }
 
-  if (result->rows && result->alias_limit > 0) {
-    for (uint32_t i = 0; i < result->row_count; i++) {
-      free_row(&result->rows[i]);
-    }
-    free(result->rows);
-  }
+  // if (result->rows && result->alias_limit > 0) {
+  //   for (uint32_t i = 0; i < result->row_count; i++) {
+  //     free_row(&result->rows[i]);
+  //   }
+  //   free(result->rows);
+  // }
 }
 
 void free_result(Result* result) {
-  // free_jql_command(result->cmd);
   free_execution_result(&result->exec);
+  free_jql_command(result->cmd);
 }

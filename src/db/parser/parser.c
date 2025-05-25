@@ -316,8 +316,9 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         break;
       case TOK_DEF:
         parser_consume(parser);
-        
-        parser_parse_value(parser, &column.default_value);
+
+        column.default_value = calloc(1, sizeof(ColumnValue));
+        parser_parse_value(parser, column.default_value);
         column.has_default = true;
 
         break;
@@ -625,7 +626,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
     return command;
   }
   
-  command.schema = malloc(sizeof(TableSchema));
+  command.schema = calloc(1, sizeof(TableSchema));
   strcpy(command.schema->table_name, parser->cur->value);
 
   uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
@@ -715,7 +716,6 @@ void parse_where_clause(Parser* parser, Database* db, JQLCommand* command, uint3
   if (parser->cur->type == TOK_WR) {
     parser_consume(parser);
     command->has_where = true;
-    command->where = malloc(sizeof(ExprNode));
     command->where = parser_parse_expression(parser, db->tc[idx].schema);
   }
 }
@@ -863,6 +863,7 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
                          expr->column.array_idx : NULL;
     command.values[0][value_count] = value;
 
+    free_expr_node(expr);
     value_count++;
   
     if (parser->cur->type == TOK_COM) {
@@ -1968,7 +1969,7 @@ bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr) {
 
 void free_expr_node(ExprNode* node) {
   if (!node) return;
-
+  if (node == NULL) return;
 
   switch (node->type) {
     case EXPR_LITERAL:
@@ -2035,8 +2036,6 @@ void free_expr_node(ExprNode* node) {
     default:
       break;
   }
-
-  free(node);
 }
 
 void free_column_value(ColumnValue* val) {
@@ -2053,34 +2052,55 @@ void free_column_value(ColumnValue* val) {
 }
 
 void free_column_definition(ColumnDefinition* col_def) {
-  if (!col_def) return;
+  if (!col_def || col_def == NULL) return;
 
-  if (col_def->has_default && col_def->default_value) {
-    free_column_value(col_def->default_value);
-    free(col_def->default_value);
-    col_def->default_value = NULL;
+  // if (col_def->has_default) {
+  //   free_column_value(col_def->default_value);
+  //   free(col_def->default_value);
+  // }
+}
+
+void free_table_schema(TableSchema* schema) {
+  if (schema == NULL) return;
+
+  for (uint8_t i = 0; i < MAX_COLUMNS; i++) {
+    // ColumnDefinition* col_def = &(schema->columns[i]); 
+    // if (!col_def) continue;
+
+    if (i >= schema->column_count) break;
+
+    // free_column_definition(col_def);
   }
 
-  free(col_def);
+  free(schema->columns);
+  schema->columns = NULL;
+
+  schema->column_count = 0;
+  schema->prim_column_count = 0;
+  schema->not_null_count = 0;
 }
+
 
 void free_jql_command(JQLCommand* cmd) {
   if (!cmd) return;
 
-  if (cmd->schema_name) free(cmd->schema_name);
   if (cmd->bitmap) free(cmd->bitmap);
 
-  if (cmd->values) {
-    for (uint8_t i = 0; i < cmd->row_count; i++) {
-      if (cmd->values[i]) {
-        for (uint8_t j = 0; j < cmd->col_count; j++) {
-          free_expr_node(cmd->values[i][j]);
-        }
-        free(cmd->values[i]);
-      }
-    }
-    free(cmd->values);
+  if (cmd->has_where) {
+    free_expr_node(cmd->where);
   }
+
+  // if (cmd->values) {
+  //   for (uint8_t i = 0; i < cmd->row_count; i++) {
+  //     if (cmd->values[i]) {
+  //       // for (uint8_t j = 0; j < MAX_COLUMNS; j++) {
+  //       //   if (cmd->values[i][j]) free_expr_node(cmd->values[i][j]);
+  //       // }
+  //       // free(cmd->values[i]);
+  //     }
+  //   }
+  //   free(cmd->values);
+  // }
 
   if (cmd->returning_columns) {
     for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
@@ -2089,17 +2109,18 @@ void free_jql_command(JQLCommand* cmd) {
     free(cmd->returning_columns);
   }
 
-  if (cmd->columns) {
-    for (uint8_t i = 0; i < cmd->col_count; i++) {
-      if (cmd->columns[i]) free(cmd->columns[i]);
-    }
-    free(cmd->columns);
-  }
+  // if (cmd->columns) {
+  //   for (uint8_t i = 0; i < cmd->col_count; i++) {
+  //     // if (cmd->columns[i]) free(cmd->columns[i]);
+  //   }
+  //   free(cmd->columns);
+  // }
 
   if (cmd->sel_columns) {
-    for (uint8_t i = 0; i < cmd->col_count; i++) {
+    for (uint8_t i = 0; i < MAX_COLUMNS; i++) {
       if (cmd->sel_columns[i].alias) free(cmd->sel_columns[i].alias);
       if (cmd->sel_columns[i].expr) free_expr_node(cmd->sel_columns[i].expr);
+      // free(&cmd->sel_columns[i]);
     }
     free(cmd->sel_columns);
   }

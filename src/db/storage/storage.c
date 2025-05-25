@@ -242,8 +242,8 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
     for (int j = 0; j < tc.schema->column_count; j++) {
       ColumnDefinition* col_def = &tc.schema->columns[j];
       if (!row->values[j].is_null && col_def) {
-        LOG_DEBUG("%s %s", str_column_value(&row->values[j]), col_def->type);
-        // write_column_value(file, &row->values[j], col_def);
+        // LOG_DEBUG("%s %s", str_column_value(&row->values[j]), col_def->type);
+        write_column_value(file, &row->values[j], col_def);
       }
     }
 
