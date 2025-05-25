@@ -1982,9 +1982,10 @@ void free_expr_node(ExprNode* node) {
       break;
 
     case EXPR_COLUMN:
+      break;
+    case EXPR_ARRAY_ACCESS:
       free_expr_node(node->column.array_idx);
       break;
-
     case EXPR_UNARY_OP:
       free_expr_node(node->unary);
       free_expr_node(node->arth_unary.expr);
@@ -2102,12 +2103,12 @@ void free_jql_command(JQLCommand* cmd) {
   //   free(cmd->values);
   // }
 
-  if (cmd->returning_columns) {
-    for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
-      if (cmd->returning_columns[i]) free(cmd->returning_columns[i]);
-    }
-    free(cmd->returning_columns);
-  }
+  // if (cmd->returning_columns) {
+  //   for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
+  //     if (cmd->returning_columns[i]) free(cmd->returning_columns[i]);
+  //   }
+  //   free(cmd->returning_columns);
+  // }
 
   // if (cmd->columns) {
   //   for (uint8_t i = 0; i < cmd->col_count; i++) {
@@ -2118,6 +2119,7 @@ void free_jql_command(JQLCommand* cmd) {
 
   if (cmd->sel_columns) {
     for (uint8_t i = 0; i < MAX_COLUMNS; i++) {
+      if (i >= cmd->col_count) break;
       if (cmd->sel_columns[i].alias) free(cmd->sel_columns[i].alias);
       if (cmd->sel_columns[i].expr) free_expr_node(cmd->sel_columns[i].expr);
       // free(&cmd->sel_columns[i]);
