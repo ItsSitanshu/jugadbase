@@ -1,89 +1,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <sys/stat.h>
 
+#include "utils/setup.h"
 #include "utils/cli.h"
-#include "utils/log.h"
 #include "utils/jugadline.h"
-
 #include "kernel/executor.h"
-#include "storage/cluster.h"
-
-#define ROOT_DIR "./data/clusters"
 
 int main(int argc, char* argv[]) {
-  char* output_filename = NULL;
-  char* default_db = "public";
-  char* cluster_name = "default";
-  bool create_default = true;
-
-  for (int i = 1; i < argc; i++) {
-    if (strcmp(argv[i], "--verbose") == 0 && i + 1 < argc) {
-      *verbosity_level = atoi(argv[++i]); 
-    } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
-      output_filename = argv[++i];
-    } else if (strcmp(argv[i], "--db") == 0 && i + 1 < argc) {
-      default_db = argv[++i];
-    } else if (strcmp(argv[i], "--cluster") == 0 && i + 1 < argc) {
-      cluster_name = argv[++i];
-    } else if (strcmp(argv[i], "--no-default") == 0) {
-      create_default = false;
-    }
-  }
-
-  if (*verbosity_level == 1) {
-    LOG_WARN("Invalid verbosity level: %d. Defaulting to WARN.", *verbosity_level);
-  }
-
-  ClusterManager* cluster_manager = cluster_manager_init(DB_ROOT_DIRECTORY);
-  if (!cluster_manager) {
-    fprintf(stderr, "Failed to initialize cluster manager\n");
+  SetupResult setup = perform_setup(argc, argv);
+  
+  if (!setup.success) {
+    fprintf(stderr, "%s\n", setup.error_message);
     return 1;
   }
-
-  Database* db = NULL;
   
-  if (cluster_manager->active_cluster == -1 && create_default) {
-    if (!cluster_create(cluster_manager, cluster_name)) {
-      fprintf(stderr, "Failed to create default cluster\n");
-      cluster_manager_free(cluster_manager);
-      return 1;
-    }
-
-    if (!cluster_add_db(cluster_manager, 0, default_db)) {
-      fprintf(stderr, "Failed to add default database to cluster\n");
-      cluster_manager_free(cluster_manager);
-      return 1;
-    }
-
-    db = cluster_get_active_db(cluster_manager);
-    if (!db && cluster_manager->cluster_count > 0) {
-      cluster_switch(cluster_manager, 1);
-      if (cluster_manager->clusters[1].db_count > 0) {
-        cluster_switch_db(cluster_manager, 1);
-        db = cluster_get_active_db(cluster_manager);
-      }
-    }
-  }
+  ClusterManager* cluster_manager = setup.cluster_manager;
+  Database* db = setup.db;
+  SetupConfig* config = &setup.config;
   
-  if (!db && cluster_manager->active_cluster == -1) {
-    LOG_WARN("No active database available. Use cluster commands to create or switch to a cluster and database.");
-  }
-
-  DbCluster cluster = cluster_manager->clusters[cluster_manager->active_cluster];
-  db = cluster.databases[cluster.active_db];
-  db->core = cluster.databases[0];
-  db->core->core = db->core;
-
   char* input = NULL;
   CommandHistory history = { .current = 1, .size = 0 };
-
   char short_cwd[256];
   char prompt[512];
   get_short_cwd(short_cwd, sizeof(short_cwd));
-
+  
   while (1) {
     const char* db_path = "none";
     DbCluster* active_cluster = NULL;
@@ -128,19 +69,31 @@ int main(int argc, char* argv[]) {
     } else if (db) {
       if (!process_cmd(cluster_manager, db, input)) {
         Result result = process(db, input);
-        if (output_filename && result.exec.code == 0) {
-          print_text_table_to_file(result.exec, result.cmd, output_filename);
+        
+        if (result.exec.code == 0) {
+          char output_buffer[8192];
+          output_result(config, output_buffer);
+          
+          if (config->output_mode == OUTPUT_FILE && config->output_filename) {
+            print_text_table_to_file(result.exec, result.cmd, config->output_filename);
+          }
         }
+        
         free_result(&result);
       }
     } else {
-      printf("No active database. Use .cluster commands to create or select a database.\n");
+      const char* msg = "No active database. Use .cluster commands to create or select a database.\n";
+      output_result(config, msg);
     }
 
     free(input);
   }
 
-  cluster_manager_free(cluster_manager);
+  if (config->output_mode == OUTPUT_MEMORY && config->memory_buffer) {
+    printf("\n--- Memory Buffer Contents ---\n%s\n", config->memory_buffer);
+  }
+
+  cleanup_setup(&setup);
   
   for (int i = 0; i < history.size; i++) {
     free(history.history[i]);
