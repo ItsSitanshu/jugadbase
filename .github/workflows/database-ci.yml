@@ -27,3 +27,5 @@ jobs:
 
       - name: Run Tests
         run: cd build/ && ctest --test-dir . --output-on-failure
+        env:
+          CORE_JCL_PATH: "${{ github.workspace }}/src/db/core.jcl"

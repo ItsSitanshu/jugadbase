@@ -8,9 +8,10 @@
 #define MAX_CLUSTERS 8
 #define MAX_CLUSTER_NAME 64
 
+const char* get_core_jcl_path();
 #define CONFIG_FILE "cluster.jbconf"
-#ifndef CORE_JDL_PATH
-  #define CORE_JDL_PATH "core.jcl"
+#ifndef CORE_JCL_PATH
+  #define CORE_JCL_PATH get_core_jcl_path()
 #endif
 
 typedef struct DbCluster {

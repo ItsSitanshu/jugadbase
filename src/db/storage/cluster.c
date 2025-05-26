@@ -8,6 +8,10 @@
 #include "cluster.h"
 #include "../utils/log.h"
 
+const char* get_core_jcl_path() {
+  const char* env_path = getenv("CORE_JCL_PATH");
+  return (env_path != NULL) ? env_path : "core.jcl";
+}
 
 ClusterManager* cluster_manager_init(char* root_dir) {
   struct stat st = {0};
@@ -176,7 +180,7 @@ bool cluster_create(ClusterManager* manager, char* name) {
 
   cluster_switch(manager, 0);
   Database* db = cluster_get_active_db(manager);
-  process_file(db, CORE_JDL_PATH);
+  process_file(db, CORE_JCL_PATH);
 
   return true;
 }
