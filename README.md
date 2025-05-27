@@ -52,6 +52,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
   - ~~Impelement compacting~~
   - ~~Write tests for arrays and delete~~
 - ~~Implement the `RETURNING` sub-clause for `INSERT`~~
+- Implement `ALTER TABLE`
 - Implement `SERIAL` sequences
 - Migrate attribute definitions binary (schema) => jb_core 
 - Implement `DEFAULT` values
