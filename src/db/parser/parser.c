@@ -80,6 +80,9 @@ JQLCommand parser_parse(Database* db) {
     case TOK_CRT:
       command = parser_parse_create_table(db->parser, db);
       break;
+    case TOK_ALT:
+      command = parser_parse_alter_table(db->parser, db);
+      break;
     case TOK_INS:
       command = parser_parse_insert(db->parser, db);
       break;
@@ -135,7 +138,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   column.type = parser->cur->type;
 
   if (column.type == TOK_T_SERIAL) {
-    column.is_auto_increment = true;
+    column.has_sequence = true;
   }
 
   parser_consume(parser);
@@ -311,7 +314,6 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         }
 
         column.is_not_null = true;
-        column.has_constraints = true;
         parser_consume(parser);
         break;
       case TOK_DEF:
@@ -446,6 +448,557 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
   return command;
 }
 
+JQLCommand parser_parse_alter_table(Parser* parser, Database* db) {
+  JQLCommand command;
+  memset(&command, 0, sizeof(JQLCommand));
+  command.type = CMD_ALTER;
+  command.is_invalid = true;
+
+  AlterTableCommand* alter_cmd = calloc(1, sizeof(AlterTableCommand));
+
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_TBL) {
+    REPORT_ERROR(parser->lexer, "Expected TABLE keyword after ALTER");
+    free(alter_cmd);
+    return command;
+  }
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected table name after ALTER TABLE");
+    free(alter_cmd);
+    return command;
+  }
+  strcpy(alter_cmd->table_name, parser->cur->value);
+  parser_consume(parser);
+
+  switch (parser->cur->type) {
+    case TOK_KW_ADD:
+      parser_consume(parser);
+      if (parser->cur->type == TOK_ID) {
+        parser_consume(parser);
+        if (!parse_alter_add_column(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else if (parser->cur->type == TOK_CNST) {
+        parser_consume(parser);
+
+        if (!parse_alter_add_constraint(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else {
+        REPORT_ERROR(parser->lexer, "Expected COLUMN or CONSTRAINT after ADD");
+        free(alter_cmd);
+        return command;
+      }
+      break;
+    case TOK_DRP:
+        parser_consume(parser);
+        if (parser->cur->type == TOK_ID) {
+          parser_consume(parser);
+          if (!parse_alter_drop_column(parser, alter_cmd)) {
+            free(alter_cmd);
+            return command;
+          }
+        } else if (parser->cur->type == TOK_CNST) {
+          parser_consume(parser);
+          if (!parse_alter_drop_constraint(parser, alter_cmd)) {
+            free(alter_cmd);
+            return command;
+          }
+        } else {
+          REPORT_ERROR(parser->lexer, "Expected COLUMN or CONSTRAINT after DROP");
+          free(alter_cmd);
+          return command;
+        }
+        break;
+
+    case TOK_RENAME:
+      parser_consume(parser);
+      if (parser->cur->type == TOK_ID) {
+        parser_consume(parser);
+        if (!parse_alter_rename_column(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else if (parser->cur->type == TOK_CNST) {
+        parser_consume(parser);
+        if (!parse_alter_rename_constraint(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else if (parser->cur->type == TOK_TO) {
+        if (!parse_alter_rename_table(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else {
+        REPORT_ERROR(parser->lexer, "Expected COLUMN, CONSTRAINT, or TO after RENAME");
+        free(alter_cmd);
+        return command;
+      }
+      break;
+
+    case TOK_ALT:
+      parser_consume(parser);
+
+      if (parser->cur->type == TOK_KW_COL) {
+        parser_consume(parser);
+        if (!parse_alter_alter_column(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else {
+        REPORT_ERROR(parser->lexer, "Expected COLUMN after ALTER");
+        free(alter_cmd);
+        return command;
+      }
+      break;
+
+    case TOK_SET:
+      parser_consume(parser);
+      if (parser->cur->type == TOK_TABLESPACE) {
+        parser_consume(parser);
+        if (!parse_alter_set_tablespace(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else if (parser->cur->type == TOK_OWNER) {
+        parser_consume(parser);
+        if (!parse_alter_set_owner(parser, alter_cmd)) {
+          free(alter_cmd);
+          return command;
+        }
+      } else {
+        REPORT_ERROR(parser->lexer, "Expected TABLESPACE or OWNER after SET");
+        free(alter_cmd);
+        return command;
+      }
+      break;
+
+    default:
+      REPORT_ERROR(parser->lexer, "Unknown ALTER TABLE operation");
+      free(alter_cmd);
+      return command;
+  }
+
+  command.alter = alter_cmd;
+  command.is_invalid = false;
+  return command;
+}
+
+bool parse_alter_add_column(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected column name after ADD COLUMN");
+    return false;
+  }
+  cmd->operation = ALTER_ADD_COLUMN;
+  strcpy(cmd->add_column.column_name, parser->cur->value);
+  parser_consume(parser);
+
+  if (!is_valid_data_type(parser)) {
+    REPORT_ERROR(parser->lexer, "SYE_E_CDTYPE", parser->cur->value);
+    return false;
+  }
+
+  cmd->add_column.data_type = parser->cur->type;
+  parser_consume(parser);
+
+  if (parser->cur->type == TOK_NOT) {
+    parser_consume(parser);
+    if (parser->cur->type == TOK_NL) {
+      cmd->add_column.not_null = true;
+      parser_consume(parser);
+    }
+  }
+
+  if (parser->cur->type == TOK_DEF) {
+    parser_consume(parser);
+    sprintf(cmd->add_column.default_expr, "%s", parser->cur->value);
+    
+    ColumnValue val;
+    if (!parser_parse_value(parser, &val)) { 
+      REPORT_ERROR(parser->lexer, "Expected default value");
+      return false;
+    }
+
+    strcpy(cmd->add_column.default_expr, parser->cur->value);
+    cmd->add_column.has_default = true;
+    parser_consume(parser);
+  }
+
+  return true;
+}
+
+bool parse_alter_drop_column(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected column name after DROP COLUMN");
+    return false;
+  }
+  cmd->operation = ALTER_DROP_COLUMN;
+  strcpy(cmd->column.column_name, parser->cur->value);
+  parser_consume(parser);
+  return true;
+}
+
+bool parse_alter_rename_column(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected column name to rename");
+    return false;
+  }
+  strcpy(cmd->column.column_name, parser->cur->value);
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_TO) {
+    REPORT_ERROR(parser->lexer, "Expected TO in RENAME COLUMN");
+    return false;
+  }
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected new column name");
+    return false;
+  }
+  strcpy(cmd->column.new_column_name, parser->cur->value);
+  cmd->operation = ALTER_RENAME_COLUMN;
+  parser_consume(parser);
+
+  return true;
+}
+
+bool parse_alter_alter_column(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected column name in ALTER COLUMN");
+    return false;
+  }
+
+  strcpy(cmd->column.column_name, parser->cur->value);
+  parser_consume(parser);
+
+  if (is_valid_data_type(parser)) {
+    cmd->column.data_type = parser->cur->type;
+    parser_consume(parser);
+  }
+
+  if (parser->cur->type == TOK_SET) {
+    parser_consume(parser);
+    if (parser->cur->type == TOK_DEF) {
+      parser_consume(parser);
+      cmd->operation = ALTER_SET_DEFAULT;
+
+      strcpy(cmd->column.default_expr, parser->cur->value);
+      if (!is_valid_data_type(parser)) {
+        REPORT_ERROR(parser->lexer, "SYE_E_CDTYPE", parser->cur->value);
+        return false;
+      }
+
+      parser_consume(parser);
+    } else if (parser->cur->type == TOK_NOT) {
+      parser_consume(parser);
+      if (parser->cur->type == TOK_NL) {
+        parser_consume(parser);
+        cmd->operation = ALTER_SET_NOT_NULL;
+        cmd->column.not_null = true;
+      } else {
+        REPORT_ERROR(parser->lexer, "Expected NULL after NOT");
+        return false;
+      }
+    }
+  } else if (parser->cur->type == TOK_DRP) {
+    parser_consume(parser);
+    if (parser->cur->type == TOK_DEF) {
+      parser_consume(parser);
+      cmd->operation = ALTER_DROP_DEFAULT;
+    } else if (parser->cur->type == TOK_NOT) {
+      parser_consume(parser);
+      if (parser->cur->type == TOK_NL) {
+        parser_consume(parser);
+        cmd->operation = ALTER_DROP_NOT_NULL;
+      } else {
+        REPORT_ERROR(parser->lexer, "Expected NULL after NOT");
+        return false;
+      }
+    }
+  } else {
+    REPORT_ERROR(parser->lexer, "Unknown ALTER COLUMN sub-operation");
+    return false;
+  }
+
+  LOG_DEBUG("parser->2-> %s", parser->cur->value);
+
+  return true;
+}
+
+bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected constraint name after ADD CONSTRAINT");
+    return false;
+  }
+  strcpy(cmd->constraint.constraint_name, parser->cur->value);
+  parser_consume(parser);
+
+  if (parser->cur->type == TOK_PK) {
+    cmd->constraint.constraint_type = 1;  // PRIMARY KEY
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_LP) {
+      REPORT_ERROR(parser->lexer, "Expected ( after PRIMARY KEY");
+      return false;
+    }
+    parser_consume(parser);
+
+    int i = 0;
+    while (parser->cur->type == TOK_ID) {
+      if (i >= MAX_COLUMNS) {
+        REPORT_ERROR(parser->lexer, "Too many columns in constraint");
+        return false;
+      }
+      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      parser_consume(parser);
+      if (parser->cur->type == TOK_COM) parser_consume(parser);
+      else break;
+    }
+
+    cmd->constraint.ref_columns_count = i;
+
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "Expected ) at end of constraint column list");
+      return false;
+    }
+    parser_consume(parser);
+  }
+
+  else if (parser->cur->type == TOK_UNQ) {
+    cmd->constraint.constraint_type = 2;  // UNIQUE
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_LP) {
+      REPORT_ERROR(parser->lexer, "Expected ( after UNIQUE");
+      return false;
+    }
+    parser_consume(parser);
+
+    int i = 0;
+    while (parser->cur->type == TOK_ID) {
+      if (i >= MAX_COLUMNS) {
+        REPORT_ERROR(parser->lexer, "Too many columns in UNIQUE constraint");
+        return false;
+      }
+
+      strcpy(cmd->constraint.ref_columns[i], parser->cur->value);
+      parser_consume(parser);
+      i += 1;
+
+      if (parser->cur->type == TOK_COM) parser_consume(parser);
+      else break;
+    }
+
+    cmd->constraint.ref_columns_count = i;
+
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "Expected ) after UNIQUE column list");
+      return false;
+    }
+    parser_consume(parser);
+  }
+
+  else if (parser->cur->type == TOK_FK) {
+    cmd->constraint.constraint_type = 3;  // FOREIGN KEY
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_LP) {
+      REPORT_ERROR(parser->lexer, "Expected ( after FOREIGN KEY");
+      return false;
+    }
+    parser_consume(parser);
+
+    int i = 0;
+    while (parser->cur->type == TOK_ID) {
+      if (i >= MAX_COLUMNS) {
+        REPORT_ERROR(parser->lexer, "Too many columns in FK constraint");
+        return false;
+      }
+      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      parser_consume(parser);
+      if (parser->cur->type == TOK_COM) parser_consume(parser);
+      else break;
+    }
+
+    cmd->constraint.ref_columns_count = i;
+
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "Expected ) after FK column list");
+      return false;
+    }
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_REF) {
+      REPORT_ERROR(parser->lexer, "Expected REFERENCES after FOREIGN KEY");
+      return false;
+    }
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_ID) {
+      REPORT_ERROR(parser->lexer, "Expected foreign table name");
+      return false;
+    }
+    strcpy(cmd->constraint.ref_table, parser->cur->value);
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_LP) {
+      REPORT_ERROR(parser->lexer, "Expected ( before FK referenced column list");
+      return false;
+    }
+    parser_consume(parser);
+
+    i = 0;
+    while (parser->cur->type == TOK_ID) {
+      if (i >= MAX_COLUMNS) {
+        REPORT_ERROR(parser->lexer, "Too many referenced columns in FK");
+        return false;
+      }
+
+      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      parser_consume(parser);
+      if (parser->cur->type == TOK_COM) parser_consume(parser);
+      else break;
+    }
+    cmd->constraint.ref_columns_count = i;
+
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "Expected ) after FK referenced column list");
+      return false;
+    }
+    parser_consume(parser);
+  }
+
+  else if (parser->cur->type == TOK_CHK) {
+    cmd->constraint.constraint_type = 4;  // CHECK
+    parser_consume(parser);
+
+    if (parser->cur->type != TOK_LP) {
+      REPORT_ERROR(parser->lexer, "Expected ( after CHECK");
+      return false;
+    }
+    parser_consume(parser);
+
+    memset(cmd->constraint.constraint_expr, 0, MAX_IDENTIFIER_LEN);
+    size_t expr_len = 0;
+
+    while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
+      if (expr_len + strlen(parser->cur->value) >= MAX_IDENTIFIER_LEN - 1) {
+        REPORT_ERROR(parser->lexer, "Check expression too long");
+        return false;
+      }
+      strcat(cmd->constraint.constraint_expr, parser->cur->value);
+      expr_len += strlen(parser->cur->value);
+      parser_consume(parser);
+    }
+
+    if (parser->cur->type != TOK_RP) {
+      REPORT_ERROR(parser->lexer, "Expected ) to close CHECK expression");
+      return false;
+    }
+    parser_consume(parser);
+  }
+
+  else {
+    REPORT_ERROR(parser->lexer, "Unsupported constraint type in ADD CONSTRAINT");
+    return false;
+  }
+
+  cmd->operation = ALTER_ADD_CONSTRAINT;
+  return true;
+}
+
+
+bool parse_alter_drop_constraint(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected constraint name after DROP CONSTRAINT");
+    return false;
+  }
+  strcpy(cmd->constraint.constraint_name, parser->cur->value);
+  cmd->operation = ALTER_DROP_CONSTRAINT;
+  parser_consume(parser);
+  return true;
+}
+
+bool parse_alter_rename_constraint(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected constraint name after RENAME CONSTRAINT");
+    return false;
+  }
+  strcpy(cmd->constraint.constraint_name, parser->cur->value);
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_TO) {
+    REPORT_ERROR(parser->lexer, "Expected TO in RENAME CONSTRAINT");
+    return false;
+  }
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected new constraint name");
+    return false;
+  }
+
+  strcpy(cmd->constraint.constraint_expr, parser->cur->value);
+  cmd->operation = ALTER_RENAME_CONSTRAINT;
+  parser_consume(parser);
+
+  return true;
+}
+
+bool parse_alter_rename_table(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_TO) {
+    REPORT_ERROR(parser->lexer, "Expected TO after RENAME");
+    return false;
+  }
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected new table name");
+    return false;
+  }
+  strcpy(cmd->rename_table.new_table_name, parser->cur->value);
+  cmd->operation = ALTER_RENAME_TABLE;
+  parser_consume(parser);
+
+  return true;
+}
+
+bool parse_alter_set_owner(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_TO) {
+    REPORT_ERROR(parser->lexer, "Expected TO after SET OWNER");
+    return false;
+  }
+  parser_consume(parser);
+
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected new owner identifier");
+    return false;
+  }
+  strcpy(cmd->set_owner.new_owner, parser->cur->value);
+  cmd->operation = ALTER_SET_OWNER;
+  parser_consume(parser);
+
+  return true;
+}
+
+bool parse_alter_set_tablespace(Parser* parser, AlterTableCommand* cmd) {
+  if (parser->cur->type != TOK_ID) {
+    REPORT_ERROR(parser->lexer, "Expected tablespace name");
+    return false;
+  }
+  strcpy(cmd->set_tablespace.new_tablespace, parser->cur->value);
+  cmd->operation = ALTER_SET_TABLESPACE;
+  parser_consume(parser);
+  return true;
+}
+
 JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   JQLCommand command;  
   
@@ -540,7 +1093,8 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
       if (parser->cur->type == TOK_COM) {
         parser_consume(parser);
       } else if (parser->cur->type != TOK_RP) {
-        REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUES");
+        REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUES", 
+          parser->cur->value, parser->cur->type);
         return command;
       }
 
@@ -579,25 +1133,39 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     command.is_invalid = false;
     return command;
   }
-  
-  parser_consume(parser);
+
+  if (command.col_count <= 0 || command.col_count > MAX_COLUMNS) {
+    LOG_ERROR("Invalid number of columns expected %d <= 0 and > %d", command.col_count, MAX_COLUMNS);
+    return command;
+  }
+
+  parser_consume(parser); 
   command.returning_columns = calloc(command.col_count, sizeof(char *));
+  if (!command.returning_columns) {
+    REPORT_ERROR(parser->lexer, "Memory allocation failed");
+    return command;
+  }
 
   while (parser->cur->type == TOK_ID) {
-    command.returning_columns[command.ret_col_count] = strdup(parser->cur->value);
-    command.ret_col_count++;
+    if (command.ret_col_count > command.col_count) {
+      REPORT_ERROR(parser->lexer, "Too many RETURNING columns");
+      return command;
+    }
 
+    command.returning_columns[command.ret_col_count] = strdup(parser->cur->value);
+    command.ret_col_count += 1;
     parser_consume(parser);
 
     if (parser->cur->type == TOK_COM) {
       parser_consume(parser);
-    } else if (parser->cur->type == TOK_SC) {
-      break;
+    } else if (parser->cur->type == TOK_SC || parser->cur->type == TOK_EOF) {
+      break; 
     } else {
       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_RET_COLUMN_LIST");
       return command;
     }
   }
+
 
   command.is_invalid = false;
   return command;
@@ -943,6 +1511,8 @@ void parser_consume(Parser* parser) {
 }
 
 bool is_valid_data_type(Parser *parser) {
+  if (parser->cur->type > TOK_T_UINT) return false;
+
   if (VALID_TYPES_MASK & (1 << parser->cur->type)) {
     return true;
   }
@@ -1027,7 +1597,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       bool has_timezone = false;
       
       has_timezone = (strpbrk(temp_str, "+-") != NULL);
-      
+
       if (temp_str[0] == '{' && temp_str[value_len - 1] == '}') {
         char* array_contents = temp_str;  
         array_contents[value_len] = '\0';
@@ -1042,6 +1612,11 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         lexer_set_buffer(tmp_parser->lexer, strdup(array_contents));
         tmp_parser->cur = lexer_next_token(tmp_parser->lexer);
         parser_consume(tmp_parser);
+
+        if (tmp_parser->cur->type == TOK_RBR) {
+          parser_consume(tmp_parser);
+          array_type = TOK_NL;
+        } 
 
         while (tmp_parser->cur->type != TOK_EOF
           && tmp_parser->cur->type != TOK_RBK
@@ -1555,6 +2130,7 @@ ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) 
 
   return node;
 }
+
 
 int find_column_index(TableSchema* schema, const char* name) {
   for (uint8_t i = 0; i < schema->column_count; i++) {

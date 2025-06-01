@@ -164,7 +164,6 @@ typedef struct {
   bool is_unique;
   bool is_not_null;
   bool is_index;
-  bool is_auto_increment;
 
   bool has_default;
   ColumnValue* default_value;
@@ -215,6 +214,69 @@ typedef struct {
   uint8_t expected_type;
 } __c;
 
+typedef struct AlterTableCommand {
+  char table_name[MAX_IDENTIFIER_LEN];
+  
+  enum {
+    ALTER_ADD_COLUMN,
+    ALTER_DROP_COLUMN,
+    ALTER_RENAME_COLUMN,
+    ALTER_ALTER_COLUMN_TYPE,
+    ALTER_SET_DEFAULT,
+    ALTER_DROP_DEFAULT,
+    ALTER_SET_NOT_NULL,
+    ALTER_DROP_NOT_NULL,
+    ALTER_ADD_CONSTRAINT,
+    ALTER_DROP_CONSTRAINT,
+    ALTER_RENAME_CONSTRAINT,
+    ALTER_RENAME_TABLE,
+    ALTER_SET_OWNER,
+    ALTER_SET_TABLESPACE,
+    ALTER_UNKNOWN
+  } operation;
+
+  union {
+    struct {
+      char column_name[MAX_IDENTIFIER_LEN];
+      int data_type;
+      bool not_null;
+      bool has_default;
+      char default_expr[MAX_IDENTIFIER_LEN];
+    } add_column;
+
+    struct {
+      char column_name[MAX_IDENTIFIER_LEN];
+      char new_column_name[MAX_IDENTIFIER_LEN];
+      int data_type;
+      char default_expr[MAX_IDENTIFIER_LEN];  
+      bool not_null;                            
+    } column;
+
+    struct {
+      char constraint_name[MAX_IDENTIFIER_LEN];
+      int constraint_type;
+      char constraint_expr[MAX_IDENTIFIER_LEN];
+      char ref_table[MAX_IDENTIFIER_LEN];
+      char ref_columns[MAX_COLUMNS][MAX_IDENTIFIER_LEN];
+      int ref_columns_count;
+    } constraint;
+
+    struct {
+      char new_table_name[MAX_IDENTIFIER_LEN];
+    } rename_table;
+
+    struct {
+      char new_owner[MAX_IDENTIFIER_LEN];
+    } set_owner;
+
+    struct {
+      char new_tablespace[MAX_IDENTIFIER_LEN];
+    } set_tablespace;
+  };
+  
+  bool is_invalid;
+} AlterTableCommand;
+
 typedef struct {
   JQLCommandType type;
   TableSchema* schema;
@@ -252,6 +314,8 @@ typedef struct {
     uint8_t type;
     bool decend;
   }* order_by; 
+
+  AlterTableCommand* alter;
 
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
   char group_by[MAX_IDENTIFIER_LEN];  // GROUP BY clause
@@ -305,6 +369,19 @@ void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, ui
 JQLCommand parser_parse_update(Parser* parser, Database* db);
 JQLCommand parser_parse_delete(Parser* parser, Database* db);
 
+JQLCommand parser_parse_alter_table(Parser* parser, Database* db);
+
+bool parse_alter_add_column(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_drop_column(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_rename_column(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_alter_column(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_drop_constraint(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_rename_constraint(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_rename_table(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_set_owner(Parser* parser, AlterTableCommand* cmd);
+bool parse_alter_set_tablespace(Parser* parser, AlterTableCommand* cmd);
+
 void parser_consume(Parser* parser);
 
 bool is_valid_data_type(Parser* parser);
@@ -328,6 +405,8 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left);
 ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* left);
 ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* left);
+
+bool parser_parse_constraint(Parser* parser, ColumnDefinition* col_def);
 
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
