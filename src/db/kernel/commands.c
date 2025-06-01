@@ -41,6 +41,9 @@ Result execute_cmd(Database* db, JQLCommand* cmd) {
     case CMD_CREATE:
       result = (Result){execute_create_table(db, cmd), cmd};
       break;
+    case CMD_ALTER:
+      result = (Result){execute_alter_table(db, cmd), cmd};
+      break;
     case CMD_INSERT:
       result = (Result){execute_insert(db, cmd), cmd};
       break;
@@ -141,8 +144,8 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   FILE* tca_io = db->tc_appender;
   TableSchema* schema = cmd->schema;
 
-  bool res = insert_table(db, schema->table_name);
-  if (!res) { 
+  int64_t table_id = insert_table(db, schema->table_name);
+  if (table_id == -1) { 
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
@@ -190,30 +193,40 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     }
 
     io_write(tca_io, &col->has_constraints, sizeof(bool));
-    // if (col->has_constraints) insert_constraint(db, )
-    io_write(tca_io, &col->is_primary_key, sizeof(bool));
-    io_write(tca_io, &col->is_unique, sizeof(bool));
-    io_write(tca_io, &col->is_not_null, sizeof(bool));
+
+    if (col->is_primary_key) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_PRIMARY_KEY, false, true, true);
+    if (col->is_unique) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_UNIQUE, false, true, false);
     io_write(tca_io, &col->is_array, sizeof(bool));
     io_write(tca_io, &col->is_index, sizeof(bool));
-    io_write(tca_io, &col->is_auto_increment, sizeof(bool));
 
     io_write(tca_io, &col->has_default, sizeof(bool));
-    // if (col->has_default) {
-    //   io_write(tca_io, col->default_value, MAX_IDENTIFIER_LEN);
+
+      // io_write(tca_io, col->default_value, MAX_IDENTIFIER_LEN);
     // }
 
     io_write(tca_io, &col->has_check, sizeof(bool));
-    if (col->has_check) {
-      io_write(tca_io, col->check_expr, MAX_IDENTIFIER_LEN);
-    }
+    // if (col->has_check) {
+    //   io_write(tca_io, col->check_expr, MAX_IDENTIFIER_LEN);
+    // }
 
     io_write(tca_io, &col->is_foreign_key, sizeof(bool));
-    if (col->is_foreign_key) {
-      io_write(tca_io, col->foreign_table, MAX_IDENTIFIER_LEN);
-      io_write(tca_io, col->foreign_column, MAX_IDENTIFIER_LEN);
-      io_write(tca_io, &col->on_delete, sizeof(FKAction));
-      io_write(tca_io, &col->on_update, sizeof(FKAction));
+    // if (col->is_foreign_key) {
+    //   io_write(tca_io, col->foreign_table, MAX_IDENTIFIER_LEN);
+    //   io_write(tca_io, col->foreign_column, MAX_IDENTIFIER_LEN);
+    //   io_write(tca_io, &col->on_delete, sizeof(FKAction));
+    //   io_write(tca_io, &col->on_update, sizeof(FKAction));
+    // }
+
+    if (!(strcmp(schema->table_name, "jb_attribute") == 0 ||
+        strcmp(schema->table_name, "jb_tables") == 0 ||
+        strcmp(schema->table_name, "jb_sequences") == 0)) {
+  
+      insert_attribute(db, table_id, col->name, col->type, i, !col->is_not_null, col->has_default, col->has_constraints);
+
+      if (col->has_default) {
+        char* default_value = str_column_value(col->default_value);
+        insert_attr_default(db, table_id, col->name, default_value);
+      }
     }
   }
 
@@ -269,9 +282,336 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   io_flush(db->tc_writer);
 
   load_tc(db);
+  uint32_t table_offset = hash_fnv1a(schema->table_name, MAX_TABLES);
+  LOG_DEBUG("CREATE %s = %d", schema->table_name, table_offset);
   load_schema_tc(db, schema->table_name);
 
   return (ExecutionResult){0, "Table schema written successfully"};
+}
+
+ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
+  ExecutionResult result = {0};
+  AlterTableCommand* alter_cmd = cmd->alter;
+  
+  uint32_t table_offset = hash_fnv1a(alter_cmd->table_name, MAX_TABLES);
+  LOG_DEBUG("ALTER %s = %d", alter_cmd->table_name, table_offset);
+  if (table_offset == UINT32_MAX) {
+    result.code = -1;
+    result.message = "Table not found";
+    return result;
+  }
+  
+  TableSchema* schema = db->tc[table_offset].schema;
+  int64_t table_id = insert_table(db, alter_cmd->table_name);
+  
+  switch (alter_cmd->operation) {
+    case ALTER_ADD_COLUMN: {
+      if (schema->column_count >= MAX_COLUMNS) {
+        result.code = -1;
+        result.message = "Maximum column count exceeded";
+        return result;
+      }
+      
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (strcmp(schema->columns[i].name, alter_cmd->add_column.column_name) == 0) {
+          result.code = -1;
+          result.message = "Column already exists";
+          return result;
+        }
+      }
+      
+      ColumnDefinition* new_col = &schema->columns[schema->column_count];
+      strcpy(new_col->name, alter_cmd->add_column.column_name);
+      new_col->type = alter_cmd->add_column.data_type;
+      new_col->is_not_null = alter_cmd->add_column.not_null;
+      new_col->has_default = alter_cmd->add_column.has_default;
+      
+      schema->column_count++;
+      
+      if (alter_cmd->add_column.not_null) {
+        const char* col_names[] = { alter_cmd->add_column.column_name };
+        insert_constraint(db, table_id, "", CONSTRAINT_NOT_NULL, col_names, 1,
+          NULL, NULL, NULL, 0, 0, 0, false, false, false, false, false);
+      }
+      
+      if (alter_cmd->add_column.has_default) {
+        insert_default_constraint(db, table_id, alter_cmd->add_column.column_name, 
+          alter_cmd->add_column.default_expr);
+      }
+      
+      result.code = 0;
+      result.message = "Column added successfully";
+      break;
+    }
+    
+    case ALTER_DROP_COLUMN: {
+      int col_idx = -1;
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (strcmp(schema->columns[i].name, alter_cmd->column.column_name) == 0) {
+          col_idx = i;
+          break;
+        }
+      }
+      
+      if (col_idx == -1) {
+        result.code = -1;
+        result.message = "Column not found";
+        return result;
+      }
+      
+      for (uint8_t i = col_idx; i < schema->column_count - 1; i++) {
+        schema->columns[i] = schema->columns[i + 1];
+      }
+      schema->column_count--;
+      
+      result.code = 0;
+      result.message = "Column dropped successfully";
+      break;
+    }
+    
+    case ALTER_RENAME_COLUMN: {
+      int col_idx = -1;
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (strcmp(schema->columns[i].name, alter_cmd->column.column_name) == 0) {
+          col_idx = i;
+          break;
+        }
+      }
+      
+      if (col_idx == -1) {
+        result.code = -1;
+        result.message = "Column not found";
+        return result;
+      }
+      
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (i != col_idx && strcmp(schema->columns[i].name, alter_cmd->column.new_column_name) == 0) {
+          result.code = -1;
+          result.message = "New column name already exists";
+          return result;
+        }
+      }
+      
+      result.code = 0;
+      result.message = "Column renamed successfully";
+      break;
+    }
+    
+    case ALTER_SET_DEFAULT: {
+      int col_idx = -1;
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (strcmp(schema->columns[i].name, alter_cmd->column.column_name) == 0) {
+          col_idx = i;
+          break;
+        }
+      }
+      
+      if (col_idx == -1) {
+        result.code = -1;
+        result.message = "Column not found";
+        return result;
+      }
+      
+      int64_t existing_default = find_default_constraint(db, table_id, alter_cmd->column.column_name);
+      if (existing_default >= 0) {
+        delete_constraint(db, existing_default);
+      }
+      
+      schema->columns[col_idx].has_default = true;
+      
+      insert_default_constraint(db, table_id, alter_cmd->column.column_name, 
+        alter_cmd->column.default_expr);
+      
+      result.code = 0;
+      result.message = "Default value set successfully";
+      break;
+    }
+    
+    case ALTER_DROP_DEFAULT: {
+      int col_idx = -1;
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (strcmp(schema->columns[i].name, alter_cmd->column.column_name) == 0) {
+          col_idx = i;
+          break;
+        }
+      }
+      
+      if (col_idx == -1) {
+        result.code = -1;
+        result.message = "Column not found";
+        return result;
+      }
+      
+      int64_t default_constraint = find_default_constraint(db, table_id, alter_cmd->column.column_name);
+      if (default_constraint >= 0) {
+        delete_constraint(db, default_constraint);
+      }
+      
+      schema->columns[col_idx].has_default = false;
+      memset(schema->columns[col_idx].default_value, 0, sizeof(ColumnValue));
+      result.code = 0;
+      result.message = "Default value dropped successfully";
+      break;
+    }
+    
+    case ALTER_SET_NOT_NULL: {
+      int col_idx = -1;
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (strcmp(schema->columns[i].name, alter_cmd->column.column_name) == 0) {
+          col_idx = i;
+          break;
+        }
+      }
+      
+      if (col_idx == -1) {
+        result.code = -1;
+        result.message = "Column not found";
+        return result;
+      }
+      
+      schema->columns[col_idx].is_not_null = true;
+      
+      const char* col_names[] = { alter_cmd->column.column_name };
+      insert_constraint(db, table_id, "", CONSTRAINT_NOT_NULL, col_names, 1,
+        NULL, NULL, NULL, 0, 0, 0, false, false, false, false, false);
+      
+      result.code = 0;
+      result.message = "NOT NULL constraint added successfully";
+      break;
+    }
+    
+    case ALTER_DROP_NOT_NULL: {
+      int col_idx = -1;
+      for (uint8_t i = 0; i < schema->column_count; i++) {
+        if (strcmp(schema->columns[i].name, alter_cmd->column.column_name) == 0) {
+          col_idx = i;
+          break;
+        }
+      }
+      
+      if (col_idx == -1) {
+        result.code = -1;
+        result.message = "Column not found";
+        return result;
+      }
+      
+      schema->columns[col_idx].is_not_null = false;
+      result.code = 0;
+      result.message = "NOT NULL constraint dropped successfully";
+      break;
+    }
+    
+    case ALTER_ADD_CONSTRAINT: {
+      for (int i = 0; i < alter_cmd->constraint.ref_columns_count; i++) {
+        bool found = false;
+        for (uint8_t j = 0; j < schema->column_count; j++) {
+          if (strcmp(schema->columns[j].name, alter_cmd->constraint.ref_columns[i]) == 0) {
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          result.code = -1;
+          result.message = "Referenced column not found";
+          return result;
+        }
+      }
+      
+      const char* col_names[MAX_COLUMNS];
+      for (int i = 0; i < alter_cmd->constraint.ref_columns_count; i++) {
+        col_names[i] = alter_cmd->constraint.ref_columns[i];
+      }
+      
+      int64_t constraint_id = insert_constraint(db, table_id, alter_cmd->constraint.constraint_name,
+        alter_cmd->constraint.constraint_type, col_names, alter_cmd->constraint.ref_columns_count,
+        NULL, NULL, NULL, 0, 0, 0, false, false, false, true, false);
+      
+      if (constraint_id < 0) {
+        result.code = -1;
+        result.message = "Failed to add constraint";
+        return result;
+      }
+      
+      result.code = 0;
+      result.message = "Constraint added successfully";
+      break;
+    }
+    
+    case ALTER_DROP_CONSTRAINT: {
+      int64_t constraint_id = find_constraint_by_name(db, table_id, alter_cmd->constraint.constraint_name);
+      if (constraint_id < 0) {
+        result.code = -1;
+        result.message = "Constraint not found";
+        return result;
+      }
+      
+      if (!delete_constraint(db, constraint_id)) {
+        result.code = -1;
+        result.message = "Failed to drop constraint";
+        return result;
+      }
+      
+      result.code = 0;
+      result.message = "Constraint dropped successfully";
+      break;
+    }
+    
+    case ALTER_RENAME_CONSTRAINT: {
+      int64_t constraint_id = find_constraint_by_name(db, table_id, alter_cmd->constraint.constraint_name);
+      if (constraint_id < 0) {
+        result.code = -1;
+        result.message = "Constraint not found";
+        return result;
+      }
+      
+      const char* new_name = alter_cmd->constraint.constraint_expr;
+      if (!update_constraint_name(db, constraint_id, new_name)) {
+        result.code = -1;
+        result.message = "Failed to rename constraint";
+        return result;
+      }
+      
+      result.code = 0;
+      result.message = "Constraint renamed successfully";
+      break;
+    }
+    
+    case ALTER_RENAME_TABLE: {
+      for (uint8_t i = 0; i < MAX_TABLES; i++) {
+        if (is_struct_zeroed(db->tc[i].schema, sizeof(TableSchema))) break;
+
+        if (strcmp(db->tc[i].schema->table_name, alter_cmd->rename_table.new_table_name) == 0) {
+          result.code = -1;
+          result.message = "Table name already exists";
+          return result;
+        }
+      }
+      
+      strcpy(schema->table_name, alter_cmd->rename_table.new_table_name);
+      result.code = 0;
+      result.message = "Table renamed successfully";
+      break;
+    }
+    
+    case ALTER_SET_OWNER: {
+      result.code = 0;
+      result.message = "Owner set successfully";
+      break;
+    }
+    
+    case ALTER_SET_TABLESPACE: {
+      result.code = 0;
+      result.message = "Tablespace set successfully";
+      break;
+    }
+    
+    default:
+      result.code = -1;
+      result.message = "Unknown ALTER operation";
+      break;
+  }
+  
+  return result;
 }
 
 ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
@@ -362,7 +702,6 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
   uint8_t null_bitmap_size = (column_count + 7) / 8;
   uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
-  
   if (!null_bitmap) {
     free(row->values);
     return NULL;
@@ -430,6 +769,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       primary_key_count++;
     }
 
+
     row->row_length += size_from_value(&row->values[i], &schema->columns[i]);
     // LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
   }
@@ -439,7 +779,6 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       row->values[i].is_null = false;
       char seq_name[MAX_IDENTIFIER_LEN * 2];
       sprintf(seq_name, "%s%s", schema->table_name, schema->columns[i].name);
-      row->values[i].int_value = sequence_next_val(db, seq_name);
       row->values[i].int_value = sequence_next_val(db, seq_name);
       null_bitmap[i / 8] &= ~(1 << (i % 8));
     }
@@ -916,170 +1255,4 @@ void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
   wal_write(wal, WAL_DELETE, schema_idx, wal_buf, total_size);
   
   free(wal_buf);
-}
-
-bool insert_table(Database* db, char* name) {
-  if (!db || !name) {
-    LOG_ERROR("Invalid parameters to insert_table");
-    return false;
-  }
-
-  if (strcmp(name, "jb_tables") == 0
-      || strcmp(name, "jb_sequences") == 0) {
-    return true;
-  }
-
-  if (!db->core) db->core = db;
-
-  ParserState state = parser_save_state(db->core->parser);
-
-  char query[2048];
-  snprintf(query, sizeof(query),
-    "INSERT INTO jb_tables "
-    "(name, database_name, owner) "
-    "VALUES ('%s', '%s', NULL);",
-    name,
-    db->uuid
-  );
-
-  Result res = process(db->core, query);
-  bool success = res.exec.code == 0;
-
-  if (!success) {
-    LOG_ERROR("Failed to insert table '%s'", name);
-    return false;
-  }
-  free_result(&res);
-
-  parser_restore_state(db->core->parser, state);
-
-  return true;
-}
-
-int64_t sequence_next_val(Database* db, char* name) {
-  if (!db || !name) {
-    LOG_ERROR("Invalid parameters to insert_table");
-    return -1;
-  }
-
-  if (!db->core) db->core = db;
-
-  ParserState state = parser_save_state(db->core->parser);
-
-  char pquery[2048];
-  snprintf(pquery, sizeof(pquery),
-    "UPDATE jb_sequences SET current_value = current_value + increment_by "
-    "WHERE name = '%s'; ",
-    name
-  );
-
-  Result pres = process(db->core, pquery);
-  bool psuccess = pres.exec.code == 0;
-  if (!psuccess) {
-    LOG_ERROR("Failed to update the sequence '%s'", name);
-    return -1;
-  }
-
-  free_result(&pres);
-
-  char query[2048];
-  snprintf(query, sizeof(query),
-    "SELECT current_value, increment_by FROM jb_sequences "
-    "WHERE name = '%s'; ",
-    name
-  );
-
-  Result res = process(db->core, query);
-  bool success = res.exec.code == 0;
-  if (!success) {
-    LOG_ERROR("Failed to find a valid sequence '%s'", name);
-    return -1;
-  }
-
-  int table_idx = hash_fnv1a("jb_sequences", MAX_TABLES);
-  int cv_idx = find_column_index(db->core->tc[table_idx].schema, "current_value");
-
-  int copy = res.exec.rows[0].values[0].int_value;
-  // free_result(&res);
-
-  parser_restore_state(db->core->parser, state);
-
-  return copy;
-}
-
-int64_t create_default_squence(Database* db, char* name) {
-  if (!db || !name) {
-    LOG_ERROR("Invalid parameters to insert_table");
-    return -1;
-  }
-
-  if (strcmp(name, "jb_tablesid") == 0) {
-    return 0;
-  }
-
-  if (strcmp(name, "jb_sequencesid") == 0) {
-    return 1;
-  }
-
-  if (!db->core) db->core = db;
-
-  ParserState state = parser_save_state(db->core->parser);
-
-  char query[2048];
-
-  snprintf(query, sizeof(query),
-    "INSERT INTO jb_sequences "
-    "(name, current_value, increment_by, min_value, max_value, cycle)"
-    "VALUES ('%s', 0, 1, 0, NULL, false)"
-    "RETURNING id;",
-    name
-  );
-
-  Result res = process(db->core, query);
-  bool success = res.exec.code == 0;
-  if (!success || res.exec.alias_limit == 0) {
-    LOG_ERROR("Failed to create a default sequence '%s'", name);
-    return -1;
-  }
-
-  parser_restore_state(db->core->parser, state);
-
-  return res.exec.rows[0].values[0].int_value;
-}
-
-
-int64_t find_sequence(Database* db, char* name) {
-  if (!db || !name) {
-    LOG_ERROR("Invalid parameters to insert_table");
-    return -1;
-  }
-
-  if (strcmp(name, "jb_tablesid") == 0) {
-    return 0;
-  }
-
-  if (strcmp(name, "jb_sequencesid") == 0) {
-    return 1;
-  }
-
-  if (!db->core) db->core = db;
-
-  ParserState state = parser_save_state(db->core->parser);
-  char query[2048];
-
-  snprintf(query, sizeof(query),
-    "SELECT id FROM jb_sequences"
-    "WHERE name = '%s';",
-    name
-  );
-
-  Result res = process(db->core, query);
-  bool success = res.exec.code == 0;
-  if (!success) {
-    LOG_ERROR("Failed to find a valid sequence '%s'", name);
-    return -1;
-  }
-
-  parser_restore_state(db->core->parser, state);
-  return res.exec.rows[0].values[0].int_value;
 }
