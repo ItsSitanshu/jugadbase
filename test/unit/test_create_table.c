@@ -59,7 +59,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema->columns[0].name, "id");
   ck_assert_int_eq(schema->columns[0].type, TOK_T_SERIAL);
   ck_assert_int_eq(schema->columns[0].is_primary_key, 1);
-  ck_assert_int_eq(schema->columns[0].is_auto_increment, 1);
+  ck_assert_int_eq(schema->columns[0].has_sequence, 1);
   ck_assert_int_eq(schema->columns[0].is_unique, 1);
   ck_assert_int_eq(schema->columns[0].is_not_null, 1);
 
@@ -95,7 +95,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_categories->columns[0].name, "category_id");
   ck_assert_int_eq(schema_categories->columns[0].type, TOK_T_SERIAL);
   ck_assert_int_eq(schema_categories->columns[0].is_primary_key, 1);
-  ck_assert_int_eq(schema_categories->columns[0].is_auto_increment, 1);
+  ck_assert_int_eq(schema_categories->columns[0].has_sequence, 1);
 
   ck_assert_str_eq(schema_categories->columns[1].name, "category_name");
   ck_assert_int_eq(schema_categories->columns[1].type, TOK_T_VARCHAR);
@@ -109,7 +109,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_products->columns[0].name, "product_id");
   ck_assert_int_eq(schema_products->columns[0].type, TOK_T_SERIAL);
   ck_assert_int_eq(schema_products->columns[0].is_primary_key, 1);
-  ck_assert_int_eq(schema_products->columns[0].is_auto_increment, 1);
+  ck_assert_int_eq(schema_products->columns[0].has_sequence, 1);
 
   ck_assert_str_eq(schema_products->columns[1].name, "product_name");
   ck_assert_int_eq(schema_products->columns[1].type, TOK_T_VARCHAR);
@@ -138,7 +138,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_orders->columns[0].name, "order_id");
   ck_assert_int_eq(schema_orders->columns[0].type, TOK_T_SERIAL);
   ck_assert_int_eq(schema_orders->columns[0].is_primary_key, 1);
-  ck_assert_int_eq(schema_orders->columns[0].is_auto_increment, 1);
+  ck_assert_int_eq(schema_orders->columns[0].has_sequence, 1);
 
   ck_assert_str_eq(schema_orders->columns[1].name, "order_date");
   ck_assert_int_eq(schema_orders->columns[1].type, TOK_T_DATE);
@@ -162,7 +162,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_payments->columns[0].name, "payment_id");
   ck_assert_int_eq(schema_payments->columns[0].type, TOK_T_SERIAL);
   ck_assert_int_eq(schema_payments->columns[0].is_primary_key, 1);
-  ck_assert_int_eq(schema_payments->columns[0].is_auto_increment, 1);
+  ck_assert_int_eq(schema_payments->columns[0].has_sequence, 1);
 
   ck_assert_str_eq(schema_payments->columns[1].name, "order_id");
   ck_assert_int_eq(schema_payments->columns[1].type, TOK_T_INT);

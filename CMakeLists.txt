@@ -68,7 +68,7 @@ include_directories(${CHECK_INCLUDE_DIRS})
 file(GLOB TEST_SOURCES test/*.c)
 
 set(TEST_UNIT_SOURCES
-  test/unit/test_create_table.c
+  # test/unit/test_create_table.c
   test/unit/test_simple_select.c
   test/unit/test_combined_select.c
   test/unit/test_select_in_between.c

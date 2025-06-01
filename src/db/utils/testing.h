@@ -19,7 +19,7 @@
       *__dot = '\0';                                                         \
     }                                                                        \
     snprintf(path, sizeof(path), "%s" SEP "%s", DB_ROOT_DIRECTORY, __basename); \
-    argv[1] = "__test";                                       \
+    argv[0] = "__test";                                       \
     argv[1] = "--root";                                       \
     argv[2] = path;                                            \
   } while (0);                                                               \
