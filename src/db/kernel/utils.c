@@ -257,7 +257,7 @@ bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
     return true;    
   }
 
-  // LOG_DEBUG("%s => %s", token_type_strings[col_val->type], token_type_strings[target_type]);
+  // LOG_DEBUG("(%s)%s => %s", str_column_value(col_val), token_type_strings[col_val->type], token_type_strings[target_type]);
 
   switch (col_val->type) {
     case TOK_T_INT:

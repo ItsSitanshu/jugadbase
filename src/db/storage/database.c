@@ -541,12 +541,9 @@ bool load_schema_tc(Database* db, char* table_name) {
     }
 
     io_read(io, &col->has_constraints, sizeof(bool));
-    io_read(io, &col->is_primary_key, sizeof(bool));
-    io_read(io, &col->is_unique, sizeof(bool));
-    io_read(io, &col->is_not_null, sizeof(bool));
+
     io_read(io, &col->is_array, sizeof(bool));
     io_read(io, &col->is_index, sizeof(bool));
-    io_read(io, &col->is_auto_increment, sizeof(bool));
 
     io_read(io, &col->has_default, sizeof(bool));
     // if (col->has_default) {
@@ -559,27 +556,27 @@ bool load_schema_tc(Database* db, char* table_name) {
     // }
 
     io_read(io, &col->has_check, sizeof(bool));
-    if (col->has_check) {
-      if (io_read(io, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-        LOG_ERROR("Failed to read check constraint.");
-        free(schema->columns);
-        free(schema);
-        return false;
-      }
-    }
+    // if (col->has_check) {
+    //   if (io_read(io, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+    //     LOG_ERROR("Failed to read check constraint.");
+    //     free(schema->columns);
+    //     free(schema);
+    //     return false;
+    //   }
+    // }
 
     io_read(io, &col->is_foreign_key, sizeof(bool));
-    if (col->is_foreign_key) {
-      if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN 
-      || io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN
-      || io_read(io, &col->on_delete, sizeof(FKAction)) != sizeof(FKAction)
-      || io_read(io, &col->on_update, sizeof(FKAction)) != sizeof(FKAction)) {
-        LOG_ERROR("Failed to read foreign key details.");
-        free(schema->columns);
-        free(schema);
-        return false;
-      }
-    }
+    // if (col->is_foreign_key) {
+    //   if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN 
+    //   || io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN
+    //   || io_read(io, &col->on_delete, sizeof(FKAction)) != sizeof(FKAction)
+    //   || io_read(io, &col->on_update, sizeof(FKAction)) != sizeof(FKAction)) {
+    //     LOG_ERROR("Failed to read foreign key details.");
+    //     free(schema->columns);
+    //     free(schema);
+    //     return false;
+    //   }
+    // }
     
     if (col->is_primary_key) {
       schema->prim_column_count += 1;
@@ -692,13 +689,23 @@ bool load_initial_schema(Database* db) {
       io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
       io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
 
+      io_read(io, &col->has_sequence, sizeof(bool));
+      if (col->has_sequence) {
+        char seq_name[MAX_IDENTIFIER_LEN * 2];
+        sprintf(seq_name, "%s%s", schema->table_name, col->name);
+        col->sequence_id = find_sequence(db, seq_name);
+
+        if (col->sequence_id == -1) {
+          return false;
+        }
+      }
+
       io_read(io, &col->has_constraints, sizeof(bool));
-      io_read(io, &col->is_primary_key, sizeof(bool));
-      io_read(io, &col->is_unique, sizeof(bool));
-      io_read(io, &col->is_not_null, sizeof(bool));
+      // io_read(io, &col->is_primary_key, sizeof(bool));
+      // io_read(io, &col->is_unique, sizeof(bool));
+      // io_read(io, &col->is_not_null, sizeof(bool));
       io_read(io, &col->is_array, sizeof(bool));
       io_read(io, &col->is_index, sizeof(bool));
-      io_read(io, &col->is_auto_increment, sizeof(bool));
 
       io_read(io, &col->has_default, sizeof(bool));
       // if (col->has_default) {
@@ -711,27 +718,27 @@ bool load_initial_schema(Database* db) {
       // }
 
       io_read(io, &col->has_check, sizeof(bool));
-      if (col->has_check) {
-        if (io_read(io, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-          LOG_ERROR("Failed to read check constraint.");
-          free(schema->columns);
-          free(schema);
-          return false;
-        }
-      }
+      // if (col->has_check) {
+      //   if (io_read(io, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
+      //     LOG_ERROR("Failed to read check constraint.");
+      //     free(schema->columns);
+      //     free(schema);
+      //     return false;
+      //   }
+      // }
 
       io_read(io, &col->is_foreign_key, sizeof(bool));
-      if (col->is_foreign_key) {
-        if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN 
-        || io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN
-        || io_read(io, &col->on_delete, sizeof(FKAction)) != sizeof(FKAction)
-        || io_read(io, &col->on_update, sizeof(FKAction)) != sizeof(FKAction)) {
-          LOG_ERROR("Failed to read foreign key details.");
-          free(schema->columns);
-          free(schema);
-          return false;
-        }
-      }
+      // if (col->is_foreign_key) {
+      //   if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN 
+      //   || io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN
+      //   || io_read(io, &col->on_delete, sizeof(FKAction)) != sizeof(FKAction)
+      //   || io_read(io, &col->on_update, sizeof(FKAction)) != sizeof(FKAction)) {
+      //     LOG_ERROR("Failed to read foreign key details.");
+      //     free(schema->columns);
+      //     free(schema);
+      //     return false;
+      //   }
+      // }
 
       if (col->is_primary_key) {
         schema->prim_column_count += 1;
