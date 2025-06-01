@@ -8,8 +8,8 @@
 #include "cluster.h"
 #include "../utils/log.h"
 
-const char* get_core_jcl_path() {
-  const char* env_path = getenv("CORE_JCL_PATH");
+char* get_core_jcl_path() {
+  char* env_path = getenv("CORE_JCL_PATH");
   return (env_path != NULL) ? env_path : "core.jcl";
 }
 
