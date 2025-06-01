@@ -1113,6 +1113,8 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
     parser_consume(parser);   
 
+    LOG_DEBUG("!! %s", parser->cur->value);
+
     command.value_counts[command.row_count] = value_count;
     command.values[command.row_count] = row;
     command.row_count++;
@@ -2661,7 +2663,7 @@ void free_table_schema(TableSchema* schema) {
 void free_jql_command(JQLCommand* cmd) {
   if (!cmd) return;
 
-  if (cmd->bitmap) free(cmd->bitmap);
+  // if (cmd->bitmap) free(cmd->bitmap);
 
   if (cmd->has_where) {
     free_expr_node(cmd->where);

@@ -194,8 +194,8 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
 
     io_write(tca_io, &col->has_constraints, sizeof(bool));
 
-    if (col->is_primary_key) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_PRIMARY_KEY, false, true, true);
-    if (col->is_unique) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_UNIQUE, false, true, false);
+    // if (col->is_primary_key) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_PRIMARY_KEY, false, true, true);
+    // if (col->is_unique) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_UNIQUE, false, true, false);
     io_write(tca_io, &col->is_array, sizeof(bool));
     io_write(tca_io, &col->is_index, sizeof(bool));
 

@@ -20,8 +20,8 @@ int64_t insert_table(Database* db, char* name) {
   char query[2048];
   snprintf(query, sizeof(query),
     "INSERT INTO jb_tables "
-    "(name, database_name, owner) "
-    "VALUES ('%s', '%s', NULL) RETURNING id;",
+    "(name, database_name, owner, created_at) "
+    "VALUES ('%s', '%s', NULL, NOW()) RETURNING id;",
     name,
     db->uuid
   );
