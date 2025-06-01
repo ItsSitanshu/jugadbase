@@ -12,10 +12,13 @@ VERBOSE_LEVEL=0
 VERBOSE_MAKE=0
 NUM_CORES=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
 CMAKE_ARGS=""
-DEFAULT_CORE_PATH="$(pwd)/src/core.jcl"
+DEFAULT_CORE_PATH="$(pwd)/src/db/core.jcl"
 SYSTEM_CORE_PATH="/usr/local/share/jugadbase/core.jcl"
 VALGRIND_LOG_FILE=""
 OS="$(uname -s)"
+
+export CORE_JCL_PATH="$DEFAULT_CORE_PATH"
+echo "CORE_JCL_PATH is: $CORE_JCL_PATH"
 
 case "$OS" in
     Linux*)
@@ -245,7 +248,6 @@ CMAKE_CMD="cmake -B $BUILD_DIR -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_MODULE_PAT
 [ -n "$CMAKE_ARGS" ] && CMAKE_CMD="$CMAKE_CMD $CMAKE_ARGS"
 [ -n "$LINKER_FLAGS" ] && CMAKE_CMD="$CMAKE_CMD -DCMAKE_EXE_LINKER_FLAGS=\"$LINKER_FLAGS\""
 
-CMAKE_CMD="$CMAKE_CMD -DCORE_JCL_PATH=$CORE_JCL_PATH"
 
 echo "$> $CMAKE_CMD"
 eval "$CMAKE_CMD"
