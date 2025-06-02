@@ -29,7 +29,7 @@ Database* db_init(char* dir) {
     return NULL;
   }
 
-  db->uuid = uuid();
+  db->uuid = strdup(dir);
   if (!db->uuid) {
     LOG_FATAL("Failed to generate UUID.");
     parser_free(db->parser);
@@ -136,25 +136,36 @@ bool process_cmd(ClusterManager* cm, Database* db, char* input) {
   } else if (strcmp(input, "clear") == 0) {
     clear_screen();
     return true;
-  } else if (strncmp(input, "exec", 4) == 0) {
-    char* filename = input + 5;
-    if (!input[4] || input[4] != ' ') {
-      LOG_INFO("Expected a JQL/JCL file name after exec command");
-      return true;
+  } else if (strncmp(input, "exec", 4) == 0 || tolower(input[0]) == 'e') {
+    char* filename = NULL;
+    bool show = false;
+
+    if (strncmp(input, "exec", 4) == 0) {
+      if (!input[4] || input[4] != ' ') {
+        LOG_INFO("Expected a JQL/JCL file name after exec command");
+        return true;
+      }
+      filename = input + 5;
+    } else {
+      if (!input[1] || input[1] != ' ') {
+        LOG_INFO("Expected a JQL/JCL file name after exec command");
+        return true;
+      }
+      filename = input + 2;
     }
 
-    process_file(db, filename);
-    return true;
-  } else if (tolower(input[0]) == 'e') {
-    char* filename = input + 2;
-    if (!input[1] || input[1] != ' ') {
-      LOG_INFO("Expected a JQL/JCL file name after exec command");
-      return true;
+    char* show_flag = strstr(filename, "--show");
+    if (show_flag) {
+      for (char* p = show_flag - 1; p >= filename && *p == ' '; p--) {
+        *p = '\0';
+      }
+      show = true;
     }
 
-    process_file(db, filename);
+    process_file(db, filename, show);
     return true;
   }
+
 
   return false;
 }
@@ -176,7 +187,7 @@ void list_tables(Database* db) {
   }
 }
 
-void process_file(Database* db, char* filename) {
+void process_file(Database* db, char* filename, bool show) {
   FILE* file = fopen(filename, "r");
   if (!file) {
     LOG_ERROR("Error opening file: %s", filename);
@@ -217,7 +228,7 @@ void process_file(Database* db, char* filename) {
   
   JQLCommand cmd = parser_parse(db);
   while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
-    Result res = execute_cmd(db, &cmd);
+    Result res = execute_cmd(db, &cmd, show);
     free_result(&res);
     cmd = parser_parse(db);
   }
@@ -498,7 +509,7 @@ bool load_schema_tc(Database* db, char* table_name) {
     return false;
   }
 
-  schema->columns = malloc(sizeof(ColumnDefinition) * schema->column_count);
+  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
   if (!schema->columns) {
     LOG_ERROR("Memory allocation failed for columns.");
     free(schema);
@@ -630,7 +641,7 @@ bool load_initial_schema(Database* db) {
     
     if (db->tc[idx].schema) continue;
 
-    TableSchema* schema = malloc(sizeof(TableSchema));
+    TableSchema* schema = calloc(1, sizeof(TableSchema));
     if (!schema) {
       LOG_ERROR("Memory allocation failed for schema.");
       return false;
@@ -658,7 +669,7 @@ bool load_initial_schema(Database* db) {
       return false;
     }
 
-    schema->columns = malloc(sizeof(ColumnDefinition) * schema->column_count);
+    schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
     if (!schema->columns) {
       LOG_ERROR("Memory allocation failed for columns.");
       free(schema);
@@ -667,6 +678,7 @@ bool load_initial_schema(Database* db) {
     
     for (uint8_t j = 0; j < schema->column_count; j++) {
       ColumnDefinition* col = &schema->columns[j];
+      col->is_not_null = false;
 
       uint8_t col_name_length;
       if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {

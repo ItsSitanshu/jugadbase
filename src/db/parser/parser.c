@@ -1113,8 +1113,6 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
     parser_consume(parser);   
 
-    LOG_DEBUG("!! %s", parser->cur->value);
-
     command.value_counts[command.row_count] = value_count;
     command.values[command.row_count] = row;
     command.row_count++;
@@ -1504,6 +1502,7 @@ JQLCommand parser_parse_delete(Parser* parser, Database* db) {
 
 void parser_consume(Parser* parser) {
   if (parser->cur->type == TOK_EOF) {
+    token_free(parser->cur);
     return;
   }
 
@@ -1794,7 +1793,7 @@ void parser_restore_state(Parser* parser, ParserState state) {
   parser->lexer->c = (parser->lexer->i < parser->lexer->buf_size) ?
                      parser->lexer->buf[parser->lexer->i] : '\0';
 
-  if (parser->cur) token_free(parser->cur);
+  // if (parser->cur) token_free(parser->cur);
   parser->cur = token_clone(state.current_token);
 
   token_free(state.current_token);

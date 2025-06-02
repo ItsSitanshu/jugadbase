@@ -42,7 +42,7 @@ void db_free(Database* db);
 
 bool process_cmd(ClusterManager* cm, Database* db, char* input);
 void list_tables(Database* db);
-void process_file(Database* db, char* filename);
+void process_file(Database* db, char* filename, bool show);
 
 void load_tc(Database* db);
 void load_table_schema(Database* db);

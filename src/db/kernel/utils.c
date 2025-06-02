@@ -951,6 +951,31 @@ size_t size_from_value(ColumnValue* val, ColumnDefinition* fallback) {
 }
 
 
+char* process_str_arg(const char* check_expr) {
+  if (!check_expr) return strdup("NULL");
+
+  size_t len = strlen(check_expr);
+  size_t max_len = len + 4;
+  char* buf = malloc(max_len);
+  if (!buf) return NULL;
+
+  int j = 0;
+  buf[j++] = '\'';
+
+  for (size_t i = 0; check_expr[i]; i++) {
+    if (check_expr[i] == '\'') {
+      buf[j++] = '"';  // Replace ' with "
+    } else {
+      buf[j++] = check_expr[i];
+    }
+  }
+
+  buf[j++] = '\'';
+  buf[j] = '\0';
+
+  return buf;
+}
+
 uint32_t get_table_offset(Database* db, const char* table_name) {
   for (int i = 0; i < db->table_count; i++) {
     if (strcmp(db->tc[i].name, table_name) == 0) {

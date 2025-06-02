@@ -5,6 +5,7 @@
 #include "utils/io.h"
 
 #include "internal/btree.h"
+#include "internal/toast.h"
 #include "internal/datetime.h"
 
 #include "utils/security.h"
@@ -214,6 +215,12 @@ typedef struct {
   uint8_t expected_type;
 } __c;
 
+
+#define N_CONSTRAINTS_TYPES 4
+#define N_CONSTRAINTS_FLAGS 5
+
+extern char* CONSTRAINT_FLAGS[N_CONSTRAINTS_TYPES][N_CONSTRAINTS_FLAGS];
+
 typedef struct AlterTableCommand {
   char table_name[MAX_IDENTIFIER_LEN];
   
@@ -252,13 +259,25 @@ typedef struct AlterTableCommand {
       bool not_null;                            
     } column;
 
-    struct {
+    struct AlterTableCommandConstraint {
       char constraint_name[MAX_IDENTIFIER_LEN];
-      int constraint_type;
-      char constraint_expr[MAX_IDENTIFIER_LEN];
+      
+      enum {
+        ALTER_CONSTRAINT_PRIMARY_KEY,
+        ALTER_CONSTRAINT_UNIQUE,
+        ALTER_CONSTRAINT_FOREIGN_KEY,
+        ALTER_CONSTRAINT_CHECK
+      } constraint_type;
+
+      char constraint_expr[TOAST_CHUNK_SIZE];
       char ref_table[MAX_IDENTIFIER_LEN];
+      char columns[MAX_COLUMNS][MAX_IDENTIFIER_LEN];
       char ref_columns[MAX_COLUMNS][MAX_IDENTIFIER_LEN];
+
+      int columns_count;
       int ref_columns_count;
+
+      FKAction on_delete, on_update;
     } constraint;
 
     struct {

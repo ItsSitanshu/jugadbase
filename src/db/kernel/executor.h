@@ -36,9 +36,9 @@ typedef enum ConstraintType {
 } ConstraintType;
 
 Result process(Database* db, char* buffer);
-Result process_core(Database* db, char* buffer);
+Result process_silent(Database* db, char* buffer);
 
-Result execute_cmd(Database* db, JQLCommand* cmd);
+Result execute_cmd(Database* db, JQLCommand* cmd, bool show);
 ExecutionResult execute_create_table(Database* db, JQLCommand* cmd);
 ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd);
 ExecutionResult execute_insert(Database* db, JQLCommand* cmd);
@@ -78,6 +78,7 @@ bool match_char_class(char** pattern_ptr, char* str);
 bool like_match(char* str, char* pattern);
 void* get_column_value_as_pointer(ColumnValue* col_val);
 size_t size_from_type(ColumnDefinition* fallback);
+char* process_str_arg(const char* check_expr);
 size_t size_from_value(ColumnValue* val, ColumnDefinition* fallback);
 uint32_t get_table_offset(Database* db, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);
@@ -92,15 +93,13 @@ void write_update_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
   uint16_t num_columns, TableSchema* schema);
 void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 
   Row* row, TableSchema* schema);
-
+int64_t find_table(Database* db, char* name);
 int64_t insert_table(Database* db, char* name);
-int64_t insert_constraint(Database* db, int64_t table_id, const char* name, 
-                          int constraint_type, const char* column_names[], int col_count,
-                          const char* check_expr, const char* ref_table, 
-                          const char* ref_columns[], int ref_col_count,
-                          int on_delete, int on_update,
-                          bool is_deferrable, bool is_deferred,
-                          bool is_nullable, bool is_primary, bool is_unique);
+int64_t insert_constraint(Database* db, int64_t table_id, char* name, 
+                          int constraint_type, char (*columns)[MAX_IDENTIFIER_LEN], int col_count,
+                          char* check_expr, int ref_table, 
+                          char (*ref_columns)[MAX_IDENTIFIER_LEN], int ref_col_count,
+                          int on_delete, int on_update);
 int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name, int data_type, int ordinal_position, bool is_nullable, bool has_default, bool has_constraints);
 int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr);
 int64_t insert_default_constraint(Database* db, int64_t table_id, const char* column_name, const char* default_expr);
