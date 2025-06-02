@@ -57,5 +57,6 @@ uint32_t row_to_buffer(Row* row, BufferPool* pool, TableSchema* schema, uint8_t*
 bool serialize_delete(BufferPool* pool, RowID rid);
 
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc);
+void free_row(Row* row);
 
 #endif // STORAGE_H

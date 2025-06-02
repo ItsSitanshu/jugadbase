@@ -1,10 +1,49 @@
 #include "kernel/executor.h"
 
+char* CONSTRAINT_FLAGS[N_CONSTRAINTS_TYPES][N_CONSTRAINTS_FLAGS] = {
+  {"false", "false", "false", "true", "false"},
+  {"false", "false", "true",  "false", "true"},
+  {"false", "false", "true",  "false", "false"},
+  {"false", "false", "true",  "false", "false"}
+};
+
+int64_t find_table(Database* db, char* name) {
+  if (is_struct_zeroed(name, 256)) return -1;
+  if (!db) {
+    LOG_ERROR("Invalid parameters to find_table");
+    return -1;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  char query[2048];
+  snprintf(query, sizeof(query),
+    "SELECT id FROM jb_tables "
+    "WHERE name = '%s' ",
+    name
+  );
+
+  Result res = process_silent(db->core, query);
+  bool success = res.exec.code == 0;
+
+  if (!success) {
+    LOG_ERROR("Failed to find table '%s'", name);
+    return -1;
+  }
+
+  int64_t value = res.exec.rows[0].values[0].int_value;
+  parser_restore_state(db->core->parser, state);
+  free_result(&res);
+
+  return value;
+}
 
 int64_t insert_table(Database* db, char* name) {
   if (!db || !name) {
     LOG_ERROR("Invalid parameters to insert_table");
-    return false;
+    return -1;
   }
 
   if (strcmp(name, "jb_tables") == 0) {
@@ -21,12 +60,12 @@ int64_t insert_table(Database* db, char* name) {
   snprintf(query, sizeof(query),
     "INSERT INTO jb_tables "
     "(name, database_name, owner, created_at) "
-    "VALUES ('%s', '%s', NULL, NOW()) RETURNING id;",
+    "VALUES ('%s', '%s', 'sudo', NOW()) RETURNING id;",
     name,
-    db->uuid
+    db->core->uuid
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
 
   if (!success) {
@@ -58,7 +97,7 @@ int64_t sequence_next_val(Database* db, char* name) {
     name
   );
 
-  Result pres = process(db->core, pquery);
+  Result pres = process_silent(db->core, pquery);
   bool psuccess = pres.exec.code == 0;
   if (!psuccess) {
     LOG_ERROR("Failed to update the sequence '%s'", name);
@@ -74,7 +113,7 @@ int64_t sequence_next_val(Database* db, char* name) {
     name
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
   if (!success) {
     LOG_ERROR("Failed to find a valid sequence '%s'", name);
@@ -85,7 +124,7 @@ int64_t sequence_next_val(Database* db, char* name) {
   int cv_idx = find_column_index(db->core->tc[table_idx].schema, "current_value");
 
   int copy = res.exec.rows[0].values[0].int_value;
-  // free_result(&res);
+  free_result(&res);
 
   parser_restore_state(db->core->parser, state);
 
@@ -120,16 +159,18 @@ int64_t create_default_squence(Database* db, char* name) {
     name
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
   if (!success || res.exec.alias_limit == 0) {
     LOG_ERROR("Failed to create a default sequence '%s'", name);
     return -1;
   }
 
+  int64_t value = res.exec.rows[0].values[0].int_value;
   parser_restore_state(db->core->parser, state);
+  free_result(&res);
 
-  return res.exec.rows[0].values[0].int_value;
+  return value;
 }
 
 
@@ -158,15 +199,18 @@ int64_t find_sequence(Database* db, char* name) {
     name
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
   if (!success) {
     LOG_ERROR("Failed to find a valid sequence '%s'", name);
     return -1;
   }
 
+  int64_t value = res.exec.rows[0].values[0].int_value;
   parser_restore_state(db->core->parser, state);
-  return res.exec.rows[0].values[0].int_value;
+  free_result(&res);
+
+  return value;
 }
 
 int64_t insert_default_constraint(Database* db, int64_t table_id, const char* column_name, const char* default_expr) {
@@ -182,7 +226,7 @@ int64_t insert_default_constraint(Database* db, int64_t table_id, const char* co
   const char* col_names[] = { column_name };
   
   return insert_constraint(db, table_id, constraint_name, 0, col_names, 1,
-    default_expr, NULL, NULL, 0, 0, 0, false, false, true, false, false);
+    default_expr, NULL, NULL, 0, 0, 0);
 }
 
 int64_t find_default_constraint(Database* db, int64_t table_id, const char* column_name) {
@@ -201,7 +245,7 @@ int64_t find_default_constraint(Database* db, int64_t table_id, const char* colu
     table_id, column_name
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0 && res.exec.row_count > 0;
 
   int64_t value = -1;
@@ -215,13 +259,11 @@ int64_t find_default_constraint(Database* db, int64_t table_id, const char* colu
   return value;
 }
 
-int64_t insert_constraint(Database* db, int64_t table_id, const char* name, 
-                          int constraint_type, const char* column_names[], int col_count,
-                          const char* check_expr, const char* ref_table, 
-                          const char* ref_columns[], int ref_col_count,
-                          int on_delete, int on_update,
-                          bool is_deferrable, bool is_deferred,
-                          bool is_nullable, bool is_primary, bool is_unique) {
+int64_t insert_constraint(Database* db, int64_t table_id, char* name, 
+                          int constraint_type, char (*columns)[MAX_IDENTIFIER_LEN], int col_count,
+                          char* check_expr, int ref_table, 
+                          char (*ref_columns)[MAX_IDENTIFIER_LEN], int ref_col_count,
+                          int on_delete, int on_update) {
   if (!db || !name) {
     LOG_ERROR("Invalid parameters to insert_constraint");
     return -1;
@@ -229,53 +271,59 @@ int64_t insert_constraint(Database* db, int64_t table_id, const char* name,
 
   if (!db->core) db->core = db;
 
-  ParserState state = parser_save_state(db->core->parser);
-
-  char columns_array[512] = "{";
-  for (int i = 0; i < col_count; i++) {
-    if (i > 0) strcat(columns_array, ",");
-    strcat(columns_array, "'");
-    strcat(columns_array, column_names[i]);
-    strcat(columns_array, "'");
+  char columns_array[512];
+  size_t pos = 0;
+  pos += snprintf(columns_array + pos, sizeof(columns_array) - pos, "{");
+  for (int i = 0; i < col_count && pos < sizeof(columns_array); i++) {
+    if (i > 0) pos += snprintf(columns_array + pos, sizeof(columns_array) - pos, ",");
+    pos += snprintf(columns_array + pos, sizeof(columns_array) - pos, "'%s'", columns[i]);
   }
-  strcat(columns_array, "}");
+  pos += snprintf(columns_array + pos, sizeof(columns_array) - pos, "}");
 
-  char ref_columns_array[512] = "{";
+  char ref_columns_array[512];
+  pos = 0;
+  pos += snprintf(ref_columns_array + pos, sizeof(ref_columns_array) - pos, "{");
   if (ref_columns && ref_col_count > 0) {
-    for (int i = 0; i < ref_col_count; i++) {
-      if (i > 0) strcat(ref_columns_array, ",");
-      strcat(ref_columns_array, "'");
-      strcat(ref_columns_array, ref_columns[i]);
-      strcat(ref_columns_array, "'");
+    for (int i = 0; i < ref_col_count && pos < sizeof(ref_columns_array); i++) {
+      if (i > 0) pos += snprintf(ref_columns_array + pos, sizeof(ref_columns_array) - pos, ",");
+      pos += snprintf(ref_columns_array + pos, sizeof(ref_columns_array) - pos, "'%s'", ref_columns[i]);
     }
   }
-  strcat(ref_columns_array, "}");
+  pos += snprintf(ref_columns_array + pos, sizeof(ref_columns_array) - pos, "}");
+  
+  char ref_table_buf[16];
+  char* ref_table_str = (ref_table != -1) ? (snprintf(ref_table_buf, sizeof(ref_table_buf), "%d", ref_table), ref_table_buf) : "NULL";
+
+  char* check = process_str_arg(check_expr);
+  char** flags = CONSTRAINT_FLAGS[constraint_type];
+
+  ParserState state = parser_save_state(db->core->parser);
 
   char query[2048];
   snprintf(query, sizeof(query),
     "INSERT INTO jb_constraints "
-    "(table_id, columns, name, constraint_type, check_expr, ref_table, ref_columns, "
+    "(table_id, columns, name, constraint_type, check_expr, ref_table, columns, "
     "on_delete, on_update, is_deferrable, is_deferred, is_nullable, is_primary, is_unique, created_at) "
     "VALUES (%ld, \"%s\", \"%s\", %d, %s, %s, \"%s\", %d, %d, %s, %s, %s, %s, %s, NOW()) RETURNING id;",
     table_id,
     columns_array,
     name,
     constraint_type,
-    check_expr ? check_expr : "NULL",
-    ref_table ? ref_table : "NULL", 
+    check,
+    ref_table_str, 
     ref_columns_array,
     on_delete,
     on_update,
-    is_deferrable ? "true" : "false",
-    is_deferred ? "true" : "false", 
-    is_nullable ? "true" : "false",
-    is_primary ? "true" : "false",
-    is_unique ? "true" : "false"
+    flags[0],
+    flags[1], 
+    flags[2],
+    flags[3],
+    flags[4]
   );
 
-  LOG_DEBUG("[+] constraint: %s", query);
+  // LOG_DEBUG("[+] constraint: %s", query);
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
 
   if (!success) {
@@ -314,9 +362,9 @@ int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name
     has_constraints ? "true" : "false"    
   );
 
-  LOG_DEBUG("[+] attr: %s", query);
+  // LOG_DEBUG("[+] attr: %s", column_name);
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
 
   if (!success) {
@@ -352,9 +400,9 @@ int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_n
     default_expr
   );
 
-  LOG_DEBUG("[+] attr_default: %s", query);
+  // LOG_DEBUG("[+] attr_default?: %s", column_name);
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
 
   if (!success) {
@@ -385,7 +433,7 @@ int64_t find_constraint_by_name(Database* db, int64_t table_id, const char* name
     table_id, name
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0 && res.exec.row_count > 0;
 
   int64_t value = -1;
@@ -415,7 +463,7 @@ bool delete_constraint(Database* db, int64_t constraint_id) {
     constraint_id
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
 
   parser_restore_state(db->core->parser, state);
@@ -440,7 +488,7 @@ bool update_constraint_name(Database* db, int64_t constraint_id, const char* new
     new_name, constraint_id
   );
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
 
   parser_restore_state(db->core->parser, state);
@@ -475,15 +523,18 @@ int64_t insert_single_column_constraint(Database* db, int64_t table_id, int64_t 
   );
 
   ParserState state = parser_save_state(db->core->parser);
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
+
+  int64_t value = res.exec.rows[0].values[0].int_value;
   parser_restore_state(db->core->parser, state);
+  free_result(&res);
 
   if (res.exec.code != 0) {
     LOG_ERROR("Failed to insert constraint '%s'", name);
     return -1;
   }
 
-  return res.exec.rows[0].values[0].int_value;
+  return value;
 }
 
 bool create_sequence_link(Database* db, ColumnDefinition* def, char* name, uint64_t min_value,
@@ -507,7 +558,10 @@ bool create_sequence_link(Database* db, ColumnDefinition* def, char* name, uint6
     cycle ? "true" : "false"
   );
 
-  bool success = (process(db->core, query)).exec.code == 0;
+  Result res = process_silent(db->core, query);
+  bool success = res.exec.code == 0;
+
+  free_result(&res);
 
   return success;
 }

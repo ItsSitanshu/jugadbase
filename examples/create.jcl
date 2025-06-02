@@ -3,7 +3,7 @@ CREATE TABLE users (
   name VARCHAR(50) NOT NULL UNIQUE,
   age INT CHECK(age > 0),
   email VARCHAR(100) DEFAULT "unknown", 
-  role_id INT FRNKEY REF roles(id)
+  role_id INT FRNKEY REFERENCES roles(id)
 );
 
 CREATE TABLE orders (

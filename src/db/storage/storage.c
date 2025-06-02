@@ -247,6 +247,8 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
       }
     }
 
+    free_row(row);
+
     actual_row_count++;
   }
 
@@ -735,4 +737,15 @@ void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
     }
   }
   pool->next_pg_no = max_pg_n + 1;
+}
+
+void free_row(Row* row) {
+  if (!row || !row->values) return;
+  
+  for (uint32_t i = 0; i < row->n_values; i++) {
+    free_column_value(&row->values[i]);
+  }
+
+  free(row->values);
+  free(row->null_bitmap);
 }

@@ -1,6 +1,9 @@
 #include "parser/parser.h"
 #include "storage/database.h"
 
+uint64_t free_count = 1;
+uint64_t alloc_count = 1;
+
 Parser* parser_init(Lexer* lexer) {
   Parser* parser = malloc(sizeof(Parser));
   
@@ -61,8 +64,6 @@ void parser_free(Parser* parser) {
 void jql_command_free(JQLCommand* cmd) {
   if (!cmd) return;
 
-  free(cmd->schema->columns);
-  
   free(cmd->values);
 
   free(cmd);
@@ -489,6 +490,8 @@ JQLCommand parser_parse_alter_table(Parser* parser, Database* db) {
           free(alter_cmd);
           return command;
         }
+
+        alter_cmd->operation = ALTER_ADD_CONSTRAINT;
       } else {
         REPORT_ERROR(parser->lexer, "Expected COLUMN or CONSTRAINT after ADD");
         free(alter_cmd);
@@ -727,8 +730,6 @@ bool parse_alter_alter_column(Parser* parser, AlterTableCommand* cmd) {
     return false;
   }
 
-  LOG_DEBUG("parser->2-> %s", parser->cur->value);
-
   return true;
 }
 
@@ -741,7 +742,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
   parser_consume(parser);
 
   if (parser->cur->type == TOK_PK) {
-    cmd->constraint.constraint_type = 1;  // PRIMARY KEY
+    cmd->constraint.constraint_type = ALTER_CONSTRAINT_PRIMARY_KEY;
     parser_consume(parser);
 
     if (parser->cur->type != TOK_LP) {
@@ -756,13 +757,16 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         REPORT_ERROR(parser->lexer, "Too many columns in constraint");
         return false;
       }
-      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      strcpy(cmd->constraint.columns[i], parser->cur->value);
+      i += 1;
+
+
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
     }
 
-    cmd->constraint.ref_columns_count = i;
+    cmd->constraint.columns_count = i;
 
     if (parser->cur->type != TOK_RP) {
       REPORT_ERROR(parser->lexer, "Expected ) at end of constraint column list");
@@ -772,7 +776,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
   }
 
   else if (parser->cur->type == TOK_UNQ) {
-    cmd->constraint.constraint_type = 2;  // UNIQUE
+    cmd->constraint.constraint_type = ALTER_CONSTRAINT_UNIQUE;
     parser_consume(parser);
 
     if (parser->cur->type != TOK_LP) {
@@ -788,7 +792,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         return false;
       }
 
-      strcpy(cmd->constraint.ref_columns[i], parser->cur->value);
+      strcpy(cmd->constraint.columns[i], parser->cur->value);
       parser_consume(parser);
       i += 1;
 
@@ -796,7 +800,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
       else break;
     }
 
-    cmd->constraint.ref_columns_count = i;
+    cmd->constraint.columns_count = i;
 
     if (parser->cur->type != TOK_RP) {
       REPORT_ERROR(parser->lexer, "Expected ) after UNIQUE column list");
@@ -806,7 +810,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
   }
 
   else if (parser->cur->type == TOK_FK) {
-    cmd->constraint.constraint_type = 3;  // FOREIGN KEY
+    cmd->constraint.constraint_type = ALTER_CONSTRAINT_FOREIGN_KEY;
     parser_consume(parser);
 
     if (parser->cur->type != TOK_LP) {
@@ -821,13 +825,14 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         REPORT_ERROR(parser->lexer, "Too many columns in FK constraint");
         return false;
       }
-      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      strcpy(cmd->constraint.columns[i], parser->cur->value);  // columns being constrained
+      i += 1;
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
     }
 
-    cmd->constraint.ref_columns_count = i;
+    cmd->constraint.columns_count = i;
 
     if (parser->cur->type != TOK_RP) {
       REPORT_ERROR(parser->lexer, "Expected ) after FK column list");
@@ -861,7 +866,8 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         return false;
       }
 
-      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      strcpy(cmd->constraint.ref_columns[i], parser->cur->value);
+      i += 1;
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
@@ -873,6 +879,48 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
       return false;
     }
     parser_consume(parser);
+
+    while (parser->cur->type == TOK_ON) {
+      parser_consume(parser);
+
+      bool is_delete = false;
+      if (parser->cur->type == TOK_DEL) {
+        is_delete = true;
+      } else if (parser->cur->type == TOK_UPD) {
+        is_delete = false;
+      } else {
+        REPORT_ERROR(parser->lexer, "Expected DELETE or UPDATE after ON");
+        return false;
+      }
+      parser_consume(parser);
+
+      FKAction action = FK_NO_ACTION;
+      if (parser->cur->type == TOK_CASCADE) {
+        action = FK_CASCADE;
+        parser_consume(parser);
+      } else if (parser->cur->type == TOK_RESTRICT) {
+        action = FK_RESTRICT;
+        parser_consume(parser);
+      } else if (parser->cur->type == TOK_SET) {
+        parser_consume(parser);
+        if (parser->cur->type == TOK_NL) {
+          action = FK_SET_NULL;
+          parser_consume(parser);
+        } else {
+          REPORT_ERROR(parser->lexer, "Expected NULL after SET");
+          return false;
+        }
+      } else {
+        REPORT_ERROR(parser->lexer, "Invalid FK action. Expected CASCADE, RESTRICT or SET NULL");
+        return false;
+      }
+
+      if (is_delete) {
+        cmd->constraint.on_delete = action;
+      } else {
+        cmd->constraint.on_update = action;
+      }
+    }
   }
 
   else if (parser->cur->type == TOK_CHK) {
@@ -885,11 +933,11 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
     }
     parser_consume(parser);
 
-    memset(cmd->constraint.constraint_expr, 0, MAX_IDENTIFIER_LEN);
+    memset(cmd->constraint.constraint_expr, 0, TOAST_CHUNK_SIZE);
     size_t expr_len = 0;
 
     while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
-      if (expr_len + strlen(parser->cur->value) >= MAX_IDENTIFIER_LEN - 1) {
+      if (expr_len + strlen(parser->cur->value) >= TOAST_CHUNK_SIZE - 1) {
         REPORT_ERROR(parser->lexer, "Check expression too long");
         return false;
       }
@@ -910,7 +958,6 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
     return false;
   }
 
-  cmd->operation = ALTER_ADD_CONSTRAINT;
   return true;
 }
 
@@ -1112,8 +1159,6 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     }
 
     parser_consume(parser);   
-
-    LOG_DEBUG("!! %s", parser->cur->value);
 
     command.value_counts[command.row_count] = value_count;
     command.values[command.row_count] = row;
@@ -1503,7 +1548,11 @@ JQLCommand parser_parse_delete(Parser* parser, Database* db) {
 }
 
 void parser_consume(Parser* parser) {
+  if (!parser->cur) return;
+
   if (parser->cur->type == TOK_EOF) {
+    token_free(parser->cur);
+    parser->cur = NULL;
     return;
   }
 
@@ -1672,6 +1721,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
           col_val->time_value = encode_time(dt.hour, dt.minute, dt.second);
         } else {
           col_val->type = TOK_T_STRING;
+          col_val->str_value = malloc(MAX_IDENTIFIER_LEN);
           strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
           col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';
         }
@@ -1734,6 +1784,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       break;
     case TOK_L_CHAR:
       col_val->type = TOK_T_CHAR;
+      col_val->str_value = malloc(2);
       col_val->str_value[0] = parser->cur->value[0];  
       col_val->str_value[1] = '\0';
       break;
@@ -1766,14 +1817,23 @@ bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output) {
 }
 
 ParserState parser_save_state(Parser* parser) {
-  ParserState state;
+  ParserState state = {0};
   state.lexer_position = parser->lexer->i;
   state.lexer_line = parser->lexer->cl;
   state.lexer_column = parser->lexer->cc;
 
   state.buffer_size = parser->lexer->buf_size;
-  state.buffer_copy = malloc(state.buffer_size);
-  memcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
+
+  if (state.buffer_size == 0 || parser->lexer->buf == NULL) {
+    state.buffer_copy = NULL;
+  } else {
+    state.buffer_copy = malloc(state.buffer_size);
+    if (!state.buffer_copy) {
+      LOG_ERROR("Failed to allocate buffer_copy");
+    } else {
+      memcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
+    }
+  }
 
   state.current_token = token_clone(parser->cur);
 
@@ -1783,21 +1843,30 @@ ParserState parser_save_state(Parser* parser) {
 void parser_restore_state(Parser* parser, ParserState state) {
   parser->lexer->i = state.lexer_position;
   parser->lexer->cl = state.lexer_line;
-    parser->lexer->cc = state.lexer_column;
+  parser->lexer->cc = state.lexer_column;
 
   free(parser->lexer->buf);
 
-  parser->lexer->buf_size = state.buffer_size;
-  parser->lexer->buf = malloc(state.buffer_size);
-  memcpy(parser->lexer->buf, state.buffer_copy, state.buffer_size);
+  if (state.buffer_size > 0 && state.buffer_copy != NULL) {
+    parser->lexer->buf = malloc(state.buffer_size);
+    if (!parser->lexer->buf) {
+      LOG_ERROR("Failed to allocate lexer buffer");
+      parser->lexer->buf_size = 0;
+    } else {
+      memcpy(parser->lexer->buf, state.buffer_copy, state.buffer_size);
+      parser->lexer->buf_size = state.buffer_size;
+    }
+  } else {
+    parser->lexer->buf = NULL;
+    parser->lexer->buf_size = 0;
+  }
 
-  parser->lexer->c = (parser->lexer->i < parser->lexer->buf_size) ?
-                     parser->lexer->buf[parser->lexer->i] : '\0';
+  parser->lexer->c = (parser->lexer->i < parser->lexer->buf_size) ? parser->lexer->buf[parser->lexer->i] : '\0';
 
   if (parser->cur) token_free(parser->cur);
   parser->cur = token_clone(state.current_token);
 
-  token_free(state.current_token);
+  // token_free(state.current_token);
   free(state.buffer_copy);
 }
 
@@ -2053,6 +2122,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   if (!parser_parse_value(parser, &val)) return NULL;
 
   ExprNode* node = calloc(1, sizeof(ExprNode));
+  LOG_INFO("%ld = parser_parse_primary allocated ExprNode at %p", alloc_count++, node);
   node->type = EXPR_LITERAL;
   node->literal = val;
 
@@ -2132,7 +2202,6 @@ ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) 
 
   return node;
 }
-
 
 int find_column_index(TableSchema* schema, const char* name) {
   for (uint8_t i = 0; i < schema->column_count; i++) {
@@ -2544,32 +2613,35 @@ bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr) {
 
   return true;
 }
-
 void free_expr_node(ExprNode* node) {
   if (!node) return;
-  if (node == NULL) return;
 
   switch (node->type) {
     case EXPR_LITERAL:
-      if (node->literal.is_array && node->literal.array.array_value) {
-        for (uint16_t i = 0; i < node->literal.array.array_size; i++) {
-          free_expr_node((ExprNode*)&node->literal.array.array_value[i]);
-        }
-        free(node->literal.array.array_value);
-      }
+      free_column_value(&node->literal);
+      LOG_INFO("%lu = free_expr_node freeing ExprNode at %p type %d", free_count++, node, node->type);
+      
       break;
 
     case EXPR_COLUMN:
+      if (node->column.array_idx)
+        free_expr_node(node->column.array_idx);
       break;
+
     case EXPR_ARRAY_ACCESS:
-      free_expr_node(node->column.array_idx);
+      if (node->column.array_idx)
+        free_expr_node(node->column.array_idx);
       break;
+
     case EXPR_UNARY_OP:
-      free_expr_node(node->unary);
-      free_expr_node(node->arth_unary.expr);
+      if (node->unary) free_expr_node(node->unary);
+      else if (node->arth_unary.expr) free_expr_node(node->arth_unary.expr);
       break;
 
     case EXPR_BINARY_OP:
+    case EXPR_LOGICAL_AND:
+    case EXPR_LOGICAL_OR:
+    case EXPR_COMPARISON:
       free_expr_node(node->binary.left);
       free_expr_node(node->binary.right);
       break;
@@ -2602,53 +2674,60 @@ void free_expr_node(ExprNode* node) {
       break;
 
     case EXPR_LOGICAL_NOT:
-      free_expr_node(node->arth_unary.expr);
-      break;
-
-    case EXPR_LOGICAL_AND:
-    case EXPR_LOGICAL_OR:
-    case EXPR_COMPARISON:
-      free_expr_node(node->binary.left);
-      free_expr_node(node->binary.right);
+      if (node->arth_unary.expr) free_expr_node(node->arth_unary.expr);
       break;
 
     default:
+      LOG_ERROR("Tried free-ing erroneous node %d", node->type);
       break;
   }
+
+  free(node);
+}
+
+void free_expr_src(ExprNode** src, uint8_t count) {
+  for (uint8_t i = 0; i < count; i++) {
+    if (src[i]) free_expr_node(src[i]);
+  }
+  free(src);
 }
 
 void free_column_value(ColumnValue* val) {
   if (!val) return;
 
-  if (val->is_array && val->array.array_value) {
-    for (uint16_t i = 0; i < val->array.array_size; i++) {
-      free_column_value(&val->array.array_value[i]);
-    }
-    free(val->array.array_value);
-  } else if (val->str_value) {
-    free(val->str_value);
-  } 
-}
+  // if (val->is_array && val->array.array_value) {
+  //   for (uint16_t i = 0; i < MAX_ARRAY_SIZE; i++) {
+  //     free_column_value(&val->array.array_value[i]);
+  //   }
+  //   free(val->array.array_value);
+  //   val->array.array_value = NULL;
+  // }
 
-void free_column_definition(ColumnDefinition* col_def) {
-  if (!col_def || col_def == NULL) return;
-
-  // if (col_def->has_default) {
-  //   free_column_value(col_def->default_value);
-  //   free(col_def->default_value);
+  // if (!val->is_null && val->str_value) {
+  //   // free(val->str_value);
+  //   val->str_value = NULL;
   // }
 }
 
+void free_column_definition(ColumnDefinition* col_def) {
+  if (!col_def) {
+    return;
+  }
+
+  if (col_def->has_default && col_def->default_value) {
+    free_column_value(col_def->default_value);
+  }
+}
+
 void free_table_schema(TableSchema* schema) {
-  if (schema == NULL) return;
+  if (schema == NULL) {
+    return;
+  }
+
 
   for (uint8_t i = 0; i < MAX_COLUMNS; i++) {
-    // ColumnDefinition* col_def = &(schema->columns[i]); 
-    // if (!col_def) continue;
-
-    if (i >= schema->column_count) break;
-
-    // free_column_definition(col_def);
+    ColumnDefinition* col_def = &(schema->columns[i]);
+    free_column_definition(col_def);
   }
 
   free(schema->columns);
@@ -2657,66 +2736,109 @@ void free_table_schema(TableSchema* schema) {
   schema->column_count = 0;
   schema->prim_column_count = 0;
   schema->not_null_count = 0;
-}
 
+  LOG_INFO("free_table_schema: done freeing schema.");
+}
 
 void free_jql_command(JQLCommand* cmd) {
   if (!cmd) return;
 
-  // if (cmd->bitmap) free(cmd->bitmap);
-
-  if (cmd->has_where) {
-    free_expr_node(cmd->where);
+  if (cmd->bitmap) {
+    LOG_DEBUG("Freeing bitmap");
+    free(cmd->bitmap);
+    cmd->bitmap = NULL;
   }
 
-  // if (cmd->values) {
-  //   for (uint8_t i = 0; i < cmd->row_count; i++) {
-  //     if (cmd->values[i]) {
-  //       // for (uint8_t j = 0; j < MAX_COLUMNS; j++) {
-  //       //   if (cmd->values[i][j]) free_expr_node(cmd->values[i][j]);
-  //       // }
-  //       // free(cmd->values[i]);
-  //     }
-  //   }
-  //   free(cmd->values);
-  // }
-
-  // if (cmd->returning_columns) {
-  //   for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
-  //     if (cmd->returning_columns[i]) free(cmd->returning_columns[i]);
-  //   }
-  //   free(cmd->returning_columns);
-  // }
-
-  // if (cmd->columns) {
-  //   for (uint8_t i = 0; i < cmd->col_count; i++) {
-  //     // if (cmd->columns[i]) free(cmd->columns[i]);
-  //   }
-  //   free(cmd->columns);
-  // }
-
   if (cmd->sel_columns) {
-    for (uint8_t i = 0; i < MAX_COLUMNS; i++) {
-      if (i >= cmd->col_count) break;
-      if (cmd->sel_columns[i].alias) free(cmd->sel_columns[i].alias);
-      if (cmd->sel_columns[i].expr) free_expr_node(cmd->sel_columns[i].expr);
-      // free(&cmd->sel_columns[i]);
+    LOG_DEBUG("Freeing sel_columns (%d)", cmd->col_count);
+    for (uint8_t i = 0; i < cmd->col_count && i < MAX_COLUMNS; i++) {
+      if (cmd->sel_columns[i].alias) {
+        LOG_DEBUG("Freeing sel_columns[%d].alias", i);
+        free(cmd->sel_columns[i].alias);
+        cmd->sel_columns[i].alias = NULL;
+      }
+      if (cmd->sel_columns[i].expr) {
+        LOG_DEBUG("Freeing sel_columns[%d].expr", i);
+        free_expr_node(cmd->sel_columns[i].expr);
+        cmd->sel_columns[i].expr = NULL;
+      }
     }
     free(cmd->sel_columns);
+    cmd->sel_columns = NULL;
   }
 
   if (cmd->update_columns) {
+    LOG_DEBUG("Freeing update_columns (%d)", cmd->col_count);
     for (uint8_t i = 0; i < cmd->col_count; i++) {
-      free_expr_node(cmd->update_columns[i].array_idx);
+      if (cmd->update_columns[i].array_idx) {
+        LOG_DEBUG("Freeing update_columns[%d].array_idx", i);
+        free_expr_node(cmd->update_columns[i].array_idx);
+        cmd->update_columns[i].array_idx = NULL;
+      }
     }
     free(cmd->update_columns);
+    cmd->update_columns = NULL;
   }
 
-  if (cmd->where) {
-    free_expr_node(cmd->where);
-  }
+  // if (cmd->has_where) {
+    // LOG_DEBUG("Freeing where clause");
+    // free_expr_node(cmd->where);
+    // cmd->where = NULL;
+  // }
 
   if (cmd->order_by) {
+    LOG_DEBUG("Freeing order_by (%d)", cmd->order_by_count);
     free(cmd->order_by);
+    cmd->order_by = NULL;
   }
+
+  // if (cmd->returning_columns) {
+  //   LOG_DEBUG("Freeing returning_columns (%d)", cmd->ret_col_count);
+  //   for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
+  //     if (!cmd->returning_columns[i]) continue;
+  //     LOG_DEBUG("Freeing returning_columns[%d]", i);
+  //     free(cmd->returning_columns[i]);
+  //   }
+  //   free(cmd->returning_columns);
+  //   cmd->returning_columns = NULL;
+  // }
+
+  // if (cmd->columns) {
+  //   LOG_DEBUG("Freeing columns (%d)", cmd->col_count);
+  //   for (uint8_t i = 0; i < cmd->col_count; i++) {
+  //     LOG_DEBUG("Freeing columns[%d]", i);
+  //     free(cmd->columns[i]);
+  //   }
+  //   free(cmd->columns);
+  //   cmd->columns = NULL;
+  // }
+
+  // // if (cmd->values) {
+  // //   LOG_DEBUG("Freeing values (%d rows, %d columns)", cmd->row_count, cmd->col_count);
+  // //   for (uint8_t i = 0; i < cmd->row_count; i++) {
+  // //     if (cmd->values[i]) {
+  // //       for (uint8_t j = 0; j < cmd->col_count; j++) {
+  // //         LOG_DEBUG("Freeing values[%d][%d]", i, j);
+  // //         free_expr_node(cmd->values[i][j]);
+  // //       }
+  // //       free(cmd->values[i]);
+  // //     }
+  // //   }
+  // //   free(cmd->values);
+  // //   cmd->values = NULL;
+  // // }
+
+  if (cmd->alter) {
+    LOG_DEBUG("Freeing alter table command");
+    free(cmd->alter);
+    cmd->alter = NULL;
+  }
+
+  if (cmd->schema_name) {
+    LOG_DEBUG("Freeing schema_name");
+    free(cmd->schema_name);
+    cmd->schema_name = NULL;
+  }
+
+  LOG_DEBUG("Finished freeing JQLCommand");
 }

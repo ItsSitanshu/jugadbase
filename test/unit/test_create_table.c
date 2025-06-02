@@ -15,7 +15,7 @@ START_TEST(test_read_table_schema) {
     "name VARCHAR(50) NOT NULL UNIQUE, "
     "age INT CHECK(age > 0), "
     "email VARCHAR(100) DEFAULT \"unknown\", "
-    "role_id INT FRNKEY REF roles(id)"
+    "role_id INT FRNKEY REFERENCES roles(id)"
     ");",
 
     "CREATE TABLE categories ("
@@ -28,20 +28,20 @@ START_TEST(test_read_table_schema) {
     "product_name VARCHAR(100) NOT NULL, "
     "price DECIMAL(10, 2) CHECK(price > 0), "
     "quantity INT DEFAULT 0, "
-    "category_id INT FRNKEY REF categories(id)"
+    "category_id INT FRNKEY REFERENCES categories(id)"
     ");",
 
     "CREATE TABLE orders ("
     "order_id SERIAL PRIMKEY, "
     "order_date DATE NOT NULL, "
-    "user_id INT FRNKEY REF users(id), "
+    "user_id INT FRNKEY REFERENCES users(id), "
     "total_amount DECIMAL(10, 2) CHECK(total_amount >= 0)"
     ");",
 
 
     "CREATE TABLE   payments ("
     "payment_id SERIAL PRIMKEY, "
-    "order_id INT FRNKEY REF orders(order_id), "
+    "order_id INT FRNKEY REFERENCES orders(order_id), "
     "payment_date DATE NOT NULL, "
     "payment_method VARCHAR(20) NOT NULL"
     ");",

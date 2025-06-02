@@ -180,7 +180,7 @@ bool cluster_create(ClusterManager* manager, char* name) {
 
   cluster_switch(manager, 0);
   Database* db = cluster_get_active_db(manager);
-  process_file(db, CORE_JCL_PATH);
+  process_file(db, CORE_JCL_PATH, false);
 
   return true;
 }
@@ -215,7 +215,7 @@ bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path) {
   Database* db = db_init(full_path);
   if (!db) {
     LOG_ERROR("Failed to initialize database at '%s'", full_path);
-    db_free(db);
+    // db_free(db);
     return false;
   }
 

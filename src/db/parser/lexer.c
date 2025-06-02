@@ -11,7 +11,7 @@ char* keywords[NO_OF_KEYWORDS] = {
   "SELECT", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER", "TABLE",
   "FROM", "WHERE", "AND", "OR", "NOT", "ORDER", "BY", "GROUP",
   "HAVING", "LIM", "OFFSET", "VALUES", "SET", "INTO", "AS", "JOIN",
-  "ON", "IN", "IS", "NULL", "DISCT", "PRIMKEY", "FRNKEY", "REF",
+  "ON", "IN", "IS", "NULL", "DISCT", "PRIMKEY", "FRNKEY", "REFERENCES",
   "INDEX", "CAST", "CASE", "WHEN", "THEN", "ELSE", "END", "DEFAULT",
   "CHECK", "UNIQUE", "CONSTRAINT", "INT", "VARCHAR", "CHAR", "TEXT", "BOOL",
   "FLOAT", "DOUBLE", "DECIMAL", "DATE", "TIME", "TIMETZ", "DATETIME", "DATETIMETZ",
@@ -51,26 +51,25 @@ Lexer* lexer_init() {
   return lexer;
 }
 
-
 void lexer_set_buffer(Lexer* lexer, char* buffer) {
   if (!lexer) return;
 
-  free(lexer->buf); 
+  if (lexer->buf) {
+    free(lexer->buf);
+  }
 
   lexer->buf = strdup(buffer);
   if (!lexer->buf) {
     exit(EXIT_FAILURE);
   }
 
-  lexer->buf_size = strlen(lexer->buf);
-  lexer->buf[lexer->buf_size] = '\0';
+  lexer->buf_size = strlen(lexer->buf); 
 
   lexer->i = 0;
   lexer->c = lexer->buf[lexer->i];
   lexer->cc = 1;
   lexer->cl = 1;
 }
-
 
 void lexer_free(Lexer* lexer) {
   if (!lexer) {
@@ -106,15 +105,23 @@ Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type) {
 }
 
 Token* token_clone(Token* src) {
+  if (!src) return NULL;
+
   Token* copy = malloc(sizeof(Token));
   if (!copy) return NULL;
 
   copy->line = src->line;
   copy->col = src->col;
   copy->type = src->type;
-  copy->value = strdup(src->value);
-    
+
+  if (src->value) {
+    copy->value = strdup(src->value); 
+  } else {
+    copy->value = NULL;
+  }
+
   return copy;
+
 }
 
 void token_free(Token* token) {
@@ -698,32 +705,36 @@ struct ErrorTemplate templates[] = {
 };
 
 char* lexer_get_reference(Lexer* lexer) {
-  size_t line_start = lexer->i;
+  if (!lexer || !lexer->buf) return NULL;
 
+  size_t i = lexer->i;
+
+  size_t buf_len = lexer->buf_size;
+  if (i >= buf_len) i = buf_len - 1;
+
+  size_t line_start = i;
   while (line_start > 0 && lexer->buf[line_start - 1] != '\n') {
-      line_start--;
+    line_start--;
   }
 
-  size_t line_end = lexer->i;
-
-  while (lexer->buf[line_end] != '\0' && lexer->buf[line_end] != '\n') {
-      line_end++;
+  size_t line_end = i;
+  while (line_end < buf_len && lexer->buf[line_end] != '\n') {
+    line_end++;
   }
 
   size_t line_length = line_end - line_start;
-  char* line_content = (char*)malloc((line_length + 2) * sizeof(char));
-
+  char* line_content = malloc(line_length + 1);
   if (!line_content) {
-      free(line_content);
-      exit(EXIT_FAILURE);
+    perror("malloc failed");
+    exit(EXIT_FAILURE);
   }
 
-  strncpy(line_content, lexer->buf + line_start, line_length);
-
+  memcpy(line_content, lexer->buf + line_start, line_length);
   line_content[line_length] = '\0';
 
   return line_content;
 }
+
 
 void lexer_report_error(Lexer* lexer, char* error_code, ...) {
   // if (error_code[0] != 'U' && error_code[0] != 'E') {

@@ -22,7 +22,8 @@ SetupConfig parse_arguments(int argc, char* argv[]) {
   
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "--verbose") == 0 && i + 1 < argc) {
-      config.verbosity_level = atoi(argv[++i]); 
+      *verbosity_level = atoi(argv[++i]); 
+      LOG_DEBUG("VERBOSITY %d", verbosity_level);
     } else if (strcmp(argv[i], "--output") == 0 && i + 1 < argc) {
       config.output_filename = argv[++i];
       config.output_mode = OUTPUT_FILE;
@@ -141,8 +142,6 @@ SetupResult perform_setup(int argc, char* argv[]) {
   if (!init_result.success) {
     return init_result;
   }
-
-  LOG_WARN("CONFIG %s", config.location);
   
   SetupResult cluster_result = setup_default_cluster(init_result.cluster_manager, &config);
   if (!cluster_result.success) {

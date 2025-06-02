@@ -8,29 +8,30 @@ Result process(Database* db, char* buffer) {
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
 
-  JQLCommand cmd = parser_parse(db);
-  return execute_cmd(db, &cmd);
+  JQLCommand* cmd = malloc(sizeof(JQLCommand));
+  *cmd = parser_parse(db);
+
+  Result result = execute_cmd(db, cmd, true);
+  return result;
 }
 
-Result process_core(Database* db, char* buffer) {
-  lexer_set_buffer(db->core->lexer, buffer);
-  parser_reset(db->core->parser);
+Result process_silent(Database* db, char* buffer) {
+  if (!db || !db->lexer || !db->parser) {
+    return (Result){(ExecutionResult){1, "Invalid context"}, NULL};
+  }
 
-  Lexer* original_lexer = db->lexer;
-  Parser* original_parser = db->parser;
+  lexer_set_buffer(db->lexer, buffer);
+  parser_reset(db->parser);
 
-  db->lexer = db->core->lexer;
-  db->parser = db->core->parser;
 
-  JQLCommand cmd = parser_parse(db);
+  JQLCommand* cmd = malloc(sizeof(JQLCommand));
+  *cmd = parser_parse(db);
 
-  db->lexer = original_lexer;
-  db->parser = original_parser;
-
-  return execute_cmd(db, &cmd);
+  Result result = execute_cmd(db, cmd, false);
+  return result;
 }
 
-Result execute_cmd(Database* db, JQLCommand* cmd) {
+Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
   if (cmd->is_invalid) {
     return (Result){(ExecutionResult){1, "Invalid command"}, NULL};
   }
@@ -60,7 +61,9 @@ Result execute_cmd(Database* db, JQLCommand* cmd) {
       result = (Result){(ExecutionResult){1, "Unknown command type"}, NULL};
   }
 
-  printf("%s (effected %u rows)\n", result.exec.message, result.exec.row_count);
+  if (!show) return result;
+
+  LOG_INFO("%s (effected %u rows)", result.exec.message, result.exec.row_count);
 
   if (result.exec.rows && result.exec.alias_limit > 0 && result.exec.row_count > 0) {
     printf("-> Returned %u row(s):\n", result.exec.row_count);
@@ -283,7 +286,6 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
 
   load_tc(db);
   uint32_t table_offset = hash_fnv1a(schema->table_name, MAX_TABLES);
-  LOG_DEBUG("CREATE %s = %d", schema->table_name, table_offset);
   load_schema_tc(db, schema->table_name);
 
   return (ExecutionResult){0, "Table schema written successfully"};
@@ -294,7 +296,6 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
   AlterTableCommand* alter_cmd = cmd->alter;
   
   uint32_t table_offset = hash_fnv1a(alter_cmd->table_name, MAX_TABLES);
-  LOG_DEBUG("ALTER %s = %d", alter_cmd->table_name, table_offset);
   if (table_offset == UINT32_MAX) {
     result.code = -1;
     result.message = "Table not found";
@@ -302,7 +303,13 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
   }
   
   TableSchema* schema = db->tc[table_offset].schema;
-  int64_t table_id = insert_table(db, alter_cmd->table_name);
+  int64_t table_id = find_table(db, alter_cmd->table_name);
+
+  if (table_id == -1) {
+    result.code = -1;
+    result.message = "Table not found in catalog";
+    return result;
+  }
   
   switch (alter_cmd->operation) {
     case ALTER_ADD_COLUMN: {
@@ -328,11 +335,11 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
       
       schema->column_count++;
       
-      if (alter_cmd->add_column.not_null) {
-        const char* col_names[] = { alter_cmd->add_column.column_name };
-        insert_constraint(db, table_id, "", CONSTRAINT_NOT_NULL, col_names, 1,
-          NULL, NULL, NULL, 0, 0, 0, false, false, false, false, false);
-      }
+      // if (alter_cmd->add_column.not_null) {
+      //   const char* col_names[] = { alter_cmd->add_column.column_name };
+      //   insert_constraint(db, table_id, "", CONSTRAINT_NOT_NULL, col_names, 1,
+      //     NULL, NULL, NULL, 0, 0, 0, false, false, false, false, false);
+      // }
       
       if (alter_cmd->add_column.has_default) {
         insert_default_constraint(db, table_id, alter_cmd->add_column.column_name, 
@@ -471,9 +478,9 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
       
       schema->columns[col_idx].is_not_null = true;
       
-      const char* col_names[] = { alter_cmd->column.column_name };
-      insert_constraint(db, table_id, "", CONSTRAINT_NOT_NULL, col_names, 1,
-        NULL, NULL, NULL, 0, 0, 0, false, false, false, false, false);
+      // const char* col_names[] = { alter_cmd->column.column_name };
+      // insert_constraint(db, table_id, "", CONSTRAINT_NOT_NULL, col_names, 1,
+      //   NULL, NULL, NULL, 0, 0, 0, false, false, false, false, false);
       
       result.code = 0;
       result.message = "NOT NULL constraint added successfully";
@@ -502,29 +509,32 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
     }
     
     case ALTER_ADD_CONSTRAINT: {
-      for (int i = 0; i < alter_cmd->constraint.ref_columns_count; i++) {
+      struct AlterTableCommandConstraint cnstr = alter_cmd->constraint;
+
+      LOG_WARN("CONSTRAINT: %s", cnstr.constraint_name);
+
+      for (int i = 0; i < cnstr.columns_count; i++) {
         bool found = false;
         for (uint8_t j = 0; j < schema->column_count; j++) {
-          if (strcmp(schema->columns[j].name, alter_cmd->constraint.ref_columns[i]) == 0) {
+          if (strcmp(schema->columns[j].name, cnstr.columns[i]) == 0) {
             found = true;
             break;
           }
         }
+
         if (!found) {
           result.code = -1;
           result.message = "Referenced column not found";
           return result;
         }
       }
-      
-      const char* col_names[MAX_COLUMNS];
-      for (int i = 0; i < alter_cmd->constraint.ref_columns_count; i++) {
-        col_names[i] = alter_cmd->constraint.ref_columns[i];
-      }
-      
-      int64_t constraint_id = insert_constraint(db, table_id, alter_cmd->constraint.constraint_name,
-        alter_cmd->constraint.constraint_type, col_names, alter_cmd->constraint.ref_columns_count,
-        NULL, NULL, NULL, 0, 0, 0, false, false, false, true, false);
+
+      int64_t ref_table = find_table(db, cnstr.ref_table);
+
+      int64_t constraint_id = insert_constraint(db, table_id, cnstr.constraint_name,
+        cnstr.constraint_type, cnstr.columns, cnstr.columns_count,
+        strdup(cnstr.constraint_expr), ref_table, cnstr.ref_columns,
+        cnstr.ref_columns_count, cnstr.on_delete, cnstr.on_update);
       
       if (constraint_id < 0) {
         result.code = -1;
@@ -694,6 +704,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   row->values = (ColumnValue*)calloc(column_count, sizeof(ColumnValue));
 
   if (!row->values) {
+    free_expr_src(src, column_count);
     return NULL;
   }
 
@@ -704,6 +715,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
   if (!null_bitmap) {
     free(row->values);
+    free_expr_src(src, column_count);
     return NULL;
   }
   
@@ -730,11 +742,12 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, db, schema_idx);
-    
+
     bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
     
     if (!valid_conversion) {
       LOG_ERROR("Invalid conversion whilst trying to insert row");
+      free_expr_src(src, column_count);
       return NULL;
     }
 
@@ -742,7 +755,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       if (!check_foreign_key(db, schema->columns[i], cur)) {
         LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
           str_column_value(&cur), schema->columns[i].foreign_table, schema->columns[i].foreign_column);
-        return NULL;
+          free_expr_src(src, column_count);
+          return NULL;
       }
     }
 
@@ -751,6 +765,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     if (is_struct_zeroed(&cur, sizeof(ColumnValue))) {
       free(row->values);
       free(row->null_bitmap);
+      free_expr_src(src, column_count);
       return NULL;
     }
 
@@ -782,8 +797,10 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       row->values[i].int_value = sequence_next_val(db, seq_name);
       null_bitmap[i / 8] &= ~(1 << (i % 8));
     }
-  }
 
+    // LOG_ERROR("free-ing a feild value: %d", i);
+    // free_expr_node(src[i]);
+  }
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (&primary_key_cols[i]) {
@@ -793,6 +810,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       if (!is_struct_zeroed(&res, sizeof(RowID))) {
         free(row->values);
         free(row->null_bitmap);
+        free_expr_src(src, column_count);
         return NULL;
       }
     }
@@ -817,6 +835,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       if (!btree_insert(db->tc[schema_idx].btree[idx], key, row_id)) {
         free(row->values);
         free(row->null_bitmap);
+        free_expr_src(src, column_count);
         return NULL;
       }
     }
@@ -969,6 +988,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
 
   BufferPool* pool = &db->lake[schema_idx];
+  size_t null_bitmap_size = (schema->column_count + 7) / 8;
   uint32_t rows_updated = 0;
   
   for (uint16_t page_idx = 0; page_idx < pool->num_pages; ++page_idx) {
@@ -1035,8 +1055,9 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
       for (int u = 0; u < valid_updates; ++u) {
         row->values[update_cols[u]] = new_vals[u];
       }
-      
-      row->null_bitmap = cmd->bitmap;
+
+      row->null_bitmap = (uint8_t*)malloc(null_bitmap_size);
+      memcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
       rows_updated++;
       page->is_dirty = true;
       free(update_cols);

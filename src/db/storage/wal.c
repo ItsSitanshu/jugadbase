@@ -16,15 +16,16 @@ uint64_t wal_write(FILE* file, WALAction action, uint32_t table_id, const void* 
 
   static uint64_t lsn_counter = 1;
   uint64_t lsn = lsn_counter++;
+  
+  WALRecordHeader header;
+  memset(&header, 0, sizeof(WALRecordHeader));
+  header.lsn = lsn;
+  header.txid = global_txid;
+  header.timestamp = time(NULL);
+  header.action = action;
+  header.table_id = table_id;
+  header.payload_size = payload_size;
 
-  WALRecordHeader header = {
-    .lsn = lsn,
-    .txid = global_txid,
-    .timestamp = time(NULL),
-    .action = action,
-    .table_id = table_id,
-    .payload_size = payload_size
-  };
 
   fwrite(&header, sizeof(WALRecordHeader), 1, file);
   if (payload_size > 0 && payload) {
