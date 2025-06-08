@@ -421,14 +421,13 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
       
       int64_t existing_default = find_default_constraint(db, table_id, alter_cmd->column.column_name);
       if (existing_default >= 0) {
-        delete_constraint(db, existing_default);
+        // delete_constraint(db, existing_default);
       }
       
       schema->columns[col_idx].has_default = true;
       
-      insert_default_constraint(db, table_id, alter_cmd->column.column_name, 
-        alter_cmd->column.default_expr);
-      
+      insert_attr_default(db, table_id, alter_cmd->column.column_name, alter_cmd->column.default_expr);
+
       result.code = 0;
       result.message = "Default value set successfully";
       break;
@@ -451,7 +450,7 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
       
       int64_t default_constraint = find_default_constraint(db, table_id, alter_cmd->column.column_name);
       if (default_constraint >= 0) {
-        delete_constraint(db, default_constraint);
+        // delete_constraint(db, default_constraint);
       }
       
       schema->columns[col_idx].has_default = false;
@@ -510,8 +509,6 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
     
     case ALTER_ADD_CONSTRAINT: {
       struct AlterTableCommandConstraint cnstr = alter_cmd->constraint;
-
-      LOG_WARN("CONSTRAINT: %s", cnstr.constraint_name);
 
       for (int i = 0; i < cnstr.columns_count; i++) {
         bool found = false;

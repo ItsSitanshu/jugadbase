@@ -120,4 +120,4 @@ ALTER TABLE jb_sequences ALTER COLUMN name SET NOT NULL;
 ALTER TABLE jb_sequences ALTER COLUMN current_value SET DEFAULT 1;
 ALTER TABLE jb_sequences ALTER COLUMN increment_by SET DEFAULT 1;
 ALTER TABLE jb_sequences ALTER COLUMN min_value SET DEFAULT 1;
-ALTER TABLE jb_sequences ALTER COLUMN cycle SET DEFAULT FALSE;
+ALTER TABLE jb_sequences ALTER COLUMN cycle SET DEFAULT false;

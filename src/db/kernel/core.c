@@ -234,11 +234,14 @@ int64_t find_default_constraint(Database* db, int64_t table_id, const char* colu
 
   ParserState state = parser_save_state(db->core->parser);
 
+
   char query[512];
   snprintf(query, sizeof(query),
-    "SELECT id FROM jb_constraints WHERE table_id = %ld AND columns = '{%s}' AND check_expr IS NOT NULL;",
+    "SELECT id FROM jb_attrdef WHERE table_id = %ld AND column_name = '%s';",
     table_id, column_name
   );
+
+  // LOG_DEBUG("[+] looking for default constraint: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0 && res.exec.row_count > 0;
@@ -246,13 +249,14 @@ int64_t find_default_constraint(Database* db, int64_t table_id, const char* colu
   int64_t value = -1;
   if (success) {
     value = res.exec.rows[0].values[0].int_value;
-  }
+  } 
 
   parser_restore_state(db->core->parser, state);
   free_result(&res);
 
   return value;
 }
+
 
 int64_t insert_constraint(Database* db, int64_t table_id, char* name, 
                           int constraint_type, char (*columns)[MAX_IDENTIFIER_LEN], int col_count,
@@ -316,7 +320,7 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
     flags[4]
   );
 
-  LOG_DEBUG("[+] constraint: %s", query);
+  // LOG_DEBUG("[+] constraint: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -357,7 +361,7 @@ int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name
     has_constraints ? "true" : "false"    
   );
 
-  LOG_DEBUG("[+] attr: %s", column_name);
+  // LOG_DEBUG("[+] attr: %s", column_name);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -395,7 +399,7 @@ int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_n
     default_expr
   );
 
-  LOG_DEBUG("[+] attr_default: %s", column_name);
+  // LOG_DEBUG("[+] attr_default: %s", column_name);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;

@@ -247,8 +247,6 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
       }
     }
 
-    free_row(row);
-
     actual_row_count++;
   }
 

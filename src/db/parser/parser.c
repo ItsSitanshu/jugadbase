@@ -690,12 +690,11 @@ bool parse_alter_alter_column(Parser* parser, AlterTableCommand* cmd) {
       cmd->operation = ALTER_SET_DEFAULT;
 
       strcpy(cmd->column.default_expr, parser->cur->value);
-      if (!is_valid_data_type(parser)) {
-        REPORT_ERROR(parser->lexer, "SYE_E_CDTYPE", parser->cur->value);
+      ColumnValue val;
+      if (!parser_parse_value(parser, &val)) {
+        REPORT_ERROR(parser->lexer, "Expected a proper default value after the `DEFAULT` keyword");
         return false;
       }
-
-      parser_consume(parser);
     } else if (parser->cur->type == TOK_NOT) {
       parser_consume(parser);
       if (parser->cur->type == TOK_NL) {
@@ -726,8 +725,6 @@ bool parse_alter_alter_column(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Unknown ALTER COLUMN sub-operation");
     return false;
   }
-
-  LOG_DEBUG("parser->2-> %s", parser->cur->value);
 
   return true;
 }
@@ -873,6 +870,49 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
       return false;
     }
     parser_consume(parser);
+
+    while (parser->cur->type == TOK_ON) {
+      parser_consume(parser);
+      
+      bool is_delete = false;
+      if (parser->cur->type == TOK_DEL) {
+        is_delete = true;
+      } else if (parser->cur->type == TOK_UPD) {
+        is_delete = false;
+      } else {
+        REPORT_ERROR(parser->lexer, "SYE_E_EXPECT_DELETE_OR_UPDATE");
+        return false;
+      }
+      parser_consume(parser);
+      
+      FKAction action = FK_NO_ACTION;
+      if (parser->cur->type == TOK_CASCADE) {
+        action = FK_CASCADE;
+        parser_consume(parser);
+      } else if (parser->cur->type == TOK_RESTRICT) {
+        action = FK_RESTRICT;
+        parser_consume(parser);
+      } else if (parser->cur->type == TOK_SET) {
+        parser_consume(parser);
+        if (parser->cur->type == TOK_NL) {
+          action = FK_SET_NULL;
+          parser_consume(parser);
+        } else {
+          REPORT_ERROR(parser->lexer, "SYE_E_EXPECT_NULL");
+          return false;
+        }
+      } else {
+        REPORT_ERROR(parser->lexer, "SYE_E_INVALID_ACTION");
+        return false;
+      }
+      
+      if (is_delete) {
+        cmd->constraint.on_delete = action;
+      } else {
+        cmd->constraint.on_update = action;
+      }
+    }
+
   }
 
   else if (parser->cur->type == TOK_CHK) {
