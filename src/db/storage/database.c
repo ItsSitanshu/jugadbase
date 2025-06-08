@@ -632,22 +632,32 @@ bool load_initial_schema(Database* db) {
   }
 
   FILE* io = db->tc_reader;
-  size_t CONTENTS_OFFSET = 2 * sizeof(uint32_t) + MAX_TABLES * sizeof(uint32_t);
-  io_seek(io, CONTENTS_OFFSET, SEEK_SET);
+  size_t index_table_offset = 2 * sizeof(uint32_t);
 
   for (size_t i = 0; i < db->table_count; i++) {
     const char* table_name = db->tc[i].name;
     unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
-    
     if (db->tc[idx].schema) continue;
+
+    uint32_t schema_offset;
+    io_seek(io, index_table_offset + idx * sizeof(uint32_t), SEEK_SET);
+    if (io_read(io, &schema_offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
+      LOG_ERROR("Failed to read schema offset.");
+      return false;
+    }
+
+    io_seek(io, schema_offset, SEEK_SET);
+    uint32_t schema_length;
+    if (io_read(io, &schema_length, sizeof(uint32_t)) != sizeof(uint32_t)) {
+      LOG_ERROR("Failed to read schema length.");
+      return false;
+    }
 
     TableSchema* schema = calloc(1, sizeof(TableSchema));
     if (!schema) {
       LOG_ERROR("Memory allocation failed for schema.");
       return false;
     }
-
-    io_seek(io, sizeof(uint32_t), SEEK_CUR);
 
     uint8_t table_name_length;
     if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
@@ -675,7 +685,7 @@ bool load_initial_schema(Database* db) {
       free(schema);
       return false;
     }
-    
+
     for (uint8_t j = 0; j < schema->column_count; j++) {
       ColumnDefinition* col = &schema->columns[j];
       col->is_not_null = false;
@@ -683,16 +693,12 @@ bool load_initial_schema(Database* db) {
       uint8_t col_name_length;
       if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
         LOG_ERROR("Failed to read column name length.");
-        free(schema->columns);
-        free(schema);
-        return false;
+        goto cleanup;
       }
 
       if (io_read(io, col->name, col_name_length) != col_name_length) {
         LOG_ERROR("Failed to read column name.");
-        free(schema->columns);
-        free(schema);
-        return false;
+        goto cleanup;
       }
       col->name[col_name_length] = '\0';
 
@@ -706,67 +712,31 @@ bool load_initial_schema(Database* db) {
         char seq_name[MAX_IDENTIFIER_LEN * 2];
         sprintf(seq_name, "%s%s", schema->table_name, col->name);
         col->sequence_id = find_sequence(db, seq_name);
-
-        if (col->sequence_id == -1) {
-          return false;
-        }
+        if (col->sequence_id == -1) goto cleanup;
       }
 
       io_read(io, &col->has_constraints, sizeof(bool));
-      // io_read(io, &col->is_primary_key, sizeof(bool));
-      // io_read(io, &col->is_unique, sizeof(bool));
-      // io_read(io, &col->is_not_null, sizeof(bool));
       io_read(io, &col->is_array, sizeof(bool));
       io_read(io, &col->is_index, sizeof(bool));
-
       io_read(io, &col->has_default, sizeof(bool));
-      // if (col->has_default) {
-      //   if (io_read(io, col->default_value, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-      //     LOG_ERROR("Failed to read default value.");
-      //     free(schema->columns);
-      //     free(schema);
-      //     return false;
-      //   }
-      // }
-
       io_read(io, &col->has_check, sizeof(bool));
-      // if (col->has_check) {
-      //   if (io_read(io, col->check_expr, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN) {
-      //     LOG_ERROR("Failed to read check constraint.");
-      //     free(schema->columns);
-      //     free(schema);
-      //     return false;
-      //   }
-      // }
-
       io_read(io, &col->is_foreign_key, sizeof(bool));
-      // if (col->is_foreign_key) {
-      //   if (io_read(io, col->foreign_table, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN 
-      //   || io_read(io, col->foreign_column, MAX_IDENTIFIER_LEN) != MAX_IDENTIFIER_LEN
-      //   || io_read(io, &col->on_delete, sizeof(FKAction)) != sizeof(FKAction)
-      //   || io_read(io, &col->on_update, sizeof(FKAction)) != sizeof(FKAction)) {
-      //     LOG_ERROR("Failed to read foreign key details.");
-      //     free(schema->columns);
-      //     free(schema);
-      //     return false;
-      //   }
-      // }
 
-      if (col->is_primary_key) {
-        schema->prim_column_count += 1;
-      }  
-
-      if (col->is_not_null) {
-        schema->not_null_count += 1;
-      }
+      if (col->is_primary_key) schema->prim_column_count++;
+      if (col->is_not_null) schema->not_null_count++;
     }
 
     db->tc[idx].schema = schema;
+    continue;
+
+  cleanup:
+    free(schema->columns);
+    free(schema);
+    return false;
   }
 
   return true;
 }
-
 
 void load_lake(Database* db) {
   FILE* file = NULL;

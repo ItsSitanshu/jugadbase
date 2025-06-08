@@ -1075,6 +1075,7 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
       command.columns[command.col_count] = strdup(parser->cur->value);
       command.col_count++;
 
+
       parser_consume(parser);
 
       if (parser->cur->type == TOK_COM) {
@@ -1111,7 +1112,7 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     : command.col_count;
 
   while (parser->cur->type == TOK_LP) {
-    ExprNode** row = calloc(command.col_count, sizeof(ExprNode*));
+    ExprNode** row = calloc(db->tc[idx].schema->column_count, sizeof(ExprNode*));
 
     parser_consume(parser); 
 
@@ -1122,10 +1123,12 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
         : find_column_index(db->tc[idx].schema, command.columns[value_count]);
 
       if (row_idx < 0) {
-        LOG_DEBUG("Internal: Row index for '%s' was evaluated incorrectly", command.columns[value_count]);
+        // LOG_DEBUG("%d", command.col_count);
+        LOG_DEBUG("Internal: Row index in table '%s' for '%s' was evaluated incorrectly",
+            command.schema->table_name, command.columns[value_count]);
         return command;
       }
-
+      
       row[row_idx] = parser_parse_expression(parser, db->tc[idx].schema);
       if (!row[row_idx]) return command;
       value_count++;

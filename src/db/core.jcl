@@ -1,4 +1,4 @@
--- jb.core - version b.0.2
+-- jb.core - version b.0.3
 
 CREATE TABLE jb_tables (
   id SERIAL,
@@ -14,7 +14,7 @@ INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
   (1, 'jb_sequences', 'core', 'sudo', NOW());
 
 CREATE TABLE jb_sequences (
-  id INT,
+  id SERIAL,
   name TEXT,
   current_value INT,
   increment_by INT,
@@ -23,8 +23,10 @@ CREATE TABLE jb_sequences (
   cycle BOOL
 );
 
-INSERT INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
-  ('jb_tablesid', 1, 1, 0, NULL, false);
+INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
+  (0, 'jb_tablesid', 1, 1, 0, NULL, false);
+INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
+  (1, 'jb_sequencesid', 1, 1, 0, NULL, false);
 
 CREATE TABLE jb_attribute (
   id SERIAL,

@@ -129,8 +129,7 @@ void token_free(Token* token) {
   De-initializes provided token
   */
 
-  if (!token) {
-    exit(EXIT_FAILURE);
+  if (!token || !token->value) {
     return;
   }
 

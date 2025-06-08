@@ -35,6 +35,14 @@ typedef enum ConstraintType {
   CONSTRAINT_FOREIGN_KEY = 5,
 } ConstraintType;
 
+typedef struct Attribute {
+  int data_type;
+  int ordinal_position;
+  bool is_nullable;
+  bool has_default;
+  bool has_constraints;
+} Attribute;
+
 Result process(Database* db, char* buffer);
 Result process_silent(Database* db, char* buffer);
 
@@ -110,6 +118,9 @@ int64_t insert_single_column_constraint(Database* db, int64_t table_id, int64_t 
 int64_t find_constraint_by_name(Database* db, int64_t table_id, const char* name);
 bool delete_constraint(Database* db, int64_t constraint_id);
 bool update_constraint_name(Database* db, int64_t constraint_id, const char* new_name);
+
+Attribute* load_attribute(Database* db, int64_t table_id, const char* column_name);
+char* load_attr_default(Database* db, int64_t table_id, const char* column_name);
 
 int64_t sequence_next_val(Database* db, char* name);
 int64_t create_default_squence(Database* db, char* name);

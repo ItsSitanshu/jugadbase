@@ -178,6 +178,8 @@ int64_t find_sequence(Database* db, char* name) {
     return -1;
   }
 
+  LOG_DEBUG("%s", name);
+
   if (strcmp(name, "jb_tablesid") == 0) {
     return 0;
   }
@@ -205,7 +207,7 @@ int64_t find_sequence(Database* db, char* name) {
   }
 
   parser_restore_state(db->core->parser, state);
-  return res.exec.rows[0].values[0].int_value;
+  return ;
 }
 
 int64_t insert_default_constraint(Database* db, int64_t table_id, const char* column_name, const char* default_expr) {
@@ -320,7 +322,7 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
     flags[4]
   );
 
-  // LOG_DEBUG("[+] constraint: %s", query);
+  LOG_DEBUG("[+] constraint: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -332,7 +334,6 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
 
   int64_t value = res.exec.rows[0].values[0].int_value;
   parser_restore_state(db->core->parser, state);
-  free_result(&res);
 
   return value;
 }
@@ -557,4 +558,75 @@ bool create_sequence_link(Database* db, ColumnDefinition* def, char* name, uint6
   bool success = (process_silent(db->core, query)).exec.code == 0;
 
   return success;
+}
+
+
+Attribute* load_attribute(Database* db, int64_t table_id, const char* column_name) {
+  if (!db || !column_name) {
+    LOG_ERROR("Invalid parameters to load_attribute");
+    return NULL;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  char query[512];
+  snprintf(query, sizeof(query),
+    "SELECT data_type, ordinal_position, is_nullable, has_default, has_constraints "
+    "FROM jb_attribute "
+    "WHERE table_id = %ld AND column_name = \"%s\";",
+    table_id, column_name);
+
+  Result res = process_silent(db->core, query);
+  if (res.exec.code != 0 || res.exec.row_count == 0) {
+    LOG_ERROR("Failed to load attribute '%s'", column_name);
+    parser_restore_state(db->core->parser, state);
+    free_result(&res);
+    return NULL;
+  }
+
+  Attribute* attr = malloc(sizeof(Attribute));
+  attr->data_type = res.exec.rows[0].values[0].int_value;
+  attr->ordinal_position = res.exec.rows[0].values[1].int_value;
+  attr->is_nullable = res.exec.rows[0].values[2].bool_value;
+  attr->has_default = res.exec.rows[0].values[3].bool_value;
+  attr->has_constraints = res.exec.rows[0].values[4].bool_value;
+
+  parser_restore_state(db->core->parser, state);
+  free_result(&res);
+
+  return attr;
+}
+
+char* load_attr_default(Database* db, int64_t table_id, const char* column_name) {
+  if (!db || !column_name) {
+    LOG_ERROR("Invalid parameters to load_attr_default");
+    return NULL;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  char query[512];
+  snprintf(query, sizeof(query),
+    "SELECT default_expr FROM jb_attrdef "
+    "WHERE table_id = %ld AND column_name = \"%s\";",
+    table_id, column_name);
+
+  Result res = process_silent(db->core, query);
+  if (res.exec.code != 0 || res.exec.row_count == 0) {
+    LOG_ERROR("Failed to load default for column '%s'", column_name);
+    parser_restore_state(db->core->parser, state);
+    free_result(&res);
+    return NULL;
+  }
+
+  char* default_expr = strdup(res.exec.rows[0].values[0].str_value);
+
+  parser_restore_state(db->core->parser, state);
+  free_result(&res);
+
+  return default_expr;
 }

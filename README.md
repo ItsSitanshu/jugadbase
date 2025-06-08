@@ -56,6 +56,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Implement `SERIAL` sequences~~
 - Migrate attribute definitions binary (schema) => jb_core 
 - Implement `DEFAULT` values
+- Implement array conditionals / expressions
 - Implement foreign constraints
 - Design casading  
 - FIX BUG: Multiple inserts statements in same file when large contents are present

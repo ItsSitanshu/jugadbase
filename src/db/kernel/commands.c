@@ -85,9 +85,7 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
         // LOG_DEBUG("%d : alias: %s norm: %s", c, result.exec.aliases[alias_count], col.name);
 
         if (!val.is_null && result.exec.aliases[alias_count]) {
-          char* name = result.exec.aliases[alias_count] ? 
-            result.exec.aliases[alias_count] : col.name;
-          printf("%s: ", name);
+          printf("%s: ", result.exec.aliases[alias_count]);
           alias_count++;
         }
         print_column_value(&val);
@@ -110,36 +108,6 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
 
 
 ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
-  /*
-  [4B]  DB_INIT_MAGIC
-  [4B]  Table Count
-  [4B * 255] Table Offsets
-  (every file not every entry) 
-
-  For each table:
-    [4B] Schema Offset
-
-    For each schema:
-    [1B] Table Name Length
-    [var] Table Name
-    [1B] Column Count
-
-    For each column:
-      [1B] Column Name Length
-      [var] Column Name
-      [4B] Column Type
-      [1B] Varchar Length
-      [1B] Decimal Precision
-      [1B] Decimal Scale
-      [1B] Column Flags
-      [1B] Has Default
-      [var] Default Value
-      [1B] Has Check
-      [var] Check Expression
-      [1B] Is Foreign Key
-      [var] Foreign Table
-      [var] Foreign Column
-  */
   if (!db || !cmd || !db->tc_appender) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
@@ -196,29 +164,14 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     }
 
     io_write(tca_io, &col->has_constraints, sizeof(bool));
-
-    // if (col->is_primary_key) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_PRIMARY_KEY, false, true, true);
-    // if (col->is_unique) insert_single_column_constraint(db, table_id, i, col->name, CONSTRAINT_UNIQUE, false, true, false);
     io_write(tca_io, &col->is_array, sizeof(bool));
     io_write(tca_io, &col->is_index, sizeof(bool));
 
     io_write(tca_io, &col->has_default, sizeof(bool));
 
-      // io_write(tca_io, col->default_value, MAX_IDENTIFIER_LEN);
-    // }
-
     io_write(tca_io, &col->has_check, sizeof(bool));
-    // if (col->has_check) {
-    //   io_write(tca_io, col->check_expr, MAX_IDENTIFIER_LEN);
-    // }
 
     io_write(tca_io, &col->is_foreign_key, sizeof(bool));
-    // if (col->is_foreign_key) {
-    //   io_write(tca_io, col->foreign_table, MAX_IDENTIFIER_LEN);
-    //   io_write(tca_io, col->foreign_column, MAX_IDENTIFIER_LEN);
-    //   io_write(tca_io, &col->on_delete, sizeof(FKAction));
-    //   io_write(tca_io, &col->on_update, sizeof(FKAction));
-    // }
 
     if (!(strcmp(schema->table_name, "jb_attribute") == 0 ||
         strcmp(schema->table_name, "jb_tables") == 0 ||
@@ -932,18 +885,28 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
         snprintf(buffer, sizeof(buffer), "%s[%d]", base_name, array_idx);
         aliases[j] = strdup(buffer);
       } else {
-        aliases[j] = strdup(cmd->schema->columns[expr->column.index].name);
+        aliases[j] = strdup(cmd->schema->columns[j].name);
       }
 
+
+
       if (!expr) {
-        ColumnValue raw = src->values[j];
-        dst->values[j] = raw; 
-        dst->values[j].column.index = j;
+        dst = src;
+        LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));
       } else {
         ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
-        // LOG_DEBUG("printing using eval %d w. %d %d > %s", j, src->id.page_id, src->id.row_id, str_column_value(&val));      
+        if (is_struct_zeroed(&val, sizeof(ColumnValue))) {
+          return (ExecutionResult){
+            .code = -1,
+            .message = "Select query failed",
+          };
+        }        
+        
         dst->values[j] = val;
+        // LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));
+
       }
+
 
       free_expr_node(expr);
     }  
