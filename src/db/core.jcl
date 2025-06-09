@@ -1,52 +1,57 @@
--- jb.core - version b.0.3
-
-CREATE TABLE jb_tables (
-  id SERIAL,
-  name TEXT NOT NULL, 
-  database_name TEXT,
-  owner TEXT DEFAULT 'public',
-  created_at TIMESTAMP
-);
+-- jb.core - version b.0.4
 
 INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
   (0, 'jb_tables', 'core', 'sudo', NOW());
 INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
   (1, 'jb_sequences', 'core', 'sudo', NOW());
-
-CREATE TABLE jb_sequences (
-  id SERIAL,
-  name TEXT,
-  current_value INT,
-  increment_by INT,
-  min_value INT,
-  max_value INT,
-  cycle BOOL
-);
+INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
+  (2, 'jb_attribute', 'core', 'sudo', NOW());
+INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
+  (3, 'jb_attrdef', 'core', 'sudo', NOW());
 
 INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
-  (0, 'jb_tablesid', 1, 1, 0, NULL, false);
+  (0, 'jb_sequencesid', 0, 1, 0, NULL, false);
 INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
-  (1, 'jb_sequencesid', 1, 1, 0, NULL, false);
+  (1, 'jb_tablesid', 3, 1, 0, NULL, false);
+INSERT INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
+  ('jb_attributeid', 0, 1, 0, NULL, false);
+INSERT INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
+  ('jb_attrdefid', 0, 1, 0, NULL, false);
 
-CREATE TABLE jb_attribute (
-  id SERIAL,
-  table_id INT,
-  column_name TEXT,
-  data_type INT,
-  ordinal_position INT,
-  is_nullable BOOL,
-  has_default BOOL,
-  has_constraints BOOL,
-  created_at TIMESTAMP
-);
 
-CREATE TABLE jb_attrdef (
-  id SERIAL,
-  table_id INT NOT NULL,
-  column_name TEXT NOT NULL,
-  default_expr TEXT NOT NULL,
-  created_at TIMESTAMP
-);
+INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+(0, "id", 19, 0, true, false, false, NOW()),
+(0, "name", 3, 1, false, false, false, NOW()),
+(0, "database_name", 3, 2, true, false, false, NOW()),
+(0, "owner", 3, 3, true, true, false, NOW()),
+(0, "created_at", 13, 4, true, false, false, NOW());
+
+INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+(1, "id", 19, 0, true, false, false, NOW()),
+(1, "name", 3, 1, true, false, false, NOW()),
+(1, "current_value", 0, 2, true, false, false, NOW()),
+(1, "increment_by", 0, 3, true, false, false, NOW()),
+(1, "min_value", 0, 4, true, false, false, NOW()),
+(1, "max_value", 0, 5, true, false, false, NOW()),
+(1, "cycle", 4, 6, true, false, false, NOW());
+
+INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+(2, "id", 19, 0, true, false, false, NOW()),
+(2, "table_id", 0, 1, true, false, false, NOW()),
+(2, "column_name", 3, 2, true, false, false, NOW()),
+(2, "data_type", 0, 3, true, false, false, NOW()),
+(2, "ordinal_position", 0, 4, true, false, false, NOW()),
+(2, "is_nullable", 4, 5, true, false, false, NOW()),
+(2, "has_default", 4, 6, true, false, false, NOW()),
+(2, "has_constraints", 4, 7, true, false, false, NOW()),
+(2, "created_at", 13, 8, true, false, false, NOW());
+
+INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+(3, "id", 19, 0, false, false, false, NOW()),
+(3, "table_id", 0, 1, false, false, false, NOW()),
+(3, "column_name", 3, 2, false, false, false, NOW()),
+(3, "default_expr", 3, 3, false, false, false, NOW()),
+(3, "created_at", 13, 4, true, false, false, NOW());
 
 CREATE TABLE jb_toast (
   id INT,
@@ -64,11 +69,10 @@ CREATE TABLE jb_indexes (
   created_at TIMESTAMP
 );
 
-
 CREATE TABLE jb_constraints (
   id SERIAL,
   table_id INT,
-  columns INT[],
+  columns TEXT[],
   name TEXT,
   constraint_type INT,
   check_expr TEXT,
