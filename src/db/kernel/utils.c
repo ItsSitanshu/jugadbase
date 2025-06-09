@@ -195,9 +195,11 @@ void* get_column_value_as_pointer(ColumnValue* col_val) {
     case TOK_T_VARCHAR:
       return col_val->str_value;
     case TOK_T_BLOB:
-    case TOK_T_JSON:
-    case TOK_T_TEXT:
+    case TOK_T_JSON:      
       return &(col_val->toast_object);
+    case TOK_T_TEXT:
+      if (col_val->is_toast) return &(col_val->toast_object);
+      return col_val->str_value;
     case TOK_T_DECIMAL:
       return &(col_val->decimal.decimal_value);
     case TOK_T_DATE:
