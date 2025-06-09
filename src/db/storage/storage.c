@@ -197,12 +197,15 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
           abort();
         }
         fread(col_val->str_value, str_len, 1, file);
+
+        LOG_DEBUG("read str value = %s");
       } else {
         fread(&col_val->toast_object, sizeof(uint32_t), 1, file);
       }
 
+
       col_val->is_toast = is_toast_pointer;
-      LOG_DEBUG("is_toast: %s (%u)", col_val->is_toast ? "true": "false", col_val->toast_object);
+      // LOG_DEBUG("is_toast: %s (%u)", col_val->is_toast ? "true": "false", col_val->toast_object);
       break;
     }
     default:
@@ -415,6 +418,7 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
     case TOK_T_JSON:
     case TOK_T_BLOB: {
       is_toast_pointer = col_val->is_toast;
+      LOG_DEBUG("is_Toast_pointer: %s", col_val->is_toast ? "TRUE" : "FALSE");
       fwrite(&is_toast_pointer, sizeof(bool), 1, file);
       if (!is_toast_pointer) {
         str_len = (uint16_t)strlen(col_val->str_value);

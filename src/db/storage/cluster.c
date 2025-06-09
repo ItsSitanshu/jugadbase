@@ -51,6 +51,7 @@ ClusterManager* cluster_manager_init(char* root_dir) {
       for (int i = 0; i < manager->cluster_count; i++) {
         DbCluster* cluster = &manager->clusters[i];
         for (int j = 0; j < cluster->db_count; j++) {
+          LOG_INFO("Loading datbase from path: %s", cluster->db_paths[j]);
           cluster->databases[j] = db_init(cluster->db_paths[j]);
 
           if (j > 0) {
@@ -180,6 +181,7 @@ bool cluster_create(ClusterManager* manager, char* name) {
 
   cluster_switch(manager, 0);
   Database* db = cluster_get_active_db(manager);
+  bootstrap_core_tables(db);
   process_file(db, CORE_JCL_PATH, false);
 
   return true;
