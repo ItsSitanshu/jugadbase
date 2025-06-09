@@ -398,7 +398,6 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
   bool valid_conversion = infer_and_cast_value(&left, &defn);
   valid_conversion = infer_and_cast_value(&right, &defn);
 
-
   if (!valid_conversion) {
     LOG_ERROR("Invalid conversion whilst trying to evaluate conditions");
     return (ColumnValue){0};

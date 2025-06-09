@@ -147,12 +147,11 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col_name_length, sizeof(uint8_t));
     io_write(tca_io, col->name, col_name_length);
 
-    io_write(tca_io, &col->type, sizeof(uint32_t));
+    // io_write(tca_io, &col->type, sizeof(uint32_t));
     io_write(tca_io, &col->type_varchar, sizeof(uint8_t));
     io_write(tca_io, &col->type_decimal_precision, sizeof(uint8_t));
     io_write(tca_io, &col->type_decimal_scale, sizeof(uint8_t));
 
-    io_write(tca_io, &col->has_sequence, sizeof(bool));
     if (col->has_sequence) {
       char seq_name[MAX_IDENTIFIER_LEN * 2];
       sprintf(seq_name, "%s%s", schema->table_name, col->name);
@@ -163,14 +162,8 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
       }
     }
 
-    io_write(tca_io, &col->has_constraints, sizeof(bool));
     io_write(tca_io, &col->is_array, sizeof(bool));
     io_write(tca_io, &col->is_index, sizeof(bool));
-
-    io_write(tca_io, &col->has_default, sizeof(bool));
-
-    io_write(tca_io, &col->has_check, sizeof(bool));
-
     io_write(tca_io, &col->is_foreign_key, sizeof(bool));
 
     if (!(strcmp(schema->table_name, "jb_attribute") == 0 ||
@@ -688,9 +681,11 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   for (uint8_t j = 0; j < up_col_count; j++) {
     int i = specified_order ? j : find_column_index(schema, columns[j]);
 
+    LOG_INFO("%d: %s type of %d", i, schema->columns[i].name, schema->columns[i].type);
+
     Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, db, schema_idx);
-    
+      
     bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
     
     if (!valid_conversion) {
@@ -731,6 +726,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
 
     row->row_length += size_from_value(&row->values[i], &schema->columns[i]);
+       
     // LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
   }
   
@@ -888,19 +884,18 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
         aliases[j] = strdup(cmd->schema->columns[j].name);
       }
 
-
+      // LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));
 
       if (!expr) {
         dst = src;
-        LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));
       } else {
         ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
-        if (is_struct_zeroed(&val, sizeof(ColumnValue))) {
-          return (ExecutionResult){
-            .code = -1,
-            .message = "Select query failed",
-          };
-        }        
+        // if (is_struct_zeroed(&val, sizeof(ColumnValue))) {
+        //   return (ExecutionResult){
+        //     .code = -1,
+        //     .message = "Select query failed",
+        //   };
+        // }        
         
         dst->values[j] = val;
         // LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));

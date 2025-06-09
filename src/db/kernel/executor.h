@@ -91,6 +91,9 @@ size_t size_from_value(ColumnValue* val, ColumnDefinition* fallback);
 uint32_t get_table_offset(Database* db, const char* table_name);
 bool column_name_in_list(const char* name, char** list, uint8_t list_len);
 
+bool bootstrap_core_tables(Database* db);
+bool load_schema_for_table(Database* db, size_t idx, const char* table_name);
+ExecutionResult execute_create_table_internal(Database* db, TableSchema* schema, int64_t table_id);
 void check_and_concat_toast(Database* db, ColumnValue* value);
 bool check_foreign_key(Database* db, ColumnDefinition def, ColumnValue val);
 bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValue val);
