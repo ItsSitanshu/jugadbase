@@ -2302,17 +2302,18 @@ void print_column_value(ColumnValue* val) {
       if (val->is_toast) {
         printf("<%s>(%u)", token_type_strings[val->type], val->toast_object);
       } else {
-        const char* s = val->str_value;
+        char* s = val->str_value;
         size_t len = strlen(s);
       
         if (len <= 20) {
           printf("\"%s\"", s);
-        }
-      
+        } else {
         char preview[12]; 
-        memcpy(preview, s, 8);
-        strcpy(preview + 8, ".");
-        printf("\"%s +%zu\"", preview, len - 8);
+          memcpy(preview, s, 8);
+          strcpy(preview + 8, ".");
+          printf("\"%s +%zu\"", preview, len - 8);
+        }
+
       }      
       break;
     }
