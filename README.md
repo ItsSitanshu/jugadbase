@@ -54,7 +54,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Implement the `RETURNING` sub-clause for `INSERT`~~
 - ~~Implement `ALTER TABLE`'s `ADD CONSTRAINT` and `ALTER COLUMN` variation~~
 - ~~Implement `SERIAL` sequences~~
-- Migrate attribute definitions binary (schema) => jb_core 
+- ~~Migrate attribute definitions binary (schema) => jb_core~~ 
 - Implement `DEFAULT` values
 - Implement array conditionals / expressions
 - Implement foreign constraints
