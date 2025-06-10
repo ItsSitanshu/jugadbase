@@ -643,6 +643,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   uint8_t primary_key_count = 0;
 
   Row* row = calloc(1, sizeof(Row));
+  Row empty_row = {0};
+
   row->n_values = column_count;
   row->values = (ColumnValue*)calloc(column_count, sizeof(ColumnValue));
 
@@ -681,18 +683,17 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   for (uint8_t j = 0; j < up_col_count; j++) {
     int i = specified_order ? j : find_column_index(schema, columns[j]);
 
-    LOG_INFO("%d: %s type of %d", i, schema->columns[i].name, schema->columns[i].type);
+    // LOG_INFO("%d: %s type of %d", i, schema->columns[i].name, schema->columns[i].type);
 
-    Row empty_row = {0};
     ColumnValue cur = evaluate_expression(src[i], &empty_row, schema, db, schema_idx);
-      
+
     bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
-    
+
     if (!valid_conversion) {
       LOG_ERROR("Invalid conversion whilst trying to insert row");
       return NULL;
     }
-
+        
     if (schema->columns[i].is_foreign_key) {
       if (!check_foreign_key(db, schema->columns[i], cur)) {
         LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
@@ -738,6 +739,30 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       row->values[i].int_value = sequence_next_val(db, seq_name);
       null_bitmap[i / 8] &= ~(1 << (i % 8));
     }
+
+    if (row->values[i].is_null && schema->columns[i].has_default) {
+      int64_t table_id = find_table(db, schema->table_name);
+
+      if (table_id == -1) {
+        return NULL;
+      }
+
+      ExprNode* node =  load_attr_default(db, table_id, schema->columns[i].name);
+      ColumnValue cur = evaluate_expression(node, &empty_row, schema, db, schema_idx);
+
+      bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
+
+      if (!valid_conversion) {
+        LOG_ERROR("Invalid conversion whilst trying to insert row");
+        return NULL;
+      }
+
+      row->values[i] = cur;
+      
+      null_bitmap[i / 8] &= ~(1 << (i % 8));
+      row->values[i].is_null = false;
+    }
+
   }
 
 

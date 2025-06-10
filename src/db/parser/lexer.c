@@ -654,7 +654,7 @@ Token* lexer_process_double_quote(Lexer* lexer) {
 
   while (lexer->c != '\0') {
     if (lexer->c == '"') {
-      if (lexer_peek(lexer, 2)[1] == '"') {
+      if (lexer_peek(lexer, 1)[1] == '"') {
         lexer_advance(lexer, 1); 
         lexer_advance(lexer, 1);
 

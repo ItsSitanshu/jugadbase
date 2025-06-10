@@ -123,7 +123,7 @@ bool delete_constraint(Database* db, int64_t constraint_id);
 bool update_constraint_name(Database* db, int64_t constraint_id, const char* new_name);
 
 Attribute* load_attribute(Database* db, int64_t table_id, const char* column_name);
-char* load_attr_default(Database* db, int64_t table_id, const char* column_name);
+ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name);
 
 int64_t sequence_next_val(Database* db, char* name);
 int64_t create_default_squence(Database* db, char* name);

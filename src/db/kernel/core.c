@@ -506,7 +506,7 @@ int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_n
   snprintf(query, sizeof(query),
     "INSERT INTO jb_attrdef "
     "(table_id, column_name, default_expr, created_at) "
-    "VALUES (%ld, \"%s\", \"%s\", NOW()) RETURNING id;",
+    "VALUES (%ld, '%s', '%s', NOW()) RETURNING id;",
     table_id,
     column_name,
     default_expr
@@ -719,7 +719,7 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
   return attr;
 }
 
-char* load_attr_default(Database* db, int64_t table_id, const char* column_name) {
+ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name) {
   if (!db || !column_name) {
     LOG_ERROR("Invalid parameters to load_attr_default");
     return NULL;
@@ -735,6 +735,8 @@ char* load_attr_default(Database* db, int64_t table_id, const char* column_name)
     "WHERE table_id = %ld AND column_name = \"%s\";",
     table_id, column_name);
 
+  LOG_DEBUG("l(default_expr): %s", query);
+
   Result res = process_silent(db->core, query);
   if (res.exec.code != 0 || res.exec.row_count == 0) {
     LOG_ERROR("Failed to load default for column '%s'", column_name);
@@ -743,10 +745,27 @@ char* load_attr_default(Database* db, int64_t table_id, const char* column_name)
     return NULL;
   }
 
-  char* default_expr = strdup(res.exec.rows[0].values[0].str_value);
+  char* default_expr_str = res.exec.rows[0].values[0].str_value;
+  if (!default_expr_str) {
+    LOG_ERROR("Default expression is NULL for column '%s'", column_name);
+    parser_restore_state(db->core->parser, state);
+    free_result(&res);
+    return NULL;
+  } 
+
+  LOG_DEBUG("Trying to load: %s", default_expr_str);
+
+  lexer_set_buffer(db->core->lexer, default_expr_str);
+  parser_reset(db->core->parser);
+
+  ExprNode* expr_node = parser_parse_expression(db->core->parser, db->tc[table_id].schema);
+  if (!expr_node) {
+    LOG_ERROR("Failed to parse default expression for column '%s'", column_name);
+  }
 
   parser_restore_state(db->core->parser, state);
   free_result(&res);
 
-  return default_expr;
+  return expr_node;
 }
+
