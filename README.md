@@ -55,8 +55,8 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Implement `ALTER TABLE`'s `ADD CONSTRAINT` and `ALTER COLUMN` variation~~
 - ~~Implement `SERIAL` sequences~~
 - ~~Migrate attribute definitions binary (schema) => jb_core~~ 
-- Implement `DEFAULT` values
-- Implement array conditionals / expressions
+- ~~Implement `DEFAULT` values~~
+- ~~Implement array conditionals / expressions~~
 - Implement foreign constraints
 - Design casading  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
@@ -77,6 +77,8 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Add support for stored procedures  
 - Implement triggers  
 - Add replication and sharding for scalability  
+- Implement row_x.attr = row_y.attr comparisons
+- Implement TOAST for large arrays
 - Add support for database-specific file management, including backing up and restoring individual files
 - Implement composite primary keys
 - Custom importable C-written functions with <dlfcn.h>
