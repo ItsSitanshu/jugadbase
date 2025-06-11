@@ -5,7 +5,7 @@
 #include "utils/log.h"
 #include "utils/security.h"
 
-Database* db_init(char* dir) {
+Database* db_init(char* dir, Database* core) {
   Database* db = (Database*)malloc(sizeof(Database));
   if (!db) {
     LOG_FATAL("Failed to allocate memory for database.");
@@ -56,6 +56,8 @@ Database* db_init(char* dir) {
   db->tc_writer = io_init(db->fs->schema_file, FILE_WRITE, 1024);
   db->tc_appender = io_init(db->fs->schema_file, FILE_APPEND, 1024);
   db->wal = wal_open(db->fs->wal_file, "w+b");
+
+  db->core = core;
 
   load_tc(db);
   if (!load_initial_schema(db)) {
@@ -280,7 +282,6 @@ void load_tc(Database* db) {
       }
     }
   }
-
 
   if (tc < db->table_count) {
     LOG_WARN("Not all directories match the expected table names from the schema.");
@@ -515,7 +516,9 @@ bool load_schema_tc(Database* db, char* table_name) {
     free(schema);
     return false;
   }
-  
+
+  int64_t table_id = find_table(db, schema->table_name);
+
   for (uint8_t i = 0; i < schema->column_count; i++) {
     ColumnDefinition* col = &schema->columns[i];
 
@@ -535,11 +538,11 @@ bool load_schema_tc(Database* db, char* table_name) {
     }
     col->name[col_name_length] = '\0';
 
-    Attribute* attr = load_attribute(db, find_table(db, schema->table_name), col->name);
+    Attribute* attr = load_attribute(db, table_id, col->name);
     col->is_not_null = !attr->is_nullable;
     col->type = attr->data_type;
 
-    LOG_DEBUG("%s : %s as type of %s", schema->table_name, col->name, token_type_strings[col->type]);
+    // LOG_DEBUG("%s : %s as type of %s", schema->table_name, col->name, token_type_strings[col->type]);
 
     col->has_default = attr->has_default;
     col->has_constraints = attr->has_constraints;
@@ -565,6 +568,22 @@ bool load_schema_tc(Database* db, char* table_name) {
     io_read(io, &col->is_array, sizeof(bool));
     io_read(io, &col->is_index, sizeof(bool));
     io_read(io, &col->is_foreign_key, sizeof(bool));
+
+    if (col->has_default) {
+      Row empty_row = {0}; 
+
+      ExprNode* node =  load_attr_default(db, table_id, col->name);
+      ColumnValue cur = evaluate_expression(node, &empty_row, schema, db, idx);
+
+      bool valid_conversion = infer_and_cast_value(&cur, col);
+
+      col->default_value = calloc(1, sizeof(ColumnValue));
+      if (!col->default_value) {
+        LOG_FATAL("Memory allocation failed for default value.\n");
+      }
+
+      *(col->default_value) = cur;
+    }
     
     if (col->is_primary_key) {
       schema->prim_column_count += 1;
@@ -608,51 +627,61 @@ bool load_initial_schema(Database* db) {
     return false;
   }
 
-  io_seek(db->tc_reader, 0, SEEK_SET);
+  if (!db->core) {
+    io_seek(db->tc_reader, 0, SEEK_SET);
 
-  uint32_t db_init;
-  if (io_read(db->tc_reader, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
-    LOG_ERROR("Failed to read database initialization magic number.");
-    io_close(db->tc_reader);
-    return;
+    uint32_t db_init;
+    if (io_read(db->tc_reader, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
+      LOG_ERROR("Failed to read database initialization magic number.");
+      io_close(db->tc_reader);
+      return;
+    }
+
+    if (db_init != DB_INIT_MAGIC) {
+      LOG_ERROR("Invalid database file (wrong DB INIT magic number: 0x%X).", db_init);
+      io_close(db->tc_reader);
+      return;
+    }
+
+    if (io_read(db->tc_reader, &db->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
+      LOG_ERROR("Failed to read table count.");
+      io_close(db->tc_reader);
+      return;
+    }
+
+    if (db->table_count > MAX_TABLES) {
+      LOG_ERROR("Table count exceeds maximum allowed tables.");
+      io_close(db->tc_reader);
+      return;
+    }
+
+    if (db->table_count == 0) return true;
+    
+    if (!load_jb_tables_hardcoded(db)) {
+      LOG_ERROR("Failed to hardcode jb_tables.");
+      return false;
+    }
+
+    if (!load_jb_sequences_hardcoded(db)) {
+      LOG_ERROR("Failed to hardcode jb_sequences.");
+      return false;
+    }
+
+    if (!load_jb_attrdef_hardcoded(db)) {
+      LOG_ERROR("Failed to hardcode jb_attrdef");
+      return false;
+    }
+
+    if (!load_jb_attributes_hardcoded(db)) {
+      LOG_ERROR("Failed to hardcode jb_attributes.");
+      return false;
+    }
   }
-
-  if (db_init != DB_INIT_MAGIC) {
-    LOG_ERROR("Invalid database file (wrong DB INIT magic number: 0x%X).", db_init);
-    io_close(db->tc_reader);
-    return;
-  }
-
-  if (io_read(db->tc_reader, &db->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
-    LOG_ERROR("Failed to read table count.");
-    io_close(db->tc_reader);
-    return;
-  }
-
-  if (db->table_count > MAX_TABLES) {
-    LOG_ERROR("Table count exceeds maximum allowed tables.");
-    io_close(db->tc_reader);
-    return;
-  }
-
-  if (db->table_count == 0) return true;
-  
-
-  if (!load_jb_tables_hardcoded(db)) {
-    LOG_ERROR("Failed to hardcode jb_tables.");
-    return false;
-  }
-
-  if (!load_jb_attributes_hardcoded(db)) {
-    LOG_ERROR("Failed to hardcode jb_attributes.");
-    return false;
-  }
-
-  list_tables(db);
 
   for (size_t i = 0; i < db->table_count; i++) {
     char* table_name = db->tc[i].name;
     unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
+    LOG_DEBUG("%d = %s", idx, table_name);
 
     if (db->tc[idx].schema) continue;
 
@@ -665,7 +694,7 @@ bool load_initial_schema(Database* db) {
   return true;
 }
 
-bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
+bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {  
   FILE* io = db->tc_reader;
   io_seek(io, 0, SEEK_SET);
 
@@ -690,7 +719,7 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
     LOG_ERROR("Memory allocation failed for schema.");
     return false;
   }
-
+  
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
@@ -703,7 +732,7 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
     free(schema);
     return false;
   }
-  schema->table_name[table_name_length] = '\0';
+  // sprintf(schema->table_name, "%s", table_name);
 
   if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read column count.");
@@ -734,9 +763,17 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
     }
     col->name[col_name_length] = '\0';
 
-    if (!db->core) db->core = db;
+    Database* attr_db = db->core;
+    if (!db->core) attr_db = db;
 
-    Attribute* attr = load_attribute(db->core, find_table(db->core, schema->table_name), col->name);
+    int64_t table_id = find_table(attr_db, schema->table_name);
+
+    if (table_id == -1) {
+      LOG_ERROR("Failed to find presisted data of attributes.");
+      goto cleanup;
+    }
+
+    Attribute* attr = load_attribute(attr_db, table_id, col->name);
     
     if (!attr) {
       LOG_ERROR("Failed to find presisted data of attributes.");
@@ -758,15 +795,35 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
     if (col->has_sequence) {
       char seq_name[MAX_IDENTIFIER_LEN * 2];
       sprintf(seq_name, "%s%s", schema->table_name, col->name);
-      col->sequence_id = find_sequence(db, seq_name);
+      col->sequence_id = find_sequence(db->core, seq_name);
       if (col->sequence_id == -1) goto cleanup;
     }
 
-    if (col->is_primary_key) schema->prim_column_count++;
-    if (col->is_not_null) schema->not_null_count++;
+    
+    if (col->has_default) {
+      Row empty_row = {0};
+
+      ExprNode* node =  load_attr_default(attr_db, table_id, schema->columns[j].name);
+      ColumnValue cur = evaluate_expression(node, &empty_row, schema, db, idx);
+
+      bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[j]));
+
+      if (!valid_conversion) {
+        LOG_ERROR("Invalid conversion whilst trying to insert row");
+        return NULL;
+      }
+
+      col->default_value = calloc(1, sizeof(ColumnValue));
+      if (!col->default_value) {
+        LOG_FATAL("Memory allocation failed for default value.\n");
+      }
+
+      *(col->default_value) = cur;
+    }
   }
 
   db->tc[idx].schema = schema;
+
   return true;
 
 cleanup:
@@ -780,13 +837,14 @@ void load_lake(Database* db) {
   char file_path[MAX_PATH_LENGTH];
 
   for (int i = 0; i < MAX_TABLES; i++) {
-    if (db->tc[i].schema) {
+    if (!is_struct_zeroed(db->tc[i].schema, sizeof(TableSchema))) {      
       sprintf(file_path, "%s" SEP "%s" SEP "rows.db", db->fs->tables_dir, db->tc[i].schema->table_name);
       file = fopen(file_path, "rb");
       if (!file) {
         LOG_WARN("Could not open file for reading: %s", file_path);
         continue;
       }
+
 
       fseek(file, 0, SEEK_END);
       long file_size = ftell(file);
@@ -796,6 +854,8 @@ void load_lake(Database* db) {
       if (num_pages == 0) num_pages = 1;
 
       uint32_t idx = hash_fnv1a(db->tc[i].schema->table_name, MAX_TABLES);
+
+      LOG_DEBUG("%s @ %d", file_path, idx);
 
       for (int j = 0; j < num_pages; j++) {
         uint32_t pg_n = j;
@@ -816,8 +876,6 @@ void load_lake(Database* db) {
       memcpy(db->lake[idx].file, file_path, MAX_PATH_LENGTH - 1);
       db->lake[idx].file[MAX_PATH_LENGTH - 1] = '\0';
       db->lake[idx].idx = idx; 
-
-      LOG_DEBUG("%s @ %d", file_path, idx);
     }
   }
 }
@@ -844,7 +902,7 @@ void flush_lake(Database* db) {
         }
 
         if (db->lake[idx].pages[j]->is_dirty){
-          write_page(file, db->lake[idx].page_numbers[j], db->lake[idx].pages[j], db->tc[idx]);
+          write_page(file, db->lake[idx].page_numbers[j], db->lake[idx].pages[db->lake[idx].page_numbers[j]], db->tc[idx]);
           db->lake[idx].pages[j]->is_dirty = false; 
         }
       }

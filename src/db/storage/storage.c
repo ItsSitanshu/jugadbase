@@ -41,11 +41,14 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
 
     fread(&row->id.page_id, sizeof(row->id.page_id), 1, file);
     fread(&row->id.row_id, sizeof(row->id.row_id), 1, file);
+
     fread(&row->row_length, sizeof(row->row_length), 1, file);
 
     fread(&row->null_bitmap_size, sizeof(row->null_bitmap_size), 1, file);
     row->null_bitmap = malloc(row->null_bitmap_size);
-    fread(row->null_bitmap, row->null_bitmap_size, 1, file);
+    if (row->null_bitmap && row->null_bitmap_size > 0) {
+      fread(row->null_bitmap, row->null_bitmap_size, 1, file);
+    }
 
     row->values = calloc(tc.schema->column_count, sizeof(ColumnValue));
     row->n_values = tc.schema->column_count;
@@ -60,6 +63,8 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
         read_column_value(file, &row->values[j], col_def);
       }
     }
+
+    LOG_DEBUG("Read rid: %d, %d", row->id.page_id, row->id.row_id);
   }
 }
 
@@ -106,6 +111,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       fread(&col_val->str_value[0], sizeof(char), 1, file);
       break;
     case TOK_T_INT:
+    case TOK_T_UINT:
     case TOK_T_SERIAL:
       fread(&col_val->int_value, sizeof(int64_t), 1, file);
       break;
@@ -197,8 +203,6 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
           abort();
         }
         fread(col_val->str_value, str_len, 1, file);
-
-        LOG_DEBUG("read str value = %s");
       } else {
         fread(&col_val->toast_object, sizeof(uint32_t), 1, file);
       }
@@ -213,6 +217,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       break;
   }
 }
+
 void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry tc) {
   if (!file || !page) return;
 
@@ -251,12 +256,12 @@ void write_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry 
     }
 
     actual_row_count++;
+
+    LOG_DEBUG("Write rid: %d, %d", row->id.page_id, row->id.row_id);
   }
 
   fseek(file, num_rows_offset, SEEK_SET);
   fwrite(&actual_row_count, sizeof(actual_row_count), 1, file);
-
-  fseek(file, (page_number + 1) * PAGE_SIZE, SEEK_SET);
 
   LOG_DEBUG("write_page: Page %lu written with %u active rows", page_number, actual_row_count);
 }
@@ -418,7 +423,6 @@ void write_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_
     case TOK_T_JSON:
     case TOK_T_BLOB: {
       is_toast_pointer = col_val->is_toast;
-      LOG_DEBUG("is_Toast_pointer: %s", col_val->is_toast ? "TRUE" : "FALSE");
       fwrite(&is_toast_pointer, sizeof(bool), 1, file);
       if (!is_toast_pointer) {
         str_len = (uint16_t)strlen(col_val->str_value);

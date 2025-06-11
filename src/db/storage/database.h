@@ -37,7 +37,7 @@ typedef struct Database {
   Database* core;
 } Database;
 
-Database* db_init(char* dir);
+Database* db_init(char* dir, Database* core);
 void db_free(Database* db);
 
 bool process_cmd(ClusterManager* cm, Database* db, char* input);

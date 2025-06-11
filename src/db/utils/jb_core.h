@@ -146,6 +146,229 @@ TableSchema* jb_attrdef_schema() {
   return schema;
 }
 
+
+bool load_jb_attrdef_hardcoded(Database* db) {
+  if (!db || !db->tc_reader) {
+    LOG_ERROR("No database file is open.");
+    return false;
+  }
+
+  Attribute hc_attributes[] = {
+    {TOK_T_SERIAL, 0, true, false, false},      // id (type 19 -> INT, not nullable)
+    {TOK_T_INT, 1, false, false, false},   // table_id (type 0 -> SERIAL, not nullable)
+    {TOK_T_TEXT, 2, false, false, false},     // column_name (type 3 -> TEXT, not nullable)
+    {TOK_T_TEXT, 3, false, false, false},     // default_expr (type 3 -> TEXT, not nullable)
+    {TOK_T_TIMESTAMP, 4, true, false, false}, // created_at (type 13 -> TIMESTAMP, nullable)
+  };
+
+  FILE* io = db->tc_reader;
+  io_seek(io, 0, SEEK_SET);
+  
+  const char* table_name = "jb_attrdef";
+  unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
+  
+  size_t index_table_offset = 2 * sizeof(uint32_t);
+  uint32_t schema_offset;
+  io_seek(io, index_table_offset + idx * sizeof(uint32_t), SEEK_SET);
+  if (io_read(io, &schema_offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    LOG_ERROR("Failed to read schema offset.");
+    return false;
+  }
+
+  io_seek(io, schema_offset, SEEK_SET);
+  uint32_t schema_length;
+  if (io_read(io, &schema_length, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    LOG_ERROR("Failed to read schema length.");
+    return false;
+  }
+
+  TableSchema* schema = calloc(1, sizeof(TableSchema));
+  if (!schema) {
+    LOG_ERROR("Memory allocation failed for schema.");
+    return false;
+  }
+
+  uint8_t table_name_length;
+  if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    LOG_ERROR("Failed to read table name length.");
+    free(schema);
+    return false;
+  }
+
+  if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
+    LOG_ERROR("Failed to read table name.");
+    free(schema);
+    return false;
+  }
+  schema->table_name[table_name_length] = '\0';
+
+  if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    LOG_ERROR("Failed to read column count.");
+    free(schema);
+    return false;
+  }
+
+  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  if (!schema->columns) {
+    LOG_ERROR("Memory allocation failed for columns.");
+    free(schema);
+    return false;
+  }
+
+  for (uint8_t j = 0; j < schema->column_count; j++) {
+    ColumnDefinition* col = &schema->columns[j];
+    uint8_t col_name_length;
+    if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+      LOG_ERROR("Failed to read column name length.");
+      goto cleanup;
+    }
+
+    if (io_read(io, col->name, col_name_length) != col_name_length) {
+      LOG_ERROR("Failed to read column name.");
+      goto cleanup;
+    }
+    col->name[col_name_length] = '\0';
+
+    Attribute attr = hc_attributes[j];
+    col->is_not_null = !attr.is_nullable;
+    col->type = attr.data_type;
+    col->has_default = attr.has_default;
+    col->has_constraints = attr.has_constraints;
+
+    io_read(io, &col->type_varchar, sizeof(uint8_t));
+    io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
+    io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
+    io_read(io, &col->is_array, sizeof(bool));
+    io_read(io, &col->is_index, sizeof(bool));
+    io_read(io, &col->is_foreign_key, sizeof(bool));
+
+    if (col->is_primary_key) schema->prim_column_count++;
+    if (col->is_not_null) schema->not_null_count++;
+  }
+
+  db->tc[idx].schema = schema;
+  load_lake(db);
+
+  return true;
+
+cleanup:
+  free(schema->columns);
+  free(schema);
+  return false;
+}
+
+bool load_jb_sequences_hardcoded(Database* db) {
+  if (!db || !db->tc_reader) {
+    LOG_ERROR("No database file is open.");
+    return false;
+  }
+
+  Attribute hc_attributes[] = {
+    {TOK_T_SERIAL, 0, true, false, false},  // id (type 19 -> SERIAL, nullable)
+    {TOK_T_TEXT, 1, true, false, false},    // name (type 3 -> TEXT, nullable)
+    {TOK_T_INT, 2, true, false, false},     // current_value (type 0 -> INT, nullable)
+    {TOK_T_INT, 3, true, false, false},     // increment_by (type 0 -> INT, nullable)
+    {TOK_T_INT, 4, true, false, false},     // min_value (type 0 -> INT, nullable)
+    {TOK_T_INT, 5, true, false, false},     // max_value (type 0 -> INT, nullable)
+    {TOK_T_BOOL, 6, true, false, false},    // cycle (type 4 -> BOOL, nullable)
+  };
+
+  FILE* io = db->tc_reader;
+  io_seek(io, 0, SEEK_SET);
+
+  const char* table_name = "jb_sequences";
+  unsigned int idx = hash_fnv1a(table_name, MAX_TABLES);
+
+  size_t index_table_offset = 2 * sizeof(uint32_t);
+  uint32_t schema_offset;
+  io_seek(io, index_table_offset + idx * sizeof(uint32_t), SEEK_SET);
+  if (io_read(io, &schema_offset, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    LOG_ERROR("Failed to read schema offset.");
+    return false;
+  }
+
+  io_seek(io, schema_offset, SEEK_SET);
+  uint32_t schema_length;
+  if (io_read(io, &schema_length, sizeof(uint32_t)) != sizeof(uint32_t)) {
+    LOG_ERROR("Failed to read schema length.");
+    return false;
+  }
+
+  TableSchema* schema = calloc(1, sizeof(TableSchema));
+  if (!schema) {
+    LOG_ERROR("Memory allocation failed for schema.");
+    return false;
+  }
+
+  uint8_t table_name_length;
+  if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    LOG_ERROR("Failed to read table name length.");
+    free(schema);
+    return false;
+  }
+
+  if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
+    LOG_ERROR("Failed to read table name.");
+    free(schema);
+    return false;
+  }
+  schema->table_name[table_name_length] = '\0';
+
+  if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
+    LOG_ERROR("Failed to read column count.");
+    free(schema);
+    return false;
+  }
+
+  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  if (!schema->columns) {
+    LOG_ERROR("Memory allocation failed for columns.");
+    free(schema);
+    return false;
+  }
+
+  for (uint8_t j = 0; j < schema->column_count; j++) {
+    ColumnDefinition* col = &schema->columns[j];
+    uint8_t col_name_length;
+    if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
+      LOG_ERROR("Failed to read column name length.");
+      goto cleanup;
+    }
+
+    if (io_read(io, col->name, col_name_length) != col_name_length) {
+      LOG_ERROR("Failed to read column name.");
+      goto cleanup;
+    }
+    col->name[col_name_length] = '\0';
+
+    Attribute attr = hc_attributes[j];
+    col->is_not_null = !attr.is_nullable;
+    col->type = attr.data_type;
+    col->has_default = attr.has_default;
+    col->has_constraints = attr.has_constraints;
+
+    io_read(io, &col->type_varchar, sizeof(uint8_t));
+    io_read(io, &col->type_decimal_precision, sizeof(uint8_t));
+    io_read(io, &col->type_decimal_scale, sizeof(uint8_t));
+    io_read(io, &col->is_array, sizeof(bool));
+    io_read(io, &col->is_index, sizeof(bool));
+    io_read(io, &col->is_foreign_key, sizeof(bool));
+
+    if (col->is_primary_key) schema->prim_column_count++;
+    if (col->is_not_null) schema->not_null_count++;
+  }
+
+  db->tc[idx].schema = schema;
+  load_lake(db);
+
+  return true;
+
+cleanup:
+  free(schema->columns);
+  free(schema);
+  return false;
+}
+
 bool load_jb_attributes_hardcoded(Database* db) {
   if (!db || !db->tc_reader) {
     LOG_ERROR("No database file is open.");
@@ -278,7 +501,7 @@ bool load_jb_tables_hardcoded(Database* db) {
     {TOK_T_SERIAL, 0, false, false, false},   // id
     {TOK_T_TEXT, 1, false, false, false},     // name
     {TOK_T_TEXT, 2, false, false, false},     // database_name
-    {TOK_T_INT, 3, false, true, false},      // owner
+    {TOK_T_TEXT, 3, false, true, false},      // owner
     {TOK_T_TIMESTAMP, 4, true, false, false} // created_at
   };
 

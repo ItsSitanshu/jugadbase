@@ -137,6 +137,8 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   io_write(tca_io, &table_name_length, sizeof(uint8_t));
   io_write(tca_io, schema->table_name, table_name_length);
 
+  uint32_t idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+
   uint8_t column_count = (uint8_t)schema->column_count;
   io_write(tca_io, &column_count, sizeof(uint8_t));
 
@@ -158,7 +160,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
       col->sequence_id = create_default_squence(db, seq_name);
 
       if (col->sequence_id == -1) {
-        return (ExecutionResult){0, "Table creation failed"};;
+        return (ExecutionResult){-1, "Table creation failed"};;
       }
     }
 
@@ -231,7 +233,6 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   io_flush(db->tc_writer);
 
   load_tc(db);
-  uint32_t table_offset = hash_fnv1a(schema->table_name, MAX_TABLES);
   load_schema_tc(db, schema->table_name);
 
   return (ExecutionResult){0, "Table schema written successfully"};
@@ -740,25 +741,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       null_bitmap[i / 8] &= ~(1 << (i % 8));
     }
 
-    if (row->values[i].is_null && schema->columns[i].has_default) {
-      int64_t table_id = find_table(db, schema->table_name);
-
-      if (table_id == -1) {
-        return NULL;
-      }
-
-      ExprNode* node =  load_attr_default(db, table_id, schema->columns[i].name);
-      ColumnValue cur = evaluate_expression(node, &empty_row, schema, db, schema_idx);
-
-      bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
-
-      if (!valid_conversion) {
-        LOG_ERROR("Invalid conversion whilst trying to insert row");
-        return NULL;
-      }
-
-      row->values[i] = cur;
-      
+    if (row->values[i].is_null && schema->columns[i].has_default && schema->columns[i].default_value) {      
+      row->values[i] = *schema->columns[i].default_value; 
       null_bitmap[i / 8] &= ~(1 << (i % 8));
       row->values[i].is_null = false;
     }
@@ -914,6 +898,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       if (!expr) {
         dst = src;
       } else {
+        // LOG_DEBUG("%s | %d", aliases[j], expr->type);
         ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
         // if (is_struct_zeroed(&val, sizeof(ColumnValue))) {
         //   return (ExecutionResult){
@@ -926,8 +911,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
         // LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));
 
       }
-
-
+      
       free_expr_node(expr);
     }  
   }

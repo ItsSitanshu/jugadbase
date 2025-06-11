@@ -155,11 +155,11 @@ int64_t find_table(Database* db, char* name) {
   char query[2048];
   snprintf(query, sizeof(query),
     "SELECT id FROM jb_tables "
-    "WHERE name = '%s' ",
+    "WHERE name = '%s';",
     name
   );
 
-  LOG_DEBUG("> %s", query);
+  // LOG_DEBUG("> %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -319,7 +319,7 @@ int64_t find_sequence(Database* db, char* name) {
   }
 
   parser_restore_state(db->core->parser, state);
-  return ;
+  return res.exec.rows[0].values[0].int_value;
 }
 
 int64_t insert_default_constraint(Database* db, int64_t table_id, const char* column_name, const char* default_expr) {
@@ -434,7 +434,7 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
     flags[4]
   );
 
-  LOG_DEBUG("[+] constraint: %s", query);
+  // LOG_DEBUG("[+] constraint: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -679,6 +679,8 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
     return NULL;
   }
 
+  if (!db->core) db->core = db;
+
   ParserState state = parser_save_state(db->core->parser);
 
   char query[512];
@@ -688,9 +690,9 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
     "WHERE table_id = %ld AND column_name = '%s';",
     table_id, column_name);
 
-  LOG_DEBUG("l[attribute]: %s", query);
+  // LOG_DEBUG("l[attribute]: %s", query);
 
-  Result res = process(db->core, query);
+  Result res = process_silent(db->core, query);
   if (res.exec.code != 0 || res.exec.row_count == 0) {
     LOG_ERROR("Failed to load attribute '%s' - %s", column_name, res.exec.message);
     parser_restore_state(db->core->parser, state);
@@ -710,8 +712,6 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
   attr->is_nullable = result.values[2].bool_value;
   attr->has_default = result.values[3].bool_value;
   attr->has_constraints = result.values[4].bool_value;
-
-  LOG_DEBUG("attribute: %d", attr->ordinal_position);
 
   parser_restore_state(db->core->parser, state);
   free_result(&res);
@@ -735,7 +735,7 @@ ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name) {
     "WHERE table_id = %ld AND column_name = \"%s\";",
     table_id, column_name);
 
-  LOG_DEBUG("l(default_expr): %s", query);
+  // LOG_DEBUG("l(default_expr): %s", query);
 
   Result res = process_silent(db->core, query);
   if (res.exec.code != 0 || res.exec.row_count == 0) {
@@ -753,7 +753,7 @@ ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name) {
     return NULL;
   } 
 
-  LOG_DEBUG("Trying to load: %s", default_expr_str);
+  // LOG_DEBUG("Trying to load: %s", default_expr_str);
 
   lexer_set_buffer(db->core->lexer, default_expr_str);
   parser_reset(db->core->parser);

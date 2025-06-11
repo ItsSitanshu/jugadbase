@@ -47,7 +47,7 @@ INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is
 (2, "created_at", 13, 8, true, false, false, NOW());
 
 INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
-(3, "id", 19, 0, false, false, false, NOW()),
+(3, "id", 19, 0, true, false, false, NOW()),
 (3, "table_id", 0, 1, false, false, false, NOW()),
 (3, "column_name", 3, 2, false, false, false, NOW()),
 (3, "default_expr", 3, 3, false, false, false, NOW()),
