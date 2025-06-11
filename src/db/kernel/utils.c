@@ -177,6 +177,10 @@ bool like_match(char* str, char* pattern) {
 }
 
 void* get_column_value_as_pointer(ColumnValue* col_val) {
+  if (col_val->is_array) {
+    return &(col_val->array);
+  }
+
   switch (col_val->type) {
     case TOK_NL:
       col_val->is_null = true;

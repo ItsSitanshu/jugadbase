@@ -108,7 +108,7 @@ ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, TableSche
 
   int idx = array_index.int_value;
   if (idx < 0 || idx >= row->values[expr->column.index].array.array_size) {
-    LOG_WARN("Array index out of bounds: %d (len = %d)", idx, row->values[expr->column.index].array.array_size);
+    LOG_DEBUG("Array index out of bounds: %d (len = %d)", idx, row->values[expr->column.index].array.array_size);
     return result;
   }
 
@@ -362,12 +362,15 @@ ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema*
 ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;
   ColumnDefinition defn;
+  
   memset(&result, 0, sizeof(ColumnValue));
   uint8_t type = 0;
 
+  ColumnValue left = {0};
+  ColumnValue right = {0};
 
-  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &defn);
-  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &defn);
+  left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &defn);
+  right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &defn);
   type = defn.type;
   
   if (expr->binary.op == TOK_EQ &&
@@ -403,7 +406,8 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
     return (ColumnValue){0};
   }
 
-  int cmp = key_compare(get_column_value_as_pointer(&left), get_column_value_as_pointer(&right), type);
+  int cmp = key_compare(get_column_value_as_pointer(&left),
+    get_column_value_as_pointer(&right), defn.is_array ? -1 : type);
 
   result.type = TOK_T_BOOL;
 

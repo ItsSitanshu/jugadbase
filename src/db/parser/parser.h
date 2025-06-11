@@ -50,6 +50,12 @@ typedef struct ExecutionOrder {
   struct ExecutionOrder *next;
 } ExecutionOrder;
 
+typedef struct ArrayValue { 
+  ColumnValue* array_value;
+  uint16_t array_size;
+  uint16_t array_type;
+} ArrayValue;
+
 typedef struct ColumnValue {
   uint8_t column_index;
   uint8_t type; 
@@ -74,11 +80,7 @@ typedef struct ColumnValue {
     Timestamp timestamp_value;
     Timestamp_TZ timestamp_tz_value;
     Interval interval_value;
-    struct cv__Array { 
-      ColumnValue* array_value;
-      uint16_t array_size;
-      uint16_t array_type;
-    } array;
+    ArrayValue array;
     struct cv__Column {
       uint16_t index;
       int16_t array_idx;

@@ -1,6 +1,8 @@
 #include "internal/btree.h"
 #include "internal/datetime.h"
 
+#include "kernel/executor.h"
+
 BTree* btree_create(uint8_t key_type) {
   BTree* tree = (BTree*)malloc(sizeof(BTree));
 
@@ -549,7 +551,46 @@ void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type)
   }
 }
 
-int key_compare(void* key1, void* key2, uint8_t type) {
+int compare_arrays(void* array1, void* array2) {
+  ArrayValue arr1 = *(ArrayValue*)array1;
+  ArrayValue arr2 = *(ArrayValue*)array2;
+
+  if (arr1.array_size != arr2.array_size) {
+    return (arr1.array_size < arr2.array_size) ? -1 : 1;
+  }
+  
+  size_t min_size = (arr1.array_size < arr2.array_size) ? arr1.array_size : arr2.array_size;
+  uint8_t array_type = arr1.array_type;
+  bool valid_conversion = false;
+
+  for (size_t i = 0; i < min_size; i++) {
+    valid_conversion = infer_and_cast_value_raw(&arr1.array_value[i], array_type);
+    valid_conversion = infer_and_cast_value_raw(&arr2.array_value[i], array_type);
+
+    if (!valid_conversion) {
+      LOG_ERROR("Conversion failed while parsing array");
+      return -2;
+    }
+
+    void* elem1_data = get_column_value_as_pointer(&arr1.array_value[i]); 
+    void* elem2_data = get_column_value_as_pointer(&arr2.array_value[i]); 
+    
+    int cmp = key_compare(elem1_data, elem2_data, array_type);
+
+    // LOG_DEBUG("cmp: %d %s %s", cmp,
+    // str_column_value(&arr1.array_value[i]),
+    // str_column_value(&arr2.array_value[i])
+    // );
+
+    if (cmp != 0) {
+      return cmp;
+    }
+  }
+
+  return 0;
+}
+
+int key_compare(void* key1, void* key2, int16_t type) {
   /*
   return:
     -1 if key1 is less than key2.
@@ -564,6 +605,7 @@ int key_compare(void* key1, void* key2, uint8_t type) {
 
   switch (type) {
     case TOK_T_INT:
+    case TOK_T_UINT:
     case TOK_T_SERIAL: {
       int a = *(int64_t*)key1;
       int b = *(int64_t*)key2;
@@ -685,8 +727,13 @@ int key_compare(void* key1, void* key2, uint8_t type) {
       return memcmp(key1, key2, 16);
     }
 
-    default:
+    default: {
+      if (type < 0) {
+        return compare_arrays(key1, key2);
+      }
+
       return 0;
+    }
   }
 }
 

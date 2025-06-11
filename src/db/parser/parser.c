@@ -2598,7 +2598,6 @@ void free_expr_node(ExprNode* node) {
         for (uint16_t i = 0; i < node->literal.array.array_size; i++) {
           free_expr_node((ExprNode*)&node->literal.array.array_value[i]);
         }
-        free(node->literal.array.array_value);
       }
       break;
 

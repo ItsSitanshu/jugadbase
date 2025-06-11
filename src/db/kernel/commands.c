@@ -149,7 +149,6 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col_name_length, sizeof(uint8_t));
     io_write(tca_io, col->name, col_name_length);
 
-    // io_write(tca_io, &col->type, sizeof(uint32_t));
     io_write(tca_io, &col->type_varchar, sizeof(uint8_t));
     io_write(tca_io, &col->type_decimal_precision, sizeof(uint8_t));
     io_write(tca_io, &col->type_decimal_scale, sizeof(uint8_t));

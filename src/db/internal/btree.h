@@ -49,7 +49,8 @@ RowID btree_get_successor_ptr(BTreeNode* node);
 void btree_merge_children(BTreeNode* parent, int idx, size_t order, uint8_t key_type);
 void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type);
 
-int key_compare(void* key1, void* key2, uint8_t type);
+int compare_arrays(void* array1, void* array2);
+int key_compare(void* key1, void* key2, int16_t type);
 void copy_key(void* dest, void* src, uint8_t type);
 int key_size_for_type(uint8_t key_type);
 

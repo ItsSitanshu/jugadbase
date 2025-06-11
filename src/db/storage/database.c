@@ -156,7 +156,7 @@ bool process_cmd(ClusterManager* cm, Database* db, char* input) {
       filename = input + 2;
     }
 
-    char* show_flag = strstr(filename, "--show");
+    char* show_flag = strstr(filename, "--hide");
     if (show_flag) {
       for (char* p = show_flag - 1; p >= filename && *p == ' '; p--) {
         *p = '\0';
@@ -164,7 +164,7 @@ bool process_cmd(ClusterManager* cm, Database* db, char* input) {
       show = true;
     }
 
-    process_file(db, filename, show);
+    process_file(db, filename, !show);
     return true;
   }
 
