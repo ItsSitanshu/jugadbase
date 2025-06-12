@@ -106,6 +106,8 @@ bool bootstrap_core_tables(Database* db);
 bool load_schema_for_table(Database* db, size_t idx, const char* table_name);
 ExecutionResult execute_create_table_internal(Database* db, TableSchema* schema, int64_t table_id);
 
+TableSchema* get_table_schema_by_id(Database* db, int64_t table_id);
+
 #endif
 
 #ifndef KERNEL_CONSTRAINTS_H
@@ -119,6 +121,28 @@ typedef enum ConstraintType {
   CONSTRAINT_FOREIGN_KEY = 5,
 } ConstraintType;
 
+typedef struct {
+  int64_t id;
+  int64_t table_id;
+  char** columns;
+  int column_count;
+  char* name;
+  ConstraintType constraint_type;
+  char* check_expr;
+  int64_t ref_table_id;
+  char** ref_columns;
+  int ref_column_count;
+  FKAction on_delete;
+  FKAction on_update;
+  bool is_deferrable;
+  bool is_deferred;
+  bool is_nullable;
+  bool is_primary;
+  bool is_unique;
+} Constraint;
+
+int64_t insert_default_constraint(Database* db, int64_t table_id, const char* column_name, const char* default_expr);
+int64_t find_default_constraint(Database* db, int64_t table_id, const char* column_name);
 int64_t insert_constraint(Database* db, int64_t table_id, char* name, 
                           int constraint_type, char (*columns)[MAX_IDENTIFIER_LEN], int col_count,
                           char* check_expr, int ref_table, 
@@ -128,16 +152,37 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
 int64_t find_constraint_by_name(Database* db, int64_t table_id, const char* name);
 bool delete_constraint(Database* db, int64_t constraint_id);
 bool update_constraint_name(Database* db, int64_t constraint_id, const char* new_name);
-
 int64_t insert_single_column_constraint(Database* db, int64_t table_id, int64_t column_id, 
                                        const char* name, uint32_t constraint_type, bool is_nullable,
                                        bool is_unique, bool is_primary);
-
-int64_t insert_default_constraint(Database* db, int64_t table_id, const char* column_name, const char* default_expr);
-int64_t find_default_constraint(Database* db, int64_t table_id, const char* column_name);
-
 bool check_foreign_key(Database* db, ColumnDefinition def, ColumnValue val);
-bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValue val);
+
+char** parse_text_array(const char* text_array_str, int* count);
+Constraint parse_constraint_from_row(Row* row);
+void free_constraint(Constraint* constraint);
+Result get_table_constraints(Database* db, int64_t table_id);
+
+bool validate_not_null_constraint(Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
+bool validate_unique_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
+bool validate_primary_key_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
+bool validate_foreign_key_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
+bool validate_check_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
+bool validate_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
+
+bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
+
+bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
+bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
+
+bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
+bool cascade_update(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* old_values, ColumnValue* new_values, int value_count);
+
+bool handle_single_on_delete_constraint(Database* db, Constraint* constraint, ColumnValue* values, int value_count);
+bool handle_single_on_update_constraint(Database* db, Constraint* constraint, ColumnValue* old_values, ColumnValue* new_values, int value_count);
+bool handle_on_delete_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count);
+bool handle_on_update_constraints(Database* db, int64_t table_id, ColumnValue* old_values, ColumnValue* new_values, int value_count);
+
+bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count);
 
 #endif
 

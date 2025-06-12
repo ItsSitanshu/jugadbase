@@ -460,7 +460,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
   if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
   load_btree_cluster(db, schema->table_name);
@@ -682,7 +682,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
@@ -821,7 +821,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
   
-  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
@@ -915,13 +915,22 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = find_table_schema_tc(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
   load_btree_cluster(db, schema->table_name);
   cmd->schema = schema;
+
+  int64_t table_id = find_table(db, schema->table_name);
+
+  if (table_id == -1) {
+    return (ExecutionResult){
+      .code = -1,
+      .message = "Table not found in catalog",
+    };
+  }
 
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
@@ -958,7 +967,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
         }
 
         if (schema->columns[k].is_foreign_key) {
-          if (!handle_on_delete_constraints(db, schema->columns[k], row->values[k])) {
+          if (!handle_on_delete_constraints(db, table_id, row->values, schema->column_count)) {
             return (ExecutionResult){1, "DELETE restricted by foreign constraint"};
           }
         }

@@ -392,3 +392,36 @@ ExecutionResult execute_create_table_internal(Database* db, TableSchema* schema,
 
   return (ExecutionResult){0, "Table schema written successfully"};
 }
+
+TableSchema* get_table_schema_by_id(Database* db, int64_t table_id) {
+  if (!db) {
+    LOG_ERROR("Invalid database parameter");
+    return NULL;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  char query[256];
+  snprintf(query, sizeof(query),
+    "SELECT name FROM jb_tables WHERE id = %ld;",
+    table_id
+  );
+
+  Result res = process_silent(db->core, query);
+  
+  if (res.exec.code != 0 || res.exec.row_count == 0) {
+    parser_restore_state(db->core->parser, state);
+    free_result(&res);
+    return NULL;
+  }
+
+  char* table_name = res.exec.rows[0].values[0].str_value;
+  TableSchema* schema = get_table_schema(db, table_name);
+
+  parser_restore_state(db->core->parser, state);
+  free_result(&res);
+
+  return schema;
+}

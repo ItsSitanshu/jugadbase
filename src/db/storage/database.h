@@ -50,7 +50,7 @@ void load_btree_cluster(Database* db, char* table_name);
 void pop_btree_cluster(Database* db);
 
 bool load_schema_tc(Database* db, char* table_name);
-TableSchema* find_table_schema_tc(Database* db, const char* filename);
+TableSchema* get_table_schema(Database* db, const char* filename);
 bool load_initial_schema(Database* db);
 
 void load_lake(Database* db);

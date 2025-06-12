@@ -260,42 +260,718 @@ bool check_foreign_key(Database* db, ColumnDefinition def, ColumnValue val) {
   return res.exec.row_count > 0;
 }
 
-bool handle_on_update_constraints(Database* db, ColumnDefinition col) {
-
-}
-
-bool handle_on_delete_constraints(Database* db, ColumnDefinition def, ColumnValue val) {
-  char query[1024];
-  char value[300];
-
-  format_column_value(value, sizeof(value), &val);
-
-  switch (def.on_delete) {
-    case FK_CASCADE: {
-      snprintf(query, sizeof(query), "DELETE FROM %s WHERE %s = %s", def.foreign_table, def.foreign_column, value);
-      
-      Result res = process(db, query);
-    
-      return res.exec.code == 0;   
-    }  
-    case FK_SET_NULL: {
-      snprintf(query, sizeof(query), "UPDATE %s SET %s = NULL WHERE %s = %s",
-       def.foreign_table, def.foreign_column, def.foreign_column, value);
-      
-      Result res = process(db, query);
-    
-      return res.exec.code == 0;   
-    }
-    case FK_RESTRICT: {
-      LOG_INFO("Did not delete row because of foreign constraint restriction with %s.%s", 
-        def.foreign_table, def.foreign_column);
-
-      return false;
-
-    }  
-    default:
-      return true;
+// Parse TEXT[] column from database
+char** parse_text_array(const char* text_array_str, int* count) {
+  if (!text_array_str || !count) {
+    *count = 0;
+    return NULL;
   }
 
+  // Remove curly braces and split by comma
+  char* str_copy = strdup(text_array_str);
+  if (str_copy[0] == '{') {
+    memmove(str_copy, str_copy + 1, strlen(str_copy));
+  }
+  
+  char* end = str_copy + strlen(str_copy) - 1;
+  if (*end == '}') {
+    *end = '\0';
+  }
+
+  // Count elements
+  *count = 1;
+  for (char* p = str_copy; *p; p++) {
+    if (*p == ',') (*count)++;
+  }
+
+  char** result = malloc(*count * sizeof(char*));
+  char* token = strtok(str_copy, ",");
+  int i = 0;
+  
+  while (token && i < *count) {
+    // Trim whitespace
+    while (*token == ' ') token++;
+    char* end_trim = token + strlen(token) - 1;
+    while (end_trim > token && *end_trim == ' ') {
+      *end_trim = '\0';
+      end_trim--;
+    }
+    
+    result[i] = strdup(token);
+    token = strtok(NULL, ",");
+    i++;
+  }
+
+  free(str_copy);
+  return result;
+}
+
+// Parse constraint from database row
+Constraint parse_constraint_from_row(Row* row) {
+  Constraint constraint = {0};
+  
+  constraint.id = row->values[0].int_value;
+  constraint.table_id = row->values[1].int_value;
+  constraint.columns = parse_text_array(row->values[2].str_value, &constraint.column_count);
+  constraint.name = strdup(row->values[3].str_value);
+  constraint.constraint_type = (ConstraintType)row->values[4].int_value;
+  constraint.check_expr = row->values[5].str_value ? strdup(row->values[5].str_value) : NULL;
+  constraint.ref_table_id = row->values[6].int_value;
+  constraint.ref_columns = parse_text_array(row->values[7].str_value, &constraint.ref_column_count);
+  constraint.on_delete = (FKAction)row->values[8].int_value;
+  constraint.on_update = (FKAction)row->values[9].int_value;
+  constraint.is_deferrable = row->values[10].bool_value;
+  constraint.is_deferred = row->values[11].bool_value;
+  constraint.is_nullable = row->values[12].bool_value;
+  constraint.is_primary = row->values[13].bool_value;
+  constraint.is_unique = row->values[14].bool_value;
+
+  return constraint;
+}
+
+// Free constraint memory
+void free_constraint(Constraint* constraint) {
+  if (constraint) {
+    if (constraint->columns) {
+      for (int i = 0; i < constraint->column_count; i++) {
+        free(constraint->columns[i]);
+      }
+      free(constraint->columns);
+    }
+    if (constraint->ref_columns) {
+      for (int i = 0; i < constraint->ref_column_count; i++) {
+        free(constraint->ref_columns[i]);
+      }
+      free(constraint->ref_columns);
+    }
+    free(constraint->name);
+    free(constraint->check_expr);
+  }
+}
+
+// Get all constraints for a specific table
+Result get_table_constraints(Database* db, int64_t table_id) {
+  if (!db) {
+    LOG_ERROR("Invalid database parameter");
+    Result empty_result = {0};
+    return empty_result;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  char query[512];
+  snprintf(query, sizeof(query),
+    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
+    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
+    "is_deferred, is_nullable, is_primary, is_unique "
+    "FROM jb_constraints WHERE table_id = %ld;",
+    table_id
+  );
+
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  return res;
+}
+
+bool validate_not_null_constraint(Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
+  for (int i = 0; i < constraint->column_count; i++) {
+    int column_idx = find_column_index(schema, constraint->columns[i]);
+    if (column_idx >= 0 && column_idx < value_count) {
+      if (values[column_idx].is_null) {
+        LOG_ERROR("NOT NULL constraint '%s' violated for column '%s'", 
+          constraint->name, constraint->columns[i]);
+        return false;
+      }
+    }
+  }
   return true;
+}
+
+bool validate_unique_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  // Build WHERE clause for uniqueness check
+  char where_clause[1024] = {0};
+  bool first = true;
+  
+  for (int i = 0; i < constraint->column_count; i++) {
+    int column_idx = find_column_index(schema, constraint->columns[i]);
+    if (column_idx >= 0 && column_idx < value_count) {
+      if (!first) {
+        strcat(where_clause, " AND ");
+      }
+      
+      char value_str[256];
+      format_column_value(value_str, sizeof(value_str), &values[column_idx]);
+      
+      char condition[512];
+      snprintf(condition, sizeof(condition), "%s = %s", 
+        constraint->columns[i], value_str);
+      strcat(where_clause, condition);
+      
+      first = false;
+    }
+  }
+
+  // Check for existing records
+  char query[2048];
+  snprintf(query, sizeof(query),
+    "SELECT COUNT(*) FROM %s WHERE %s;", schema->table_name, where_clause);
+
+  Result res = process_silent(db->core, query);
+  bool is_unique = (res.exec.code == 0 && res.exec.row_count > 0 && 
+                    res.exec.rows[0].values[0].int_value == 0);
+
+  if (!is_unique) {
+    LOG_ERROR("UNIQUE constraint '%s' violated", constraint->name);
+  }
+
+  parser_restore_state(db->core->parser, state);
+  free_result(&res);
+
+  return is_unique;
+}
+
+bool validate_primary_key_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
+  // Primary key is both NOT NULL and UNIQUE
+  return validate_not_null_constraint(constraint, schema, values, value_count) &&
+         validate_unique_constraint(db, constraint, schema, values, value_count);
+}
+
+bool validate_foreign_key_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  // Get referenced table schema
+  TableSchema* ref_schema = get_table_schema_by_id(db, constraint->ref_table_id);
+  if (!ref_schema) {
+    LOG_ERROR("Referenced table not found for constraint '%s'", constraint->name);
+    parser_restore_state(db->core->parser, state);
+    return false;
+  }
+
+  // Build WHERE clause for foreign key check
+  char where_clause[1024] = {0};
+  bool first = true;
+  
+  for (int i = 0; i < constraint->column_count && i < constraint->ref_column_count; i++) {
+    int column_idx = find_column_index(schema, constraint->columns[i]);
+    if (column_idx >= 0 && column_idx < value_count) {
+      if (!first) {
+        strcat(where_clause, " AND ");
+      }
+      
+      char value_str[256];
+      format_column_value(value_str, sizeof(value_str), &values[column_idx]);
+      
+      char condition[512];
+      snprintf(condition, sizeof(condition), "%s = %s", 
+        constraint->ref_columns[i], value_str);
+      strcat(where_clause, condition);
+      
+      first = false;
+    }
+  }
+
+  // Check if referenced record exists
+  char query[2048];
+  snprintf(query, sizeof(query),
+    "SELECT COUNT(*) FROM %s WHERE %s;", ref_schema->table_name, where_clause);
+
+  Result res = process_silent(db->core, query);
+  bool fk_valid = (res.exec.code == 0 && res.exec.row_count > 0 && 
+                   res.exec.rows[0].values[0].int_value > 0);
+
+  if (!fk_valid) {
+    LOG_ERROR("FOREIGN KEY constraint '%s' violated", constraint->name);
+  }
+
+  parser_restore_state(db->core->parser, state);
+  free_table_schema(ref_schema);
+  free_result(&res);
+
+  return fk_valid;
+}
+
+// Validate CHECK constraint
+bool validate_check_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
+  if (!constraint->check_expr) {
+    return true; // No check expression means constraint passes
+  }
+
+  // Simple check expression evaluation
+  // This is a basic implementation - a full implementation would need expression parsing
+  ParserState state = parser_save_state(db->core->parser);
+
+  // Create a temporary query to evaluate the check expression
+  char query[2048];
+  snprintf(query, sizeof(query), "SELECT (%s) AS check_result;", constraint->check_expr);
+
+  Result res = process_silent(db->core, query);
+  bool check_passed = (res.exec.code == 0 && res.exec.row_count > 0 && 
+                       res.exec.rows[0].values[0].bool_value);
+
+  if (!check_passed) {
+    LOG_ERROR("CHECK constraint '%s' violated", constraint->name);
+  }
+
+  parser_restore_state(db->core->parser, state);
+  free_result(&res);
+
+  return check_passed;
+}
+
+// Validate a single constraint
+bool validate_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
+  if (!db || !constraint || !schema) {
+    LOG_ERROR("Invalid parameters to validate_constraint");
+    return false;
+  }
+
+  switch (constraint->constraint_type) {
+    case CONSTRAINT_UNIQUE:
+      return validate_unique_constraint(db, constraint, schema, values, value_count);
+    
+    case CONSTRAINT_PRIMARY_KEY:
+      return validate_primary_key_constraint(db, constraint, schema, values, value_count);
+    
+    case CONSTRAINT_FOREIGN_KEY:
+      return validate_foreign_key_constraint(db, constraint, schema, values, value_count);
+    
+    case CONSTRAINT_CHECK:
+      return validate_check_constraint(db, constraint, schema, values, value_count);
+    
+    default:
+      LOG_WARN("Unknown constraint type: %d", constraint->constraint_type);
+      return true; // Allow unknown constraints to pass
+  }
+}
+
+bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+  TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
+  if (!ref_schema) {
+    return false;
+  }
+
+  char where_clause[1024] = {0};
+  bool first = true;
+  
+  for (int i = 0; i < ref_column_count && i < value_count; i++) {
+    if (!first) {
+      strcat(where_clause, " AND ");
+    }
+    
+    char value_str[256];
+    format_column_value(value_str, sizeof(value_str), &values[i]);
+    
+    char condition[512];
+    snprintf(condition, sizeof(condition), "%s = %s", ref_columns[i], value_str);
+    strcat(where_clause, condition);
+    
+    first = false;
+  }
+
+  char query[2048];
+  snprintf(query, sizeof(query), "DELETE FROM %s WHERE %s;", ref_schema->table_name, where_clause);
+
+  ParserState state = parser_save_state(db->core->parser);
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  bool success = (res.exec.code == 0);
+  free_table_schema(ref_schema);
+  free_result(&res);
+
+  return success;
+}
+
+// Set NULL on delete operation
+bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+  TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
+  if (!ref_schema) {
+    return false;
+  }
+
+  // Build SET clause
+  char set_clause[512] = {0};
+  bool first = true;
+  
+  for (int i = 0; i < ref_column_count; i++) {
+    if (!first) {
+      strcat(set_clause, ", ");
+    }
+    
+    char set_part[128];
+    snprintf(set_part, sizeof(set_part), "%s = NULL", ref_columns[i]);
+    strcat(set_clause, set_part);
+    
+    first = false;
+  }
+
+  // Build WHERE clause
+  char where_clause[1024] = {0};
+  first = true;
+  
+  for (int i = 0; i < ref_column_count && i < value_count; i++) {
+    if (!first) {
+      strcat(where_clause, " AND ");
+    }
+    
+    char value_str[256];
+    format_column_value(value_str, sizeof(value_str), &values[i]);
+    
+    char condition[512];
+    snprintf(condition, sizeof(condition), "%s = %s", ref_columns[i], value_str);
+    strcat(where_clause, condition);
+    
+    first = false;
+  }
+
+  char query[2048];
+  snprintf(query, sizeof(query), "UPDATE %s SET %s WHERE %s;", 
+    ref_schema->table_name, set_clause, where_clause);
+
+  ParserState state = parser_save_state(db->core->parser);
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  bool success = (res.exec.code == 0);
+  free_table_schema(ref_schema);
+  free_result(&res);
+
+  return success;
+}
+
+// Set default on delete operation
+bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+  TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
+  if (!ref_schema) {
+    return false;
+  }
+
+  // Build SET clause with default values
+  char set_clause[512] = {0};
+  bool first = true;
+  
+  for (int i = 0; i < ref_column_count; i++) {
+    if (!first) {
+      strcat(set_clause, ", ");
+    }
+    
+    // Find column definition to get default value
+    int col_idx = find_column_index(ref_schema, ref_columns[i]);
+    char set_part[128];
+    
+    if (col_idx >= 0 && ref_schema->columns[col_idx].default_value) {
+      snprintf(set_part, sizeof(set_part), "%s = %s", 
+        ref_columns[i], ref_schema->columns[col_idx].default_value);
+    } else {
+      snprintf(set_part, sizeof(set_part), "%s = NULL", ref_columns[i]);
+    }
+    
+    strcat(set_clause, set_part);
+    first = false;
+  }
+
+  // Build WHERE clause
+  char where_clause[1024] = {0};
+  first = true;
+  
+  for (int i = 0; i < ref_column_count && i < value_count; i++) {
+    if (!first) {
+      strcat(where_clause, " AND ");
+    }
+    
+    char value_str[256];
+    format_column_value(value_str, sizeof(value_str), &values[i]);
+    
+    char condition[512];
+    snprintf(condition, sizeof(condition), "%s = %s", ref_columns[i], value_str);
+    strcat(where_clause, condition);
+    
+    first = false;
+  }
+
+  char query[2048];
+  snprintf(query, sizeof(query), "UPDATE %s SET %s WHERE %s;", 
+    ref_schema->table_name, set_clause, where_clause);
+
+  ParserState state = parser_save_state(db->core->parser);
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  bool success = (res.exec.code == 0);
+  free_table_schema(ref_schema);
+  free_result(&res);
+
+  return success;
+}
+
+// Check if there are no references (for RESTRICT)
+bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+  TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
+  if (!ref_schema) {
+    return false;
+  }
+
+  // Build WHERE clause
+  char where_clause[1024] = {0};
+  bool first = true;
+  
+  for (int i = 0; i < ref_column_count && i < value_count; i++) {
+    if (!first) {
+      strcat(where_clause, " AND ");
+    }
+    
+    char value_str[256];
+    format_column_value(value_str, sizeof(value_str), &values[i]);
+    
+    char condition[512];
+    snprintf(condition, sizeof(condition), "%s = %s", ref_columns[i], value_str);
+    strcat(where_clause, condition);
+    
+    first = false;
+  }
+
+  char query[2048];
+  snprintf(query, sizeof(query), "SELECT COUNT(*) FROM %s WHERE %s;", 
+    ref_schema->table_name, where_clause);
+
+  ParserState state = parser_save_state(db->core->parser);
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  bool no_references = (res.exec.code == 0 && res.exec.row_count > 0 && 
+                        res.exec.rows[0].values[0].int_value == 0);
+
+  if (!no_references) {
+    LOG_INFO("Operation restricted due to foreign key references in table '%s'", 
+      ref_schema->table_name);
+  }
+
+  free_table_schema(ref_schema);
+  free_result(&res);
+
+  return no_references;
+}
+
+// Cascade update operation
+bool cascade_update(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* old_values, ColumnValue* new_values, int value_count) {
+  TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
+  if (!ref_schema) {
+    return false;
+  }
+
+  // Build SET clause
+  char set_clause[512] = {0};
+  bool first = true;
+  
+  for (int i = 0; i < ref_column_count && i < value_count; i++) {
+    if (!first) {
+      strcat(set_clause, ", ");
+    }
+    
+    char value_str[256];
+    format_column_value(value_str, sizeof(value_str), &new_values[i]);
+    
+    char set_part[256];
+    snprintf(set_part, sizeof(set_part), "%s = %s", ref_columns[i], value_str);
+    strcat(set_clause, set_part);
+    
+    first = false;
+  }
+
+  // Build WHERE clause using old values
+  char where_clause[1024] = {0};
+  first = true;
+  
+  for (int i = 0; i < ref_column_count && i < value_count; i++) {
+    if (!first) {
+      strcat(where_clause, " AND ");
+    }
+    
+    char value_str[256];
+    format_column_value(value_str, sizeof(value_str), &old_values[i]);
+    
+    char condition[512];
+    snprintf(condition, sizeof(condition), "%s = %s", ref_columns[i], value_str);
+    strcat(where_clause, condition);
+    
+    first = false;
+  }
+
+  char query[2048];
+  snprintf(query, sizeof(query), "UPDATE %s SET %s WHERE %s;", 
+    ref_schema->table_name, set_clause, where_clause);
+
+  ParserState state = parser_save_state(db->core->parser);
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  bool success = (res.exec.code == 0);
+  free_table_schema(ref_schema);
+  free_result(&res);
+
+  return success;
+}
+
+// Handle a single ON DELETE constraint
+bool handle_single_on_delete_constraint(Database* db, Constraint* constraint, ColumnValue* values, int value_count) {
+  switch (constraint->on_delete) {
+    case FK_CASCADE:
+      return cascade_delete(db, constraint->table_id, constraint->columns, 
+                           constraint->column_count, values, value_count);
+    
+    case FK_SET_NULL:
+      return set_null_on_delete(db, constraint->table_id, constraint->columns, 
+                               constraint->column_count, values, value_count);
+        
+    case FK_RESTRICT:
+      return check_no_references(db, constraint->table_id, constraint->columns, 
+                                constraint->column_count, values, value_count);
+    
+    case FK_NO_ACTION:
+    default:
+      return true; // No action required
+  }
+}
+
+// Handle a single ON UPDATE constraint
+bool handle_single_on_update_constraint(Database* db, Constraint* constraint, ColumnValue* old_values, ColumnValue* new_values, int value_count) {
+  switch (constraint->on_update) {
+    case FK_CASCADE:
+      return cascade_update(db, constraint->table_id, constraint->columns, 
+                           constraint->column_count, old_values, new_values, value_count);
+    
+    case FK_SET_NULL:
+      return set_null_on_delete(db, constraint->table_id, constraint->columns, 
+                               constraint->column_count, old_values, value_count);
+    
+    case FK_RESTRICT:
+      return check_no_references(db, constraint->table_id, constraint->columns, 
+                                constraint->column_count, old_values, value_count);
+    
+    case FK_NO_ACTION:
+    default:
+      return true; // No action required
+  }
+}
+
+bool handle_on_delete_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count) {
+  if (!db) {
+    LOG_ERROR("Invalid database parameter");
+    return false;
+  }
+
+  char query[512];
+  snprintf(query, sizeof(query),
+    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
+    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
+    "is_deferred, is_nullable, is_primary, is_unique "
+    "FROM jb_constraints WHERE table_id = %ld AND constraint_type = %d;",
+    table_id, CONSTRAINT_FOREIGN_KEY
+  );
+
+  ParserState state = parser_save_state(db->core->parser);
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  if (res.exec.code != 0) {
+    free_result(&res);
+    return false;
+  }
+
+  bool success = true;
+  for (int i = 0; i < res.exec.row_count; i++) {
+    Constraint constraint = parse_constraint_from_row(&res.exec.rows[i]);
+    
+    if (!handle_single_on_delete_constraint(db, &constraint, values, value_count)) {
+      success = false;
+    }
+    
+    free_constraint(&constraint);
+  }
+
+  free_result(&res);
+  return success;
+}
+
+// Handle ON UPDATE constraints for foreign keys
+bool handle_on_update_constraints(Database* db, int64_t table_id, ColumnValue* old_values, ColumnValue* new_values, int value_count) {
+  if (!db) {
+    LOG_ERROR("Invalid database parameter");
+    return false;
+  }
+
+  // Get all foreign key constraints that reference this table
+  char query[512];
+  snprintf(query, sizeof(query),
+    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
+    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
+    "is_deferred, is_nullable, is_primary, is_unique "
+    "FROM jb_constraints WHERE ref_table = %ld AND constraint_type = %d;",
+    table_id, CONSTRAINT_FOREIGN_KEY
+  );
+
+  ParserState state = parser_save_state(db->core->parser);
+  Result res = process_silent(db->core, query);
+  parser_restore_state(db->core->parser, state);
+
+  if (res.exec.code != 0) {
+    free_result(&res);
+    return false;
+  }
+
+  bool success = true;
+  for (int i = 0; i < res.exec.row_count; i++) {
+    Constraint constraint = parse_constraint_from_row(&res.exec.rows[i]);
+    
+    if (!handle_single_on_update_constraint(db, &constraint, old_values, new_values, value_count)) {
+      success = false;
+    }
+    
+    free_constraint(&constraint);
+  }
+
+  free_result(&res);
+  return success;
+}
+
+// Validate all constraints for a table operation
+bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count) {
+  TableSchema* schema = get_table_schema_by_id(db, table_id);
+  if (!schema) {
+    LOG_ERROR("Could not get table schema for table_id %ld", table_id);
+    return false;
+  }
+
+  Result constraints = get_table_constraints(db, table_id);
+  
+  if (constraints.exec.code != 0) {
+    free_table_schema(schema);
+    free_result(&constraints);
+    return false;
+  }
+
+  bool all_valid = true;
+  for (int i = 0; i < constraints.exec.row_count; i++) {
+    Constraint constraint = parse_constraint_from_row(&constraints.exec.rows[i]);
+    
+    if (!validate_constraint(db, &constraint, schema, values, value_count)) {
+      all_valid = false;
+      // Continue checking all constraints to report all violations
+    }
+    
+    free_constraint(&constraint);
+  }
+
+  free_table_schema(schema);
+  free_result(&constraints);
+  return all_valid;
 }

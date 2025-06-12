@@ -599,7 +599,7 @@ bool load_schema_tc(Database* db, char* table_name) {
   return true;
 }
 
-TableSchema* find_table_schema_tc(Database* db, const char* filename) {
+TableSchema* get_table_schema(Database* db, const char* filename) {
   if (!db || !filename) {
     LOG_ERROR("Invalid database or filename provided.");
     return NULL;
