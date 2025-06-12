@@ -53,7 +53,7 @@ START_TEST(test_read_table_schema) {
     ck_assert_int_eq(res.code, 0);
   }
 
-  TableSchema* schema = find_table_schema_tc(db, "users");
+  TableSchema* schema = get_table_schema(db, "users");
   ck_assert_str_eq(schema->table_name, "users");
   ck_assert_int_eq(schema->column_count, 5);
   ck_assert_str_eq(schema->columns[0].name, "id");
@@ -88,7 +88,7 @@ START_TEST(test_read_table_schema) {
 
   // --- Validation for 'categories' table ---
 
-  TableSchema* schema_categories = find_table_schema_tc(db, "categories");
+  TableSchema* schema_categories = get_table_schema(db, "categories");
   ck_assert_str_eq(schema_categories->table_name, "categories");
   ck_assert_int_eq(schema_categories->column_count, 2);
 
@@ -103,7 +103,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_int_eq(schema_categories->columns[1].is_not_null, 1);
 
   // --- Validation for 'products' table ---
-  TableSchema* schema_products = find_table_schema_tc(db, "products");
+  TableSchema* schema_products = get_table_schema(db, "products");
   ck_assert_str_eq(schema_products->table_name, "products");
   ck_assert_int_eq(schema_products->column_count, 5);
   ck_assert_str_eq(schema_products->columns[0].name, "product_id");
@@ -131,7 +131,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_products->columns[4].foreign_column, "id");
 
   // --- Validation for 'orders' table ---
-  TableSchema* schema_orders = find_table_schema_tc(db, "orders");
+  TableSchema* schema_orders = get_table_schema(db, "orders");
   ck_assert_str_eq(schema_orders->table_name, "orders");
   ck_assert_int_eq(schema_orders->column_count, 4);
 
@@ -155,7 +155,7 @@ START_TEST(test_read_table_schema) {
   ck_assert_str_eq(schema_orders->columns[3].check_expr, "total_amount>=0");
 
   // --- Validation for 'payments' table ---
-  TableSchema* schema_payments = find_table_schema_tc(db, "payments");
+  TableSchema* schema_payments = get_table_schema(db, "payments");
   ck_assert_str_eq(schema_payments->table_name, "payments");
   ck_assert_int_eq(schema_payments->column_count, 4);
 
