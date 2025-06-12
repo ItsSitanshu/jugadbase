@@ -5,7 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "kernel/executor.h"
+#include "kernel/kernel.h"
 
 #include "../utils/log.h"
 

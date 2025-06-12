@@ -5,7 +5,7 @@
 #include "utils/setup.h"
 #include "utils/cli.h"
 #include "utils/jugadline.h"
-#include "kernel/executor.h"
+#include "kernel/kernel.h"
 
 int main(int argc, char* argv[]) {
   SetupResult setup = perform_setup(argc, argv);

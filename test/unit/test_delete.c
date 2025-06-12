@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "kernel/executor.h"
+#include "kernel/kernel.h"
 #include "utils/testing.h"
 
 START_TEST(test_delete) {

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <unistd.h>
 
-#include "kernel/executor.h"
+#include "kernel/kernel.h"
 #include "utils/testing.h"
 
 START_TEST(test_array_column_access_and_update) {

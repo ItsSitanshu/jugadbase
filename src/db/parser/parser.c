@@ -1063,8 +1063,14 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   command.col_count = 0;
  
   uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
-  parser_consume(parser); 
   command.schema = db->tc[idx].schema;
+
+  if (!command.schema) {
+    LOG_ERROR("Expected a valid table, %s doesnt exist", parser->cur->value);
+    return command;
+  }
+
+  parser_consume(parser); 
 
   if (parser->cur->type == TOK_LP) { 
     parser_consume(parser);
@@ -1107,9 +1113,6 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   command.row_count = 0;
 
   command.specified_order = command.col_count == 0;
-  command.col_count = command.col_count == 0 ? 
-    db->tc[idx].schema->column_count 
-    : command.col_count;
 
   while (parser->cur->type == TOK_LP) {
     ExprNode** row = calloc(db->tc[idx].schema->column_count, sizeof(ExprNode*));

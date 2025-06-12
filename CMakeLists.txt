@@ -25,9 +25,13 @@ set(DB_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/parser.c
 
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/commands.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/core.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/constraints.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/expression.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/kernel.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/schema.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/sequence.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/utils.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/wal.c
 
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/btree.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/datetime.c

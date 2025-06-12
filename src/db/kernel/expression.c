@@ -1,4 +1,16 @@
-#include "kernel/executor.h"
+#include "kernel/kernel.h"
+
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx, ColumnDefinition* out){
+  ColumnValue value = evaluate_expression(expr, row, schema, db, schema_idx);
+
+  if (expr->type == EXPR_COLUMN) {
+    int col_index = expr->column.index;
+    value = row->values[col_index];
+    *out = schema->columns[col_index];
+  }
+
+  return value;
+}
 
 ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue result;

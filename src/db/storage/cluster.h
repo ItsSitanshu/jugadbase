@@ -2,7 +2,7 @@
 #define DB_CLUSTER_H
 
 #include <stdbool.h>
-#include "kernel/executor.h" 
+#include "kernel/kernel.h" 
 
 #define MAX_DBS_PER_CLUSTER 256
 #define MAX_CLUSTERS 8
