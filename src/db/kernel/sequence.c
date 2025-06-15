@@ -51,7 +51,7 @@ int64_t sequence_next_val(Database* db, char* name) {
   return copy;
 }
 
-int64_t create_default_squence(Database* db, char* name) {
+int64_t create_default_sequence(Database* db, char* name, bool is_unsafe) {
   if (!db || !name) {
     LOG_ERROR("Invalid parameters to insert_table");
     return -1;
@@ -64,10 +64,11 @@ int64_t create_default_squence(Database* db, char* name) {
   char query[2048];
 
   snprintf(query, sizeof(query),
-    "INSERT INTO jb_sequences "
+    "%s jb_sequences "
     "(name, current_value, increment_by, min_value, max_value, cycle)"
     "VALUES ('%s', 0, 1, 0, NULL, false)"
     "RETURNING id;",
+    is_unsafe ? "INSERT _unsafecon INTO" : "INSERT INTO",
     name
   );
 

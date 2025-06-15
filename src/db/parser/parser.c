@@ -84,7 +84,9 @@ JQLCommand parser_parse(Database* db) {
       command = parser_parse_alter_table(db->parser, db);
       break;
     case TOK_INS:
+      LOG_ERROR("before parse insert(raw): %s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
       command = parser_parse_insert(db->parser, db);
+      LOG_ERROR("after parse insert: %s, cc %d", command.schema->table_name, command.schema->column_count);
       break;
     case TOK_SEL: 
       command = parser_parse_select(db->parser, db);
@@ -368,6 +370,11 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
   command.schema = calloc(1, sizeof(TableSchema));
 
   parser_consume(parser);
+
+  if (parser->cur->type == TOK_NO_CONSTRAINTS) {
+    command.is_unsafe = true;
+    parser_consume(parser);
+  }
 
   if (parser->cur->type != TOK_TBL) {
     REPORT_ERROR(parser->lexer, "SYE_E_TAFCR");
@@ -1048,6 +1055,11 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
   parser_consume(parser); 
 
+  if (parser->cur->type == TOK_NO_CONSTRAINTS) {
+    command.is_unsafe = true;
+    parser_consume(parser);
+  }
+
   if (parser->cur->type != TOK_INTO) {
     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_INTO");
     return command;
@@ -1062,13 +1074,14 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
   command.col_count = 0;
  
-  uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
-  command.schema = db->tc[idx].schema;
+  command.schema = get_table_schema(db, parser->cur->value);
 
   if (!command.schema) {
     LOG_ERROR("Expected a valid table, %s doesnt exist", parser->cur->value);
     return command;
   }
+
+  // LOG_DEBUG("schema: %s, cc: %d", command.schema->table_name, command.schema->column_count);
 
   parser_consume(parser); 
 
@@ -1115,7 +1128,7 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   command.specified_order = command.col_count == 0;
 
   while (parser->cur->type == TOK_LP) {
-    ExprNode** row = calloc(db->tc[idx].schema->column_count, sizeof(ExprNode*));
+    ExprNode** row = calloc(command.schema->column_count, sizeof(ExprNode*));
 
     parser_consume(parser); 
 
@@ -1123,7 +1136,7 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
     while (value_count < command.col_count) {
       int row_idx = command.specified_order ? value_count 
-        : find_column_index(db->tc[idx].schema, command.columns[value_count]);
+        : find_column_index(command.schema, command.columns[value_count]);
 
       if (row_idx < 0) {
         // LOG_DEBUG("%d", command.col_count);
@@ -1132,7 +1145,7 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
         return command;
       }
       
-      row[row_idx] = parser_parse_expression(parser, db->tc[idx].schema);
+      row[row_idx] = parser_parse_expression(parser, command.schema);
       if (!row[row_idx]) return command;
       value_count++;
 
@@ -2181,6 +2194,8 @@ ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) 
 
 int find_column_index(TableSchema* schema, const char* name) {
   for (uint8_t i = 0; i < schema->column_count; i++) {
+    if (!schema->columns[i].name) return -1;
+
     if (strcmp(schema->columns[i].name, name) == 0) {
       return i;
     }
@@ -2328,7 +2343,6 @@ void print_column_value(ColumnValue* val) {
   printf("]");
 }
 
-
 char* str_column_value(ColumnValue* val) {
   if (val->is_null) {
     return "NULL";
@@ -2434,18 +2448,11 @@ char* str_column_value(ColumnValue* val) {
     case TOK_T_BLOB:
     case TOK_T_JSON: {
       if (val->is_toast) {
-        snprintf(buffer, sizeof(buffer), "<%s>(%u)", token_type_strings[val->type], val->toast_object);
+        snprintf(buffer, sizeof(buffer), "%u", token_type_strings[val->type], val->toast_object);
       } else {
         const char* s = val->str_value;
         size_t len = strlen(s);
-        if (len <= 8) {
-          snprintf(buffer, sizeof(buffer), "\"%s\"", s);
-        } else {
-          char preview[12];
-          memcpy(preview, s, 8);
-          strcpy(preview + 8, "...");
-          snprintf(buffer, sizeof(buffer), "\"%s (%zu chars)\"", preview, len - 8);
-        }
+        snprintf(buffer, sizeof(len), "\"%s\"", s);
       }
       break;
     }
@@ -2457,6 +2464,31 @@ char* str_column_value(ColumnValue* val) {
 
   return strdup(buffer);
 }
+
+char** stringify_column_array(ColumnValue* array_val, int* out_count) {
+  if (!array_val || !array_val->is_array || array_val->array.array_size == 0) {
+    if (out_count) *out_count = 0;
+    return NULL;
+  }
+
+  size_t n = array_val->array.array_size;
+  char** result = calloc(n + 1, sizeof(char*));
+  if (!result) {
+    if (out_count) *out_count = 0;
+    return NULL;
+  }
+
+  for (size_t i = 0; i < n; i++) {
+    ColumnValue* elem = &array_val->array.array_value[i];
+    char* str = str_column_value(elem); 
+    result[i] = strdup(str);             
+    if (str != NULL && str != "NULL") free(str); 
+  }
+
+  if (out_count) *out_count = n;
+  return result;
+}
+
 
 void format_column_value(char* out, size_t out_size, ColumnValue* val) {
   if (val->is_null) {

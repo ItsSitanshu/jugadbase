@@ -351,6 +351,7 @@ typedef struct {
 
   char transaction[MAX_IDENTIFIER_LEN];
   bool is_invalid;
+  bool is_unsafe;
 } JQLCommand;
 
 typedef struct {
@@ -433,6 +434,7 @@ int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
 void print_column_value(ColumnValue* val);
 char* str_column_value(ColumnValue* val);
+char** stringify_column_array(ColumnValue* array_val, int* out_count);
 void format_column_value(char* out, size_t out_size, ColumnValue* val);
 bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
 

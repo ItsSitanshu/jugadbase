@@ -284,12 +284,20 @@ char** parse_text_array(const char* text_array_str, int* count) {
     if (*p == ',') (*count)++;
   }
 
-  char** result = malloc(*count * sizeof(char*));
+
+  char** result = calloc((*count) + 1, sizeof(char*));
   char* token = strtok(str_copy, ",");
   int i = 0;
+
+
+  LOG_DEBUG("token %s , i %d", token, i);
+
   
   while (token && i < *count) {
     // Trim whitespace
+
+    LOG_DEBUG("token %s , i %d", token, i);
+
     while (*token == ' ') token++;
     char* end_trim = token + strlen(token) - 1;
     while (end_trim > token && *end_trim == ' ') {
@@ -302,6 +310,7 @@ char** parse_text_array(const char* text_array_str, int* count) {
     i++;
   }
 
+
   free(str_copy);
   return result;
 }
@@ -312,12 +321,12 @@ Constraint parse_constraint_from_row(Row* row) {
   
   constraint.id = row->values[0].int_value;
   constraint.table_id = row->values[1].int_value;
-  constraint.columns = parse_text_array(row->values[2].str_value, &constraint.column_count);
+  constraint.columns = stringify_column_array(row->values[2].array.array_value, row->values[2].array.array_value->array.array_size);
   constraint.name = strdup(row->values[3].str_value);
   constraint.constraint_type = (ConstraintType)row->values[4].int_value;
   constraint.check_expr = row->values[5].str_value ? strdup(row->values[5].str_value) : NULL;
   constraint.ref_table_id = row->values[6].int_value;
-  constraint.ref_columns = parse_text_array(row->values[7].str_value, &constraint.ref_column_count);
+  // constraint.ref_columns =  stringify_column_array(row->values[7].array.array_value, row->values[7].array.array_value->array.array_size);
   constraint.on_delete = (FKAction)row->values[8].int_value;
   constraint.on_update = (FKAction)row->values[9].int_value;
   constraint.is_deferrable = row->values[10].bool_value;
@@ -377,7 +386,10 @@ Result get_table_constraints(Database* db, int64_t table_id) {
 }
 
 bool validate_not_null_constraint(Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
+  LOG_DEBUG("!! %s, cc %d", schema->table_name, schema->column_count);
+  
   for (int i = 0; i < constraint->column_count; i++) {
+    LOG_DEBUG("constraint->columns[i]: %s", constraint->columns[i]);
     int column_idx = find_column_index(schema, constraint->columns[i]);
     if (column_idx >= 0 && column_idx < value_count) {
       if (values[column_idx].is_null) {
@@ -438,7 +450,6 @@ bool validate_unique_constraint(Database* db, Constraint* constraint, TableSchem
 }
 
 bool validate_primary_key_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
-  // Primary key is both NOT NULL and UNIQUE
   return validate_not_null_constraint(constraint, schema, values, value_count) &&
          validate_unique_constraint(db, constraint, schema, values, value_count);
 }
@@ -448,15 +459,13 @@ bool validate_foreign_key_constraint(Database* db, Constraint* constraint, Table
 
   ParserState state = parser_save_state(db->core->parser);
 
-  // Get referenced table schema
-  TableSchema* ref_schema = get_table_schema_by_id(db, constraint->ref_table_id);
+  TableSchema* ref_schema = get_table_schema_by_id(db->core, constraint->ref_table_id);
   if (!ref_schema) {
     LOG_ERROR("Referenced table not found for constraint '%s'", constraint->name);
     parser_restore_state(db->core->parser, state);
     return false;
   }
 
-  // Build WHERE clause for foreign key check
   char where_clause[1024] = {0};
   bool first = true;
   
@@ -479,10 +488,12 @@ bool validate_foreign_key_constraint(Database* db, Constraint* constraint, Table
     }
   }
 
+  if (!where_clause) return true;
+
   // Check if referenced record exists
   char query[2048];
   snprintf(query, sizeof(query),
-    "SELECT COUNT(*) FROM %s WHERE %s;", ref_schema->table_name, where_clause);
+    "SELECT TAN(*) FROM %s WHERE %s;", ref_schema->table_name, where_clause);
 
   Result res = process_silent(db->core, query);
   bool fk_valid = (res.exec.code == 0 && res.exec.row_count > 0 && 
@@ -493,7 +504,6 @@ bool validate_foreign_key_constraint(Database* db, Constraint* constraint, Table
   }
 
   parser_restore_state(db->core->parser, state);
-  free_table_schema(ref_schema);
   free_result(&res);
 
   return fk_valid;
@@ -533,6 +543,8 @@ bool validate_constraint(Database* db, Constraint* constraint, TableSchema* sche
     LOG_ERROR("Invalid parameters to validate_constraint");
     return false;
   }
+
+  if (!db->core) db->core = db;  
 
   switch (constraint->constraint_type) {
     case CONSTRAINT_UNIQUE:
@@ -585,7 +597,6 @@ bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_colum
   parser_restore_state(db->core->parser, state);
 
   bool success = (res.exec.code == 0);
-  free_table_schema(ref_schema);
   free_result(&res);
 
   return success;
@@ -642,7 +653,6 @@ bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_c
   parser_restore_state(db->core->parser, state);
 
   bool success = (res.exec.code == 0);
-  free_table_schema(ref_schema);
   free_result(&res);
 
   return success;
@@ -707,7 +717,6 @@ bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** re
   parser_restore_state(db->core->parser, state);
 
   bool success = (res.exec.code == 0);
-  free_table_schema(ref_schema);
   free_result(&res);
 
   return success;
@@ -755,7 +764,6 @@ bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_
       ref_schema->table_name);
   }
 
-  free_table_schema(ref_schema);
   free_result(&res);
 
   return no_references;
@@ -815,7 +823,6 @@ bool cascade_update(Database* db, int64_t referencing_table_id, char** ref_colum
   parser_restore_state(db->core->parser, state);
 
   bool success = (res.exec.code == 0);
-  free_table_schema(ref_schema);
   free_result(&res);
 
   return success;
@@ -945,6 +952,9 @@ bool handle_on_update_constraints(Database* db, int64_t table_id, ColumnValue* o
 
 // Validate all constraints for a table operation
 bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count) {
+  if (!db->core) db->core = db;
+ 
+  
   TableSchema* schema = get_table_schema_by_id(db, table_id);
   if (!schema) {
     LOG_ERROR("Could not get table schema for table_id %ld", table_id);
@@ -954,24 +964,23 @@ bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* value
   Result constraints = get_table_constraints(db, table_id);
   
   if (constraints.exec.code != 0) {
-    free_table_schema(schema);
     free_result(&constraints);
     return false;
   }
 
   bool all_valid = true;
   for (int i = 0; i < constraints.exec.row_count; i++) {
+    LOG_DEBUG("l(table_constr): %d", i);
     Constraint constraint = parse_constraint_from_row(&constraints.exec.rows[i]);
     
     if (!validate_constraint(db, &constraint, schema, values, value_count)) {
       all_valid = false;
-      // Continue checking all constraints to report all violations
     }
     
     free_constraint(&constraint);
   }
 
-  free_table_schema(schema);
   free_result(&constraints);
+  
   return all_valid;
 }

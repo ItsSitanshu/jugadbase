@@ -227,9 +227,12 @@ void process_file(Database* db, char* filename, bool show) {
   
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
-  
+
+  LOG_ERROR("in parse: %s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
+ 
   JQLCommand cmd = parser_parse(db);
   while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
+    LOG_ERROR("while proc file: %s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
     Result res = execute_cmd(db, &cmd, show);
     free_result(&res);
     cmd = parser_parse(db);
@@ -612,7 +615,12 @@ TableSchema* get_table_schema(Database* db, const char* filename) {
   }
 
   for (int i = 0; i < db->table_count; i++) {
+    
     if (db->tc[i].schema && strcmp(db->tc[i].schema->table_name, filename) == 0) {
+      if (!load_schema_for_table(db, i, filename)) {
+        LOG_ERROR("Failed to load schema for table: %s", filename);
+        return false;
+      }
       return db->tc[i].schema;
     }
   }

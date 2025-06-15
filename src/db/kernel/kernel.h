@@ -47,7 +47,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd);
 Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
   ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
   TableSchema* schema, uint8_t column_count,
-  char** columns, uint8_t up_col_count, bool specified_order);
+  char** columns, uint8_t up_col_count, bool specified_order, int64_t table_id, bool is_unsafe);
 
 #endif
 
@@ -96,10 +96,10 @@ int64_t insert_table(Database* db, char* name);
 
 int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name, 
                         int data_type, int ordinal_position, bool is_nullable, 
-                        bool has_default, bool has_constraints);
+                        bool has_default, bool has_constraints, bool is_unsafe);
 Attribute* load_attribute(Database* db, int64_t table_id, const char* column_name);
 
-int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr);
+int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr, bool is_unsafe);
 ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name);
 
 bool bootstrap_core_tables(Database* db);
@@ -202,7 +202,7 @@ void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
 #define KERNEL_SEQUENCE_H
 
 int64_t sequence_next_val(Database* db, char* name);
-int64_t create_default_squence(Database* db, char* name);
+int64_t create_default_sequence(Database* db, char* name, bool is_unsafe);
 int64_t find_sequence(Database* db, char* name);
 
 #endif

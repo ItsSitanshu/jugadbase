@@ -49,7 +49,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     if (col->has_sequence) {
       char seq_name[MAX_IDENTIFIER_LEN * 2];
       sprintf(seq_name, "%s%s", schema->table_name, col->name);
-      col->sequence_id = create_default_squence(db, seq_name);
+      col->sequence_id = create_default_sequence(db->core, seq_name, cmd->is_unsafe);
 
       if (col->sequence_id == -1) {
         return (ExecutionResult){-1, "Table creation failed"};;
@@ -59,12 +59,13 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col->is_array, sizeof(bool));
     io_write(tca_io, &col->is_index, sizeof(bool));
     io_write(tca_io, &col->is_foreign_key, sizeof(bool));
-
-    insert_attribute(db, table_id, col->name, col->type, i, !col->is_not_null, col->has_default, col->has_constraints);
+    
+    insert_attribute(db->core, table_id, col->name, col->type, i, 
+      !col->is_not_null, col->has_default, col->has_constraints, cmd->is_unsafe);
 
     if (col->has_default) {
       char* default_value = str_column_value(col->default_value);
-      insert_attr_default(db, table_id, col->name, default_value);
+      insert_attr_default(db->core, table_id, col->name, default_value, cmd->is_unsafe);
     }
   }
 
@@ -260,7 +261,7 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
       
       schema->columns[col_idx].has_default = true;
       
-      insert_attr_default(db, table_id, alter_cmd->column.column_name, alter_cmd->column.default_expr);
+      insert_attr_default(db, table_id, alter_cmd->column.column_name, alter_cmd->column.default_expr, false);
 
       result.code = 0;
       result.message = "Default value set successfully";
@@ -478,10 +479,19 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
 
   Row* ret_rows = calloc(cmd->row_count, sizeof(Row));
   Row* row = NULL;
+
+  int64_t table_id = find_table(db, schema->table_name);
+
+  if (table_id == -1) {
+    return (ExecutionResult) {
+      .code = -1,
+      .message = "Could not find matching schema",
+    };
+  }
   
   for (uint32_t i = 0; i < cmd->row_count; i++) {
     row = execute_row_insert(cmd->values[i], db, schema_idx, primary_key_cols,
-      primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order);
+      primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order, table_id, cmd->is_unsafe);
 
     if (!row) {
       for (uint32_t j = 0; j < inserted_count; j++) {
@@ -527,7 +537,8 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
 Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
                       ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
                       TableSchema* schema, uint8_t column_count,
-                      char** columns, uint8_t up_col_count, bool specified_order) {
+                      char** columns, uint8_t up_col_count, bool specified_order, int64_t table_id, bool is_unsafe) {
+
   uint8_t primary_key_count = 0;
 
   Row* row = calloc(1, sizeof(Row));
@@ -636,7 +647,6 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
   }
 
-
   for (uint8_t i = 0; i < primary_key_count; i++) {
     if (&primary_key_cols[i]) {
       uint8_t idx = hash_fnv1a(primary_key_cols[i].name, MAX_COLUMNS);
@@ -672,6 +682,17 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
         return NULL;
       }
     }
+  }
+
+
+  if (is_unsafe) return (Row*)row;
+
+  LOG_INFO("========= validating constraints for: %d", table_id);
+
+  if (!validate_all_constraints(db, table_id, row->values, schema->column_count)) {
+    free(row->values);
+    free(row->null_bitmap);
+    return NULL;
   }
 
   return (Row*)row;  

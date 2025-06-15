@@ -179,6 +179,7 @@ bool cluster_create(ClusterManager* manager, char* name) {
   cluster_switch(manager, 0);
   Database* db = cluster_get_active_db(manager);
   bootstrap_core_tables(db);
+  db->core = db;
   process_file(db, CORE_JCL_PATH, false);
 
   return true;

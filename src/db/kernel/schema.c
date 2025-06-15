@@ -61,7 +61,7 @@ int64_t insert_table(Database* db, char* name) {
 
   char query[2048];
   snprintf(query, sizeof(query),
-    "INSERT INTO jb_tables "
+    "INSERT _unsafecon INTO jb_tables "
     "(name, database_name, owner, created_at) "
     "VALUES ('%s', '%s', 'sudo', NOW()) RETURNING id;",
     name,
@@ -83,8 +83,9 @@ int64_t insert_table(Database* db, char* name) {
   return value;
 }
 
-
-int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name, int data_type, int ordinal_position, bool is_nullable, bool has_default, bool has_constraints) {
+int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name, 
+                        int data_type, int ordinal_position, bool is_nullable, 
+                        bool has_default, bool has_constraints, bool is_unsafe) {
   if (!db || !column_name) {
     LOG_ERROR("Invalid parameters to insert_attribute");
     return -1;
@@ -92,23 +93,26 @@ int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name
 
   if (!db->core) db->core = db;
 
+  LOG_ERROR("in insert attribute: %s, cc %d", db->core->tc[130].schema->table_name, db->core->tc[130].schema->column_count);
+
   ParserState state = parser_save_state(db->core->parser);
 
   char query[1024];
   snprintf(query, sizeof(query),
-    "INSERT INTO jb_attribute "
+    "%s jb_attribute "
     "(table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) "
     "VALUES (%ld, \"%s\", %d, %d, %s, %s, %s, NOW()) RETURNING id;",
+    is_unsafe ? "INSERT _unsafecon INTO" : "INSERT INTO",
     table_id,
     column_name,
     data_type,
     ordinal_position,
     is_nullable ? "true" : "false",
     has_default ? "true" : "false",
-    has_constraints ? "true" : "false"    
+    has_constraints ? "true" : "false"
   );
 
-  // LOG_DEBUG("[+] attr: %s", column_name);
+  LOG_DEBUG("[+] attr: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -172,7 +176,7 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
   return attr;
 }
 
-int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr) {
+int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr, bool is_unsafe) {
   if (!db || !column_name || !default_expr) {
     LOG_ERROR("Invalid parameters to insert_attr_default");
     return -1;
@@ -184,9 +188,10 @@ int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_n
 
   char query[1024];
   snprintf(query, sizeof(query),
-    "INSERT INTO jb_attrdef "
+    "%s jb_attrdef "
     "(table_id, column_name, default_expr, created_at) "
     "VALUES (%ld, '%s', '%s', NOW()) RETURNING id;",
+    is_unsafe ? "INSERT _unsafecon INTO" : "INSERT INTO",
     table_id,
     column_name,
     default_expr
@@ -280,10 +285,12 @@ bool bootstrap_core_tables(Database* db) {
   for (int i = 0; i < 4; i++) {
     ExecutionResult res = execute_create_table_internal(db, schemas[i], i);
     if (res.code != 0) {
-      LOG_ERROR("Failed to bootstrap table '%s': %s", schemas[i]->table_name, res.message);
+      LOG_FATAL("Failed to bootstrap table '%s': %s", schemas[i]->table_name, res.message);
       return false;
-    }
+    } 
   }
+
+  LOG_ERROR("%s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
 
   return true;
 }
@@ -294,7 +301,6 @@ ExecutionResult execute_create_table_internal(Database* db, TableSchema* schema,
   }
 
   FILE* tca_io = db->tc_appender;
-
 
   uint32_t table_count;
   io_seek(tca_io, sizeof(uint32_t), SEEK_SET);
@@ -359,7 +365,7 @@ ExecutionResult execute_create_table_internal(Database* db, TableSchema* schema,
     table_count--;
     io_seek_write(db->tc_writer, TABLE_COUNT_OFFSET, &table_count, sizeof(uint32_t), SEEK_SET);
 
-    return (ExecutionResult){1, "Table creation failed"};
+    return (ExecutionResult){-1, "Table creation failed"};
   }
 
   char rows_file[MAX_PATH_LENGTH];
@@ -388,7 +394,10 @@ ExecutionResult execute_create_table_internal(Database* db, TableSchema* schema,
     return (ExecutionResult){-1, "Conflict whilst creating internal schemas"};
   }
 
-  db->tc[idx].schema = schema;
+  db->tc[idx].schema = schema;  
+
+  LOG_INFO("Created new schema entry in the in memory catalog at %d", idx);
+
 
   return (ExecutionResult){0, "Table schema written successfully"};
 }

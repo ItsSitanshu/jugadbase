@@ -1,32 +1,26 @@
 -- jb.core - version b.0.4
 
-INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
-  (0, 'jb_tables', 'core', 'sudo', NOW());
-INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
-  (1, 'jb_sequences', 'core', 'sudo', NOW());
-INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
-  (2, 'jb_attribute', 'core', 'sudo', NOW());
-INSERT INTO jb_tables (id, name, database_name, owner, created_at) VALUES
+INSERT _unsafecon INTO jb_tables (id, name, database_name, owner, created_at) VALUES
+  (0, 'jb_tables', 'core', 'sudo', NOW()),
+  (1, 'jb_sequences', 'core', 'sudo', NOW()),
+  (2, 'jb_attribute', 'core', 'sudo', NOW()),
   (3, 'jb_attrdef', 'core', 'sudo', NOW());
 
-INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
-  (0, 'jb_sequencesid', 0, 1, 0, NULL, false);
-INSERT INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
+INSERT _unsafecon INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
+  (0, 'jb_sequencesid', 0, 1, 0, NULL, false),
   (1, 'jb_tablesid', 3, 1, 0, NULL, false);
-INSERT INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
-  ('jb_attributeid', 0, 1, 0, NULL, false);
-INSERT INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
+INSERT _unsafecon INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
+  ('jb_attributeid', 0, 1, 0, NULL, false),
   ('jb_attrdefid', 0, 1, 0, NULL, false);
 
-
-INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (0, "id", 19, 0, true, false, false, NOW()),
 (0, "name", 3, 1, false, false, false, NOW()),
 (0, "database_name", 3, 2, true, false, false, NOW()),
 (0, "owner", 3, 3, true, true, false, NOW()),
 (0, "created_at", 13, 4, true, false, false, NOW());
 
-INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (1, "id", 19, 0, true, false, false, NOW()),
 (1, "name", 3, 1, true, false, false, NOW()),
 (1, "current_value", 0, 2, true, false, false, NOW()),
@@ -35,7 +29,7 @@ INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is
 (1, "max_value", 0, 5, true, false, false, NOW()),
 (1, "cycle", 4, 6, true, false, false, NOW());
 
-INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (2, "id", 19, 0, true, false, false, NOW()),
 (2, "table_id", 0, 1, true, false, false, NOW()),
 (2, "column_name", 3, 2, true, false, false, NOW()),
@@ -46,30 +40,14 @@ INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is
 (2, "has_constraints", 4, 7, true, false, false, NOW()),
 (2, "created_at", 13, 8, true, false, false, NOW());
 
-INSERT INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (3, "id", 19, 0, true, false, false, NOW()),
 (3, "table_id", 0, 1, false, false, false, NOW()),
 (3, "column_name", 3, 2, false, false, false, NOW()),
 (3, "default_expr", 3, 3, false, false, false, NOW()),
 (3, "created_at", 13, 4, true, false, false, NOW());
 
-CREATE TABLE jb_toast (
-  id INT,
-  seq INT,
-  data TEXT
-);
-
-CREATE TABLE jb_indexes (
-  id INT,
-  table_id INT,
-  name TEXT NOT NULL,
-  columns TEXT[],
-  is_unique BOOL DEFAULT false,
-  is_primary BOOL DEFAULT false,
-  created_at TIMESTAMP
-);
-
-CREATE TABLE jb_constraints (
+CREATE _unsafecon TABLE jb_constraints (
   id SERIAL,
   table_id INT,
   columns TEXT[],
@@ -85,6 +63,22 @@ CREATE TABLE jb_constraints (
   is_nullable BOOL DEFAULT true,
   is_primary BOOL DEFAULT false,
   is_unique BOOL DEFAULT false,
+  created_at TIMESTAMP
+);
+
+CREATE TABLE jb_toast (
+  id INT,
+  seq INT,
+  data TEXT
+);
+
+CREATE TABLE jb_indexes (
+  id INT,
+  table_id INT,
+  name TEXT NOT NULL,
+  columns TEXT[],
+  is_unique BOOL DEFAULT false,
+  is_primary BOOL DEFAULT false,
   created_at TIMESTAMP
 );
 

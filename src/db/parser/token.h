@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define NO_OF_KEYWORDS 81
+#define NO_OF_KEYWORDS 82
 #define KEYWORDS keywords
 
 #define MAX_KEYWORD_LEN 11
@@ -137,6 +137,8 @@ typedef struct Token {
     TOK_BEG,      // BEGIN (Transaction)
     TOK_CMT,      // COMMIT
     TOK_RBK,      // ROLLBACK
+
+    TOK_NO_CONSTRAINTS, // _unsafecon
 
     // Literals
     TOK_L_UINT,
