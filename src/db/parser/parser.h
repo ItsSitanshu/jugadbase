@@ -25,6 +25,7 @@ struct Database;
 typedef struct Database Database;
 typedef struct ExprNode ExprNode;
 typedef struct ColumnValue ColumnValue;
+typedef struct Function Function;
 
 typedef enum {
   FK_NO_ACTION,
@@ -85,6 +86,7 @@ typedef struct ColumnValue {
       uint16_t index;
       int16_t array_idx;
     } column;
+    Function* tbev;  
   };
 } ColumnValue;
 
@@ -103,6 +105,34 @@ typedef enum {
   EXPR_LOGICAL_AND,
   EXPR_LOGICAL_OR,
 } ExprType;
+
+typedef enum AggregateType {
+  AGG_COUNT,
+  AGG_SUM,
+  AGG_AVG,
+  AGG_MIN,
+  AGG_MAX,
+  AGG_COUNT_DISTINCT,
+  AGG_STRING_AGG,      // psql-style string concatenation
+  AGG_GROUP_CONCAT,    // mysql-style string aggregation
+  AGG_MEDIAN,          
+  AGG_MODE,            
+  AGG_STDDEV,          
+  AGG_VARIANCE,        
+  AGG_FIRST,           
+  AGG_LAST,            
+  AGG_BOOL_AND,        // TRUE if all are TRUE
+  AGG_BOOL_OR,         // TRUE if any are TRUE
+  NOT_AGG
+} AggregateType;
+
+typedef struct Function {
+  char* name;
+  AggregateType type;
+
+  ExprNode** args;
+  uint8_t arg_count;
+} Function;  
 
 typedef struct ExprNode {
   ExprType type;
@@ -143,11 +173,7 @@ typedef struct ExprNode {
       size_t count;
     } in;
 
-    struct function_expr {
-      char* name;
-      ExprNode** args;
-      uint8_t arg_count;
-    } fn;  
+    Function fn;  
   };
 } ExprNode;
 
@@ -205,6 +231,8 @@ typedef struct {
 typedef struct SelectColumn {
   ExprNode* expr;
   char* alias;
+
+  int8_t type;
 } SelectColumn;
 
 typedef struct UpdateColumn {
@@ -348,6 +376,7 @@ typedef struct {
   int constraint_count;
 
   int function_count;
+  bool has_aggregate;
 
   char transaction[MAX_IDENTIFIER_LEN];
   bool is_invalid;
@@ -410,6 +439,7 @@ bool is_valid_data_type(Parser* parser);
 bool is_valid_default(Parser* parser, int column_type, int literal_type);
 bool parser_parse_value(Parser* parser, ColumnValue* col_val);
 bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output);
+AggregateType get_aggregate_type(const char* name);
 
 ParserState parser_save_state(Parser* parser);
 void parser_restore_state(Parser* parser, ParserState state);
