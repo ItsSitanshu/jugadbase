@@ -433,7 +433,7 @@ bool validate_unique_constraint(Database* db, Constraint* constraint, TableSchem
   // Check for existing records
   char query[2048];
   snprintf(query, sizeof(query),
-    "SELECT COUNT(*) FROM %s WHERE %s;", schema->table_name, where_clause);
+    "SELECT COUNT() FROM %s;", schema->table_name, where_clause);
 
   Result res = process_silent(db->core, query);
   bool is_unique = (res.exec.code == 0 && res.exec.row_count > 0 && 
@@ -749,7 +749,7 @@ bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_
   }
 
   char query[2048];
-  snprintf(query, sizeof(query), "SELECT COUNT(*) FROM %s WHERE %s;", 
+  snprintf(query, sizeof(query), "SELECT COUNT() FROM %s WHERE %s;", 
     ref_schema->table_name, where_clause);
 
   ParserState state = parser_save_state(db->core->parser);

@@ -763,10 +763,22 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "Memory allocation failed for limited result rows"};
   }
 
+  bool* is_aggregate_col = calloc(schema->column_count, sizeof(bool));
+  ColumnValue* aggregate_results = calloc(schema->column_count, sizeof(ColumnValue));
+
+  for (int j = 0; j < schema->column_count; j++) {
+    ExprNode* expr = cmd->sel_columns[j].expr;
+    
+    if (expr && expr->type == EXPR_FUNCTION && expr->fn.type != NOT_AGG) {
+      is_aggregate_col[j] = true;
+      aggregate_results[j] = evaluate_aggregate(expr, collected_rows, total_found, schema, db, schema_idx);
+    }
+  }
+
   for (uint32_t i = 0; i < out_count; i++) {
     Row* src = &collected_rows[start + i];
     Row* dst = &result_rows[i];
-  
+    
     memset(dst, 0, sizeof(Row));
     dst->id = src->id;
     dst->values = calloc(schema->column_count, sizeof(ColumnValue));
@@ -774,56 +786,50 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     if (!dst->values) {
       free(collected_rows);
       free(result_rows);
+      free(is_aggregate_col);
+      free(aggregate_results);
       return (ExecutionResult){1, "Memory allocation failed for projected values"};
     }
+        
   
     for (int k = 0; k < schema->column_count; k++) {
       dst->values[k].is_null = true;
     }
-  
+
     int col_count = cmd->value_counts[0];
 
     for (int j = 0; j < col_count; j++) {
       ExprNode* expr = cmd->sel_columns[j].expr;
-
+      
       if (cmd->sel_columns[j].alias) {
         aliases[j] = strdup(cmd->sel_columns[j].alias);
       } else if (expr->type == EXPR_ARRAY_ACCESS) {
         int base_idx = expr->column.index;
         int array_idx = expr->column.array_idx->literal.int_value;
-
         const char* base_name = cmd->schema->columns[base_idx].name;
         char buffer[256];
-
         snprintf(buffer, sizeof(buffer), "%s[%d]", base_name, array_idx);
         aliases[j] = strdup(buffer);
       } else {
         aliases[j] = strdup(cmd->schema->columns[j].name);
       }
-
-      // LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));
-
+      
       if (!expr) {
         dst = src;
-      } else {
-        // LOG_DEBUG("%s | %d", aliases[j], expr->type);
-        ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
-        // if (is_struct_zeroed(&val, sizeof(ColumnValue))) {
-        //   return (ExecutionResult){
-        //     .code = -1,
-        //     .message = "Select query failed",
-        //   };
-        // }        
-        
-        dst->values[j] = val;
-        // LOG_DEBUG("during select: aliases [j: %d] %s = %s", j, aliases[j], str_column_value(&dst->values[j]));
-
+        continue;
       }
       
-      free_expr_node(expr);
-    }  
+      if (is_aggregate_col[j]) {
+        dst->values[j] = aggregate_results[j];
+      } else {
+        ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
+        dst->values[j] = val;
+      }
+    }
   }
-  
+
+  free(is_aggregate_col);
+  free(aggregate_results);
   free(collected_rows);
 
   return (ExecutionResult){
