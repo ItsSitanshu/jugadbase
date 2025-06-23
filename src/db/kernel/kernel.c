@@ -47,7 +47,6 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
       result = (Result){execute_alter_table(db, cmd), cmd};
       break;
     case CMD_INSERT:
-      LOG_ERROR("insert: %s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
       result = (Result){execute_insert(db, cmd), cmd};
       break;
     case CMD_SELECT:

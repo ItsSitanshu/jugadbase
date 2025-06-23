@@ -232,7 +232,6 @@ void process_file(Database* db, char* filename, bool show) {
  
   JQLCommand cmd = parser_parse(db);
   while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
-    LOG_ERROR("while proc file: %s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
     Result res = execute_cmd(db, &cmd, show);
     free_result(&res);
     cmd = parser_parse(db);
