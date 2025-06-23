@@ -75,6 +75,40 @@ ColumnValue evaluate_function(const char* name, ExprNode** args, uint8_t arg_cou
   return fn(args, arg_count, row, schema, db, schema_idx);
 }
 
+ColumnValue evaluate_aggregate(ExprNode* expr, Row* rows, uint32_t row_count, TableSchema* schema, Database* db, uint8_t schema_idx) {
+  ColumnValue result;
+  memset(&result, 0, sizeof(ColumnValue));
+
+  if (expr->type != EXPR_FUNCTION || expr->fn.type == NOT_AGG) {
+    LOG_ERROR("Invalid aggregate expression");
+    return result;
+  }
+
+  AggregateType agg_type = expr->fn.type;
+
+  switch (agg_type) {
+    case AGG_COUNT: {
+      result.type = TOK_T_INT;
+      if (expr->fn.arg_count == 0) { 
+        result.int_value = row_count;
+      } else {
+        int col_idx = expr->fn.args[0]->column.index;
+        uint32_t non_null_count = 0;
+        for (uint32_t i = 0; i < row_count; i++) {
+          if (!rows[i].values[col_idx].is_null) non_null_count++;
+        }
+        result.int_value = non_null_count;
+      }
+      break;
+    }
+
+    default:
+      LOG_ERROR("Unsupported aggregate function");
+      break;
+  }
+
+  return result;
+}
 
 ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);

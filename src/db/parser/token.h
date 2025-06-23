@@ -42,6 +42,7 @@ typedef struct Token {
     TOK_T_UINT,            // UINT
     
     TOK_T_STRING,            // More of a universal type
+    TOK_T_TBEV,             // To be evaluated
 
     // Special tokens
     TOK_ERR,      // Error token

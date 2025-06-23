@@ -84,9 +84,7 @@ JQLCommand parser_parse(Database* db) {
       command = parser_parse_alter_table(db->parser, db);
       break;
     case TOK_INS:
-      LOG_ERROR("before parse insert(raw): %s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
       command = parser_parse_insert(db->parser, db);
-      LOG_ERROR("after parse insert: %s, cc %d", command.schema->table_name, command.schema->column_count);
       break;
     case TOK_SEL: 
       command = parser_parse_select(db->parser, db);
@@ -1307,6 +1305,12 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
       
       command.sel_columns[column_count].expr = expr;
       command.sel_columns[column_count].alias = alias;
+      command.sel_columns[column_count].type = -1;
+
+      if (expr->type == EXPR_FUNCTION) {
+        command.sel_columns[column_count].type = expr->fn.type;
+      }
+      
       column_count++;
       
       if (parser->cur->type != TOK_COM) break;
@@ -1823,6 +1827,21 @@ bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output) {
   return j == 32;
 }
 
+AggregateType get_aggregate_type(const char* name) {
+  if (strcmp(name, "COUNT") == 0) return AGG_COUNT;
+  if (strcmp(name, "SUM") == 0) return AGG_SUM;
+  if (strcmp(name, "AVG") == 0) return AGG_AVG;
+  if (strcmp(name, "MIN") == 0) return AGG_MIN;
+  if (strcmp(name, "MAX") == 0) return AGG_MAX;
+  if (strcmp(name, "STDDEV") == 0) return AGG_STDDEV;
+  if (strcmp(name, "VARIANCE") == 0) return AGG_VARIANCE;
+  if (strcmp(name, "FIRST") == 0) return AGG_FIRST;
+  if (strcmp(name, "LAST") == 0) return AGG_LAST;
+
+  return NOT_AGG;
+}
+
+
 ParserState parser_save_state(Parser* parser) {
   ParserState state;
   state.lexer_position = parser->lexer->i;
@@ -2041,12 +2060,13 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
 
     if (parser->cur->type == TOK_LP) {
       ExprNode* node = calloc(1, sizeof(ExprNode));
-      node->fn.args = calloc(MAX_FN_ARGS, sizeof(ExprNode));
       node->type = EXPR_FUNCTION;
       node->fn.name = ident;
+      node->fn.type = get_aggregate_type(ident); 
+      node->fn.args = calloc(MAX_FN_ARGS, sizeof(ExprNode*));
       node->fn.arg_count = 0;
 
-      parser_consume(parser);
+      parser_consume(parser); 
 
       if (parser->cur->type != TOK_RP) {
         while (true) {
@@ -2068,12 +2088,13 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
         }
       }
 
+
       if (parser->cur->type != TOK_RP) {
         REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
         return NULL;
       }
 
-      parser_consume(parser);
+      parser_consume(parser); // consume ')'
       return node;
     }
 
@@ -2088,7 +2109,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
     base->column.index = col_index;
 
     while (parser->cur->type == TOK_LB) {
-      parser_consume(parser);  
+      parser_consume(parser);
 
       ExprNode* index_expr = parser_parse_expression(parser, schema);
       if (!index_expr) return NULL;
@@ -2116,6 +2137,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
 
   return node;
 }
+
 
 ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left) {
   parser_consume(parser);
@@ -2652,6 +2674,7 @@ void free_expr_node(ExprNode* node) {
       break;
 
     case EXPR_FUNCTION:
+      if (node->fn.type == NOT_AGG) break; 
       if (node->fn.name) free(node->fn.name);
       for (uint8_t i = 0; i < node->fn.arg_count; i++) {
         free_expr_node(node->fn.args[i]);

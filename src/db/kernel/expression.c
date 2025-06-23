@@ -38,7 +38,12 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, D
     case EXPR_BINARY_OP:
       return evaluate_binary_op_expression(expr, row, schema, db, schema_idx);
     case EXPR_FUNCTION:
-      return evaluate_function(expr->fn.name, expr->fn.args, expr->fn.arg_count, row, schema, db, schema_idx);
+      if (expr->fn.type == NOT_AGG) {  
+        return evaluate_function(expr->fn.name, expr->fn.args, expr->fn.arg_count, row, schema, db, schema_idx);
+      } else {
+        LOG_WARN("Evaluation of AGG function attempted, post-evaluation will be used");
+        return (ColumnValue){ .tbev = &(expr->fn) };
+      }
     case EXPR_COMPARISON:
       return evaluate_comparison_expression(expr, row, schema, db, schema_idx);
     case EXPR_LIKE:

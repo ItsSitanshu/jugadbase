@@ -50,6 +50,16 @@ ColumnValue evaluate_function(
   uint8_t schema_idx
 );
 
+ColumnValue evaluate_aggregate(
+  ExprNode* expr,
+  Row* rows,
+  uint32_t row_count,
+  TableSchema* schema,
+  Database* db,
+  uint8_t schema_idx
+);
+
+
 ColumnValue evaluate_expression(
   ExprNode* expr, 
   Row* row, 
