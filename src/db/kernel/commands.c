@@ -686,7 +686,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
   if (is_unsafe) return (Row*)row;
 
-  LOG_INFO("========= validating constraints for: %d", table_id);
+  // LOG_INFO("========= validating constraints for: %d", table_id);
 
   if (!validate_all_constraints(db, table_id, row->values, schema->column_count)) {
     free(row->values);
