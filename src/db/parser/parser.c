@@ -2247,6 +2247,8 @@ void print_column_value(ColumnValue* val) {
       offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_str);
     }
       
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%ld", val->array.array_size);
+
     printf("arr<%s>[%s]", get_token_type(val->type), buffer);
     return;
   }
@@ -2369,7 +2371,7 @@ char* str_column_value(ColumnValue* val) {
   if (val->is_null) {
     return "NULL";
   }
-
+ 
   if (val->is_array) {
     char buffer[1024];
     size_t offset = 0;
@@ -2382,7 +2384,9 @@ char* str_column_value(ColumnValue* val) {
       offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_str);
     }
 
-    return strdup(buffer) ;
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%ld", val->array.array_size);
+
+    return strdup(buffer);
   }
 
   char buffer[256];
@@ -2502,14 +2506,40 @@ char** stringify_column_array(ColumnValue* array_val, int* out_count) {
 
   for (size_t i = 0; i < n; i++) {
     ColumnValue* elem = &array_val->array.array_value[i];
-    char* str = str_column_value(elem); 
-    result[i] = strdup(str);             
-    if (str != NULL && str != "NULL") free(str); 
+    char* str = str_column_value(elem);
+
+    if (str == NULL) {
+      result[i] = NULL;
+      continue;
+    }
+
+    if ((elem->type == TOK_T_TEXT || elem->type == TOK_T_BLOB || elem->type == TOK_T_STRING ||
+        elem->type == TOK_T_VARCHAR || elem->type == TOK_T_CHAR || elem->type == TOK_T_JSON) &&
+        !elem->is_toast) {
+      size_t len = strlen(str);
+      if (len >= 2 && ((str[0] == '\'' && str[len - 1] == '\'') || (str[0] == '\"' && str[len - 1] == '\"'))) {
+        size_t new_len = len - 2;
+        result[i] = malloc(new_len + 1);
+        if (result[i]) {
+          strncpy(result[i], str + 1, new_len);
+          result[i][new_len] = '\0';
+        }
+      } else {
+        result[i] = strdup(str);
+      }
+    } else {
+      result[i] = strdup(str);
+    }
+
+    if (str != NULL && strcmp(str, "NULL") != 0) free(str);
   }
 
   if (out_count) *out_count = n;
+
+  // LOG_DEBUG("!> stringified res: %s", result[0]);
   return result;
 }
+
 
 
 void format_column_value(char* out, size_t out_size, ColumnValue* val) {

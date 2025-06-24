@@ -23,7 +23,7 @@ INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_p
 INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (1, "id", 19, 0, true, false, false, NOW()),
 (1, "name", 3, 1, true, false, false, NOW()),
-(1, "current_value", 0, 2, true, false, false, NOW()),
+(1, "current_value", 0, 2, false, true, false, NOW()),
 (1, "increment_by", 0, 3, true, false, false, NOW()),
 (1, "min_value", 0, 4, true, false, false, NOW()),
 (1, "max_value", 0, 5, true, false, false, NOW()),
@@ -104,7 +104,6 @@ ALTER TABLE jb_sequences ADD CONSTRAINT jb_sequences_name_unique UNIQUE (name);
 ALTER TABLE jb_indexes ADD CONSTRAINT jb_indexes_id_pk PRIMKEY (id);
 ALTER TABLE jb_indexes ADD CONSTRAINT jb_indexes_tbable_id_fk FRNKEY (table_id) REFERENCES jb_tables(id) ON DELETE CASCADE;
 
-ALTER TABLE jb_constraints ADD CONSTRAINT jb_constraints_id_pk PRIMKEY (id);
 ALTER TABLE jb_constraints ADD CONSTRAINT jb_constraints_table_id_fk FRNKEY (table_id) REFERENCES jb_tables(id) ON DELETE CASCADE;
 
 ALTER TABLE jb_attrdef ADD CONSTRAINT jb_attrdef_id_pk PRIMKEY (id);
@@ -117,7 +116,7 @@ ALTER TABLE jb_role_members ADD CONSTRAINT jb_role_members_role_id_fk FRNKEY (ro
 ALTER TABLE jb_role_members ADD CONSTRAINT jb_role_members_member_id_fk FRNKEY (member_id) REFERENCES jb_roles(id);
 
 ALTER TABLE jb_sequences ALTER COLUMN name SET NOT NULL;
-ALTER TABLE jb_sequences ALTER COLUMN current_value SET DEFAULT 1;
-ALTER TABLE jb_sequences ALTER COLUMN increment_by SET DEFAULT 1;
-ALTER TABLE jb_sequences ALTER COLUMN min_value SET DEFAULT 1;
-ALTER TABLE jb_sequences ALTER COLUMN cycle SET DEFAULT false;
+-- ALTER TABLE jb_sequences ALTER COLUMN current_value SET DEFAULT 9;
+-- ALTER TABLE jb_sequences ALTER COLUMN increment_by SET DEFAULT 1;
+-- ALTER TABLE jb_sequences ALTER COLUMN min_value SET DEFAULT 1;
+-- ALTER TABLE jb_sequences ALTER COLUMN cycle SET DEFAULT false;
