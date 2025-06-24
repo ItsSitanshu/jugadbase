@@ -624,7 +624,6 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       primary_key_count++;
     }
 
-
     row->row_length += size_from_value(&row->values[i], &schema->columns[i]);
        
     // LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);

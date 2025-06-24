@@ -93,7 +93,7 @@ int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name
 
   if (!db->core) db->core = db;
 
-  LOG_ERROR("in insert attribute: %s, cc %d", db->core->tc[130].schema->table_name, db->core->tc[130].schema->column_count);
+  // LOG_ERROR("in insert attribute: %s, cc %d", db->core->tc[130].schema->table_name, db->core->tc[130].schema->column_count);
 
   ParserState state = parser_save_state(db->core->parser);
 
@@ -112,7 +112,7 @@ int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name
     has_constraints ? "true" : "false"
   );
 
-  LOG_DEBUG("[+] attr: %s", query);
+  // LOG_DEBUG("[+] attr: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -217,8 +217,10 @@ int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_n
 void check_and_concat_toast(Database* db, ColumnValue* value) {
   char* result = toast_concat(db, value->toast_object);
 
-  value->str_value = strdup(result);
-  value->is_toast = false;
+  if (result) {
+    value->str_value = strdup(result);
+    value->is_toast = false;
+  }
 }
 
 ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name) {

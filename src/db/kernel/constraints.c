@@ -290,13 +290,10 @@ char** parse_text_array(const char* text_array_str, int* count) {
   int i = 0;
 
 
-  LOG_DEBUG("token %s , i %d", token, i);
-
+  // LOG_DEBUG("token %s , i %d", token, i);
   
   while (token && i < *count) {
-    // Trim whitespace
-
-    LOG_DEBUG("token %s , i %d", token, i);
+    // LOG_DEBUG("token %s , i %d", token, i);
 
     while (*token == ' ') token++;
     char* end_trim = token + strlen(token) - 1;
@@ -315,18 +312,22 @@ char** parse_text_array(const char* text_array_str, int* count) {
   return result;
 }
 
-// Parse constraint from database row
 Constraint parse_constraint_from_row(Row* row) {
   Constraint constraint = {0};
   
+  int out_count = 0;
+  int ref_out_count = 0;
+
   constraint.id = row->values[0].int_value;
   constraint.table_id = row->values[1].int_value;
-  constraint.columns = stringify_column_array(row->values[2].array.array_value, row->values[2].array.array_value->array.array_size);
+  constraint.columns = stringify_column_array(&row->values[2], &out_count);
+  constraint.column_count = (int)out_count;
   constraint.name = strdup(row->values[3].str_value);
   constraint.constraint_type = (ConstraintType)row->values[4].int_value;
   constraint.check_expr = row->values[5].str_value ? strdup(row->values[5].str_value) : NULL;
   constraint.ref_table_id = row->values[6].int_value;
-  // constraint.ref_columns =  stringify_column_array(row->values[7].array.array_value, row->values[7].array.array_value->array.array_size);
+  constraint.ref_columns = stringify_column_array(&row->values[7], &ref_out_count);
+  constraint.ref_column_count = ref_out_count;
   constraint.on_delete = (FKAction)row->values[8].int_value;
   constraint.on_update = (FKAction)row->values[9].int_value;
   constraint.is_deferrable = row->values[10].bool_value;
@@ -338,7 +339,6 @@ Constraint parse_constraint_from_row(Row* row) {
   return constraint;
 }
 
-// Free constraint memory
 void free_constraint(Constraint* constraint) {
   if (constraint) {
     if (constraint->columns) {
@@ -358,7 +358,6 @@ void free_constraint(Constraint* constraint) {
   }
 }
 
-// Get all constraints for a specific table
 Result get_table_constraints(Database* db, int64_t table_id) {
   if (!db) {
     LOG_ERROR("Invalid database parameter");
@@ -389,7 +388,6 @@ bool validate_not_null_constraint(Constraint* constraint, TableSchema* schema, C
   LOG_DEBUG("!! %s, cc %d", schema->table_name, schema->column_count);
   
   for (int i = 0; i < constraint->column_count; i++) {
-    LOG_DEBUG("constraint->columns[i]: %s", constraint->columns[i]);
     int column_idx = find_column_index(schema, constraint->columns[i]);
     if (column_idx >= 0 && column_idx < value_count) {
       if (values[column_idx].is_null) {
@@ -413,30 +411,35 @@ bool validate_unique_constraint(Database* db, Constraint* constraint, TableSchem
   
   for (int i = 0; i < constraint->column_count; i++) {
     int column_idx = find_column_index(schema, constraint->columns[i]);
+
     if (column_idx >= 0 && column_idx < value_count) {
       if (!first) {
-        strcat(where_clause, " AND ");
+        strncat(where_clause, " AND ", 5);
       }
-      
-      char value_str[256];
+
+      char value_str[256] = {0};
       format_column_value(value_str, sizeof(value_str), &values[column_idx]);
-      
-      char condition[512];
-      snprintf(condition, sizeof(condition), "%s = %s", 
-        constraint->columns[i], value_str);
-      strcat(where_clause, condition);
-      
+
+      char condition[512] = {0};
+      snprintf(condition, sizeof(condition), "%s = %s", constraint->columns[i], value_str);
+
+      strncat(where_clause, condition, strlen(condition));
+
       first = false;
+    } else {
+      printf("Skipping column: index invalid or out of value range.\n");
     }
   }
 
-  // Check for existing records
+  printf("\nFinal WHERE clause: '%s'\n", where_clause);
+
   char query[2048];
   snprintf(query, sizeof(query),
-    "SELECT COUNT() FROM %s;", schema->table_name, where_clause);
+    "SELECT COUNT() FROM %s WHERE %s;", schema->table_name, where_clause);
 
-  Result res = process_silent(db->core, query);
-  bool is_unique = (res.exec.code == 0 && res.exec.row_count > 0 && 
+  Result res = process(db->core, query);
+
+  bool is_unique = (res.exec.code == 0 && res.exec.row_count < 0 && 
                     res.exec.rows[0].values[0].int_value == 0);
 
   if (!is_unique) {
@@ -970,7 +973,6 @@ bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* value
 
   bool all_valid = true;
   for (int i = 0; i < constraints.exec.row_count; i++) {
-    LOG_DEBUG("l(table_constr): %d", i);
     Constraint constraint = parse_constraint_from_row(&constraints.exec.rows[i]);
     
     if (!validate_constraint(db, &constraint, schema, values, value_count)) {
