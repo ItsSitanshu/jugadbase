@@ -1082,11 +1082,10 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   // LOG_DEBUG("schema: %s, cc: %d", command.schema->table_name, command.schema->column_count);
 
   parser_consume(parser); 
+  command.columns = calloc(MAX_COLUMNS, sizeof(char *));
 
   if (parser->cur->type == TOK_LP) { 
-    parser_consume(parser);
-    
-    command.columns = calloc(MAX_COLUMNS, sizeof(char *));
+    parser_consume(parser);  
 
     while (parser->cur->type == TOK_ID) {
       command.columns[command.col_count] = strdup(parser->cur->value);
@@ -1110,7 +1109,15 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
       return command;
     }
 
+    // command.specified_order = true;
+
     parser_consume(parser);
+  } else {
+    for (int i = 0; i < command.schema->column_count; i++) {
+      command.columns[i] = strdup(command.schema->columns[i].name);
+    }
+
+    command.col_count = command.schema->column_count;
   }
 
   if (parser->cur->type != TOK_VAL) {
@@ -1123,8 +1130,6 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   command.values = calloc(MAX_OPERATIONS, sizeof(ExprNode*));
   command.row_count = 0;
 
-  command.specified_order = command.col_count == 0;
-
   while (parser->cur->type == TOK_LP) {
     ExprNode** row = calloc(command.schema->column_count, sizeof(ExprNode*));
 
@@ -1133,11 +1138,9 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     uint8_t value_count = 0; 
 
     while (value_count < command.col_count) {
-      int row_idx = command.specified_order ? value_count 
-        : find_column_index(command.schema, command.columns[value_count]);
+      int row_idx = find_column_index(command.schema, command.columns[value_count]);
 
       if (row_idx < 0) {
-        // LOG_DEBUG("%d", command.col_count);
         LOG_DEBUG("Internal: Row index in table '%s' for '%s' was evaluated incorrectly",
             command.schema->table_name, command.columns[value_count]);
         return command;
@@ -1163,8 +1166,8 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     }
 
     if (parser->cur->type != TOK_RP) {
-      LOG_ERROR("Mismatch in number of expected attributes %d and actual attributes %d",
-        command.col_count, value_count - 1);
+      LOG_ERROR("Mismatch in number of expected attributes %d and actual attributes %d, ended on token %s expected closing parentheses",
+        command.col_count, value_count - 1, parser->cur->value);
       return command;
     }
 

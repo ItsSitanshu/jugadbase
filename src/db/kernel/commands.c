@@ -567,7 +567,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   row->null_bitmap = null_bitmap;
   row->row_length = sizeof(row->id) + null_bitmap_size;
   
-  if (specified_order) up_col_count = column_count;
+  // if (specified_order) up_col_count = column_count;
 
   // Initialize all columns as NULL
   for (uint8_t i = 0; i < column_count; i++) {
@@ -580,7 +580,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   bool sequence_confirmations[column_count];
 
   for (uint8_t j = 0; j < up_col_count; j++) {
-    int i = specified_order ? j : find_column_index(schema, columns[j]);
+    int i = find_column_index(schema, columns[j]);
 
     // LOG_INFO("%d: %s type of %d", i, schema->columns[i].name, schema->columns[i].type);
 
@@ -659,6 +659,15 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     }
   }
 
+  if (!is_unsafe) {
+    // LOG_INFO("========= validating constraints for: %d", table_id);
+    if (!validate_all_constraints(db, table_id, row->values, schema->column_count)) {
+      free(row->values);
+      free(row->null_bitmap);
+      return NULL;
+    } 
+  }
+
   BufferPool* pool = &(db->lake[schema_idx]);
   char row_file[MAX_PATH_LENGTH];
   snprintf(row_file, sizeof(row_file), "%s" SEP "%s" SEP "rows.db",
@@ -683,16 +692,6 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     }
   }
 
-
-  if (is_unsafe) return (Row*)row;
-
-  // LOG_INFO("========= validating constraints for: %d", table_id);
-
-  if (!validate_all_constraints(db, table_id, row->values, schema->column_count)) {
-    free(row->values);
-    free(row->null_bitmap);
-    return NULL;
-  }
 
   return (Row*)row;  
 }

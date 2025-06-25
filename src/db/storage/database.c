@@ -227,8 +227,6 @@ void process_file(Database* db, char* filename, bool show) {
   
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
-
-  LOG_ERROR("in parse: %s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
  
   JQLCommand cmd = parser_parse(db);
   while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {

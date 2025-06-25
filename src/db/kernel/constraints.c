@@ -431,16 +431,14 @@ bool validate_unique_constraint(Database* db, Constraint* constraint, TableSchem
     }
   }
 
-  printf("\nFinal WHERE clause: '%s'\n", where_clause);
-
   char query[2048];
   snprintf(query, sizeof(query),
     "SELECT COUNT() FROM %s WHERE %s;", schema->table_name, where_clause);
 
-  Result res = process(db->core, query);
-
-  bool is_unique = (res.exec.code == 0 && res.exec.row_count < 0 && 
-                    res.exec.rows[0].values[0].int_value == 0);
+  // LOG_DEBUG("filter_unique: %s", query);
+      
+  Result res = process_silent(db->core, query);
+  bool is_unique = (res.exec.code == 0 && res.exec.row_count <= 0);
 
   if (!is_unique) {
     LOG_ERROR("UNIQUE constraint '%s' violated", constraint->name);

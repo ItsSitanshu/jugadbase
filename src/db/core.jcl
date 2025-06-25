@@ -7,7 +7,7 @@ INSERT _unsafecon INTO jb_tables (id, name, database_name, owner, created_at) VA
   (3, 'jb_attrdef', 'core', 'sudo', NOW());
 
 INSERT _unsafecon INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
-  (0, 'jb_sequencesid', 0, 1, 0, NULL, false),
+  (0, 'jb_sequencesid', 1, 1, 0, NULL, false),
   (1, 'jb_tablesid', 3, 1, 0, NULL, false);
 INSERT _unsafecon INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
   ('jb_attributeid', 0, 1, 0, NULL, false),
@@ -99,7 +99,7 @@ ALTER TABLE jb_tables ADD CONSTRAINT jb_tables_id_pk PRIMKEY (id);
 ALTER TABLE jb_tables ADD CONSTRAINT jb_tables_name_unique UNIQUE (name);
 
 ALTER TABLE jb_sequences ADD CONSTRAINT jb_sequences_id_pk PRIMKEY (id);
-ALTER TABLE jb_sequences ADD CONSTRAINT jb_sequences_name_unique UNIQUE (name);
+-- ALTER TABLE jb_sequences ADD CONSTRAINT jb_sequences_name_unique UNIQUE (name);
 
 ALTER TABLE jb_indexes ADD CONSTRAINT jb_indexes_id_pk PRIMKEY (id);
 ALTER TABLE jb_indexes ADD CONSTRAINT jb_indexes_tbable_id_fk FRNKEY (table_id) REFERENCES jb_tables(id) ON DELETE CASCADE;

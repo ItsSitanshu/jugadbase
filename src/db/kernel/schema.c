@@ -35,7 +35,7 @@ int64_t find_table(Database* db, char* name) {
   // LOG_DEBUG("> %s", query);
 
   Result res = process_silent(db->core, query);
-  bool success = res.exec.code == 0;
+  bool success = res.exec.code == 0 && res.exec.row_count > 0;
 
   if (!success) {
     LOG_ERROR("Failed to find table '%s'", name);
@@ -291,8 +291,6 @@ bool bootstrap_core_tables(Database* db) {
       return false;
     } 
   }
-
-  LOG_ERROR("%s, cc %d", db->tc[130].schema->table_name, db->tc[130].schema->column_count);
 
   return true;
 }

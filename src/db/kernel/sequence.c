@@ -65,16 +65,17 @@ int64_t create_default_sequence(Database* db, char* name, bool is_unsafe) {
 
   snprintf(query, sizeof(query),
     "%s jb_sequences "
-    "(name, current_value, increment_by, min_value, max_value, cycle)"
-    "VALUES ('%s', 0, 1, 0, NULL, false)"
-    "RETURNING id;",
+    "(name, current_value, increment_by, min_value, max_value, cycle) "
+    "VALUES ('%s', 0, 1, 0, NULL, false) "
+    "RETURNING id; ",
     is_unsafe ? "INSERT _unsafecon INTO" : "INSERT INTO",
     name
   );
 
-  Result res = process_silent(db->core, query);
+  Result res = process(db->core, query);
   bool success = res.exec.code == 0;
-  if (!success || res.exec.alias_limit == 0) {
+
+  if (!success || res.exec.row_count < 1) {
     LOG_ERROR("Failed to create a default sequence '%s'", name);
     return -1;
   }
