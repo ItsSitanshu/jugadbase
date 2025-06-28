@@ -865,7 +865,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
     for (uint16_t row_idx = 0; row_idx < page->num_rows; ++row_idx) {
       Row* row = &page->rows[row_idx];
       
-      if (row->deleted) continue;
+      if (row->deleted || !row) continue;
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
@@ -923,8 +923,13 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
         row->values[update_cols[u]] = new_vals[u];
       }
 
-      row->null_bitmap = (uint8_t*)malloc(null_bitmap_size);
-      memcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
+      if (cmd->bitmap) {
+        row->null_bitmap = (uint8_t*)malloc(null_bitmap_size);
+        memcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
+      } else {
+        row->null_bitmap = (uint8_t*)calloc(null_bitmap_size, 1);
+      }
+
       rows_updated++;
       page->is_dirty = true;
       free(update_cols);

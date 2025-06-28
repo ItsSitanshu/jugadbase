@@ -156,7 +156,7 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
     free_result(&res);
     return NULL;
   } else if (res.exec.row_count > 1) {
-    LOG_ERROR("Interal: found %u conflicting attributes for '%s' - %s", res.exec.row_count, column_name, res.exec.message);
+    LOG_ERROR("Internal: found %u conflicting attributes for '%s' - %s", res.exec.row_count, column_name, res.exec.message);
     parser_restore_state(db->core->parser, state);
     free_result(&res);
     return NULL;

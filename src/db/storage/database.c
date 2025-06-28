@@ -539,6 +539,12 @@ bool load_schema_tc(Database* db, char* table_name) {
     col->name[col_name_length] = '\0';
 
     Attribute* attr = load_attribute(db, table_id, col->name);
+    if (!attr) {
+      LOG_ERROR("Failed to read load attribute.");
+      free(schema->columns);
+      free(schema);
+      return false;
+    }
     col->is_not_null = !attr->is_nullable;
     col->type = attr->data_type;
 
