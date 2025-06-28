@@ -27,14 +27,14 @@ typedef struct ExprNode ExprNode;
 typedef struct ColumnValue ColumnValue;
 typedef struct Function Function;
 
-typedef enum {
+typedef enum FKAction {
   FK_NO_ACTION,
   FK_CASCADE,
   FK_RESTRICT,
   FK_SET_NULL
 } FKAction;
 
-typedef enum {
+typedef enum JQLCommandType {
   CMD_SELECT,
   CMD_INSERT,
   CMD_UPDATE,
@@ -400,27 +400,21 @@ typedef struct {
   ParserState state;
 } Parser;
 
-Parser* parser_init(Lexer* lexer);
-JQLCommand* jql_command_init(JQLCommandType type);
-
-void parser_reset(Parser* parser);
-void parser_free(Parser* parser);
-void jql_command_free(JQLCommand* cmd);
+#ifndef JQL_PARSER_STATEMENTS_H
+#define JQL_PARSER_STATEMENTS_H
 
 JQLCommand parser_parse(Database* db);
-
 JQLCommand parser_parse_create_table(Parser* parser, Database* db);
 JQLCommand parser_parse_insert(Parser *parser, Database* db);
 JQLCommand parser_parse_select(Parser* parser, Database* db);
-void parse_where_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
-void parse_limit_clause(Parser* parser, JQLCommand* command);
-void parse_offset_clause(Parser* parser, JQLCommand* command);
-void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
-
 JQLCommand parser_parse_update(Parser* parser, Database* db);
 JQLCommand parser_parse_delete(Parser* parser, Database* db);
-
 JQLCommand parser_parse_alter_table(Parser* parser, Database* db);
+
+#endif // JQL_PARSER_STATEMENTS_H
+
+#ifndef JQL_PARSER_ALTER_CLAUSES_H
+#define JQL_PARSER_ALTER_CLAUSES_H
 
 bool parse_alter_add_column(Parser* parser, AlterTableCommand* cmd);
 bool parse_alter_drop_column(Parser* parser, AlterTableCommand* cmd);
@@ -433,17 +427,10 @@ bool parse_alter_rename_table(Parser* parser, AlterTableCommand* cmd);
 bool parse_alter_set_owner(Parser* parser, AlterTableCommand* cmd);
 bool parse_alter_set_tablespace(Parser* parser, AlterTableCommand* cmd);
 
-void parser_consume(Parser* parser);
+#endif // JQL_PARSER_ALTER_CLAUSES_H
 
-bool is_valid_data_type(Parser* parser);
-bool is_valid_default(Parser* parser, int column_type, int literal_type);
-bool parser_parse_value(Parser* parser, ColumnValue* col_val);
-bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output);
-AggregateType get_aggregate_type(const char* name);
-
-ParserState parser_save_state(Parser* parser);
-void parser_restore_state(Parser* parser, ParserState state);
-Token* parser_peek_ahead(Parser* parser, int offset);
+#ifndef JQL_PARSER_EXPRESSIONS_H
+#define JQL_PARSER_EXPRESSIONS_H
 
 ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema);
 ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
@@ -458,24 +445,54 @@ ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left)
 ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* left);
 ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* left);
 
+void parse_where_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
+void parse_limit_clause(Parser* parser, JQLCommand* command);
+void parse_offset_clause(Parser* parser, JQLCommand* command);
+void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
+bool parser_parse_column_definition(Parser *parser, JQLCommand *command);
+
 bool parser_parse_constraint(Parser* parser, ColumnDefinition* col_def);
 
-int find_column_index(TableSchema* schema, const char* name);
-bool is_primary_key_column(TableSchema* schema, int column_index);
-void print_column_value(ColumnValue* val);
-char* str_column_value(ColumnValue* val);
-char** stringify_column_array(ColumnValue* array_val, int* out_count);
-void format_column_value(char* out, size_t out_size, ColumnValue* val);
-bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
+bool parser_parse_value(Parser* parser, ColumnValue* col_val);
+bool parser_parse_uuid_string(const char* uuid_str, uint8_t* output);
+bool is_valid_data_type(Parser* parser);
+bool is_valid_default(Parser* parser, int column_type, int literal_type);
 
 bool infer_and_cast_va(size_t count, ...);
 bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def);
 bool infer_and_cast_value_raw(ColumnValue* col_val, uint8_t target_type);
+
+#endif // JQL_PARSER_EXPRESSIONS_H
+  
+#ifndef JQL_PARSER_CORE_H
+#define JQL_PARSER_CORE_H
+
+Parser* parser_init(Lexer* lexer);
+void parser_reset(Parser* parser);
+void parser_free(Parser* parser);
+void parser_consume(Parser* parser);
+JQLCommand* jql_command_init(JQLCommandType type);
+
+ParserState parser_save_state(Parser* parser);
+void parser_restore_state(Parser* parser, ParserState state);
+Token* parser_peek_ahead(Parser* parser, int offset);
+
+int find_column_index(TableSchema* schema, const char* name);
+bool is_primary_key_column(TableSchema* schema, int column_index);
+bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
+AggregateType get_aggregate_type(const char* name);
+
+void print_column_value(ColumnValue* val);
+char* str_column_value(ColumnValue* val);
+char** stringify_column_array(ColumnValue* array_val, int* out_count);
+void format_column_value(char* out, size_t out_size, ColumnValue* val);
 
 void free_expr_node(ExprNode* node);
 void free_column_value(ColumnValue* val);
 void free_column_definition(ColumnDefinition* col_def);
 void free_table_schema(TableSchema* schema);
 void free_jql_command(JQLCommand* cmd);
+
+#endif // JQL_PARSER_CORE_H
 
 #endif // JQL_COMMAND_H

@@ -22,7 +22,10 @@ set(CMAKE_C_STANDARD 11)
 
 set(DB_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/lexer.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/parser.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/core.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/statements.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/expression.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/parser/clauses.c
 
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/commands.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/kernel/constraints.c
