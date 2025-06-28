@@ -400,6 +400,15 @@ typedef struct {
   ParserState state;
 } Parser;
 
+typedef bool (*alter_handler_t)(Parser*, AlterTableCommand*);
+typedef struct AlterHandler {
+  TokenType primary;
+  TokenType secondary;
+  alter_handler_t handler;
+} AlterHandler;
+
+#define __ALTER_HANDLERS __alter_handlers
+
 #ifndef JQL_PARSER_STATEMENTS_H
 #define JQL_PARSER_STATEMENTS_H
 
@@ -469,9 +478,13 @@ bool infer_and_cast_value_raw(ColumnValue* col_val, uint8_t target_type);
 
 Parser* parser_init(Lexer* lexer);
 void parser_reset(Parser* parser);
-void parser_free(Parser* parser);
-void parser_consume(Parser* parser);
+
 JQLCommand* jql_command_init(JQLCommandType type);
+void jql_command_plain_init(JQLCommand* cmd, int cmd_type);
+
+JQLCommand parser_expect(Parser* parser, int expected, char* error_msg);
+JQLCommand parser_expect_nc(Parser* parser, int expected, char* error_msg);
+void parser_consume(Parser* parser);
 
 ParserState parser_save_state(Parser* parser);
 void parser_restore_state(Parser* parser, ParserState state);
@@ -479,6 +492,7 @@ Token* parser_peek_ahead(Parser* parser, int offset);
 
 int find_column_index(TableSchema* schema, const char* name);
 bool is_primary_key_column(TableSchema* schema, int column_index);
+TableSchema* get_validated_table(Database* db, const char* table_name);
 bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr);
 AggregateType get_aggregate_type(const char* name);
 
@@ -486,6 +500,8 @@ void print_column_value(ColumnValue* val);
 char* str_column_value(ColumnValue* val);
 char** stringify_column_array(ColumnValue* array_val, int* out_count);
 void format_column_value(char* out, size_t out_size, ColumnValue* val);
+
+void parser_free(Parser* parser);
 
 void free_expr_node(ExprNode* node);
 void free_column_value(ColumnValue* val);

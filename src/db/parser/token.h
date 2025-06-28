@@ -13,143 +13,144 @@
 #define WRITE_ERRORS_TO 0
 
 typedef struct RowID { uint32_t page_id; uint16_t row_id;} RowID;
+typedef enum TokenType {
+  // Data Types
+  TOK_T_INT,           // INTEGER 
+  TOK_T_VARCHAR,       // VARCHAR
+  TOK_T_CHAR,          // CHAR
+  TOK_T_TEXT,          // TEXT
+  TOK_T_BOOL,          // BOOLEAN
+  TOK_T_FLOAT,         // FLOAT
+  TOK_T_DOUBLE,        // DOUBLE
+  TOK_T_DECIMAL,       // DECIMAL
+  TOK_T_DATE,    
+  TOK_T_TIME,    
+  TOK_T_TIME_TZ,    
+  TOK_T_DATETIME,    
+  TOK_T_DATETIME_TZ,    
+  TOK_T_TIMESTAMP,    
+  TOK_T_TIMESTAMP_TZ,    
+  TOK_T_INTERVAL,
+  TOK_T_BLOB,          // BLOB
+  TOK_T_JSON,          // JSON
+  TOK_T_UUID,          // UUID
+  TOK_T_SERIAL,          // SERIAL
+  TOK_T_UINT,            // UINT
+  
+  TOK_T_STRING,            // More of a universal type
+  TOK_T_TBEV,             // To be evaluated
+
+  // Special tokens
+  TOK_ERR,      // Error token
+  TOK_EOF,      // End-of-file (\0)
+  TOK_ID,       // Identifier (table/column names)
+
+  // Symbols
+  TOK_LP,       // (
+  TOK_RP,       // )
+  TOK_LB,       // [
+  TOK_RB,       // ]
+  TOK_LBR,       // {
+  TOK_RBR,       // }
+  TOK_COM,      // ,
+  TOK_SC,       // ;
+  TOK_EQ,       // =
+  TOK_LT,       // <
+  TOK_GT,       // >
+  TOK_LE,       // <=
+  TOK_GE,       // >=
+  TOK_NE,       // !=
+  TOK_ADD,      // +
+  TOK_SUB,      // -f
+  TOK_MUL,      // *
+  TOK_DIV,      // /
+  TOK_MOD,      // %
+  TOK_DOT,      // .
+  TOK_COL,      // :
+  TOK_PP,       // ||
+  TOK_AA,       // &&
+
+  // Slightly Shortened SQL Keywords
+  TOK_SEL,      // SELECT
+  TOK_INS,      // INSERT
+  TOK_UPD,      // UPDATE
+  TOK_DEL,      // DELETE
+  TOK_CRT,      // CREATE
+  TOK_DRP,      // DROP
+  TOK_ALT,      // ALTER
+  TOK_TBL,      // TABLE
+  TOK_FRM,      // FROM
+  TOK_WR,       // WHERE
+  TOK_AND,      // AND
+  TOK_OR,       // OR
+  TOK_NOT,      // NOT
+  TOK_ODR,      // ORDER
+  TOK_BY,       // BY
+  TOK_GRP,      // GROUP
+  TOK_HAV,      // HAVING
+  TOK_LIM,      // LIM
+  TOK_OFF,      // OFFSET
+  TOK_VAL,      // VALUES
+  TOK_SET,      // SET
+  TOK_INTO,      // INTO
+  TOK_AS,       // AS (alias)
+  TOK_JN,       // JOIN
+  TOK_ON,       // ON
+  TOK_IN,       // IN
+  TOK_IS,       // IS
+  TOK_NL,       // NULL
+  TOK_DST,      // DISTINCT
+  TOK_PK,       // PRIMARY KEY
+  TOK_FK,       // FOREIGN KEY
+  TOK_REF,      // REFERENCES
+  TOK_IDX,      // INDEX
+  TOK_CST,      // CAST
+  TOK_CSE,      // CASE
+  TOK_WHEN,     // WHEN
+  TOK_THEN,     // THEN
+  TOK_ELS,      // ELSE
+  TOK_END,      // END
+  TOK_DEF,      // DEFAULT
+  TOK_CHK,      // CHECK
+  TOK_UNQ,      // UNIQUE
+  TOK_CNST,     // CONSTRAINT 
+  TOK_LIKE,     // LIKE
+  TOK_BETWEEN,  // BETWEEN
+  TOK_IF,  // IF
+  TOK_EXISTS, // EXISTS
+  TOK_CASCADE, // CASCADE
+  TOK_RESTRICT, // RESTRICT
+  TOK_RETURNING, // RETURNING
+  TOK_TO, // TO
+  TOK_RENAME, // RENAME
+  TOK_TABLESPACE, // TABLESPACE
+  TOK_OWNER, // OWNER
+  TOK_KW_ADD,      // ADD
+  TOK_KW_COL,      // COLUMN
+
+  // Sorting & Transactions
+  TOK_ASC,      // ASC (Ascending Sort)
+  TOK_DESC,     // DESC (Descending Sort)
+  TOK_BEG,      // BEGIN (Transaction)
+  TOK_CMT,      // COMMIT
+  TOK_RBK,      // ROLLBACK
+
+  TOK_NO_CONSTRAINTS, // _unsafecon
+
+  // Literals
+  TOK_L_UINT,
+  TOK_L_INT,
+  TOK_L_FLOAT,            // 32-bit floating-point
+  TOK_L_DOUBLE,           // 64-bit double-precision floating-point
+  TOK_L_CHAR,             // 8-bit character
+  TOK_L_STRING,           // Dynamic array of characters (string)
+  TOK_L_BOOL,             // 8-bit boolean
+} TokenType;
 
 typedef struct Token {
   unsigned int line, col;
   char *value;
-  enum TokenType {
-    // Data Types
-    TOK_T_INT,           // INTEGER 
-    TOK_T_VARCHAR,       // VARCHAR
-    TOK_T_CHAR,          // CHAR
-    TOK_T_TEXT,          // TEXT
-    TOK_T_BOOL,          // BOOLEAN
-    TOK_T_FLOAT,         // FLOAT
-    TOK_T_DOUBLE,        // DOUBLE
-    TOK_T_DECIMAL,       // DECIMAL
-    TOK_T_DATE,    
-    TOK_T_TIME,    
-    TOK_T_TIME_TZ,    
-    TOK_T_DATETIME,    
-    TOK_T_DATETIME_TZ,    
-    TOK_T_TIMESTAMP,    
-    TOK_T_TIMESTAMP_TZ,    
-    TOK_T_INTERVAL,
-    TOK_T_BLOB,          // BLOB
-    TOK_T_JSON,          // JSON
-    TOK_T_UUID,          // UUID
-    TOK_T_SERIAL,          // SERIAL
-    TOK_T_UINT,            // UINT
-    
-    TOK_T_STRING,            // More of a universal type
-    TOK_T_TBEV,             // To be evaluated
-
-    // Special tokens
-    TOK_ERR,      // Error token
-    TOK_EOF,      // End-of-file (\0)
-    TOK_ID,       // Identifier (table/column names)
-
-    // Symbols
-    TOK_LP,       // (
-    TOK_RP,       // )
-    TOK_LB,       // [
-    TOK_RB,       // ]
-    TOK_LBR,       // {
-    TOK_RBR,       // }
-    TOK_COM,      // ,
-    TOK_SC,       // ;
-    TOK_EQ,       // =
-    TOK_LT,       // <
-    TOK_GT,       // >
-    TOK_LE,       // <=
-    TOK_GE,       // >=
-    TOK_NE,       // !=
-    TOK_ADD,      // +
-    TOK_SUB,      // -f
-    TOK_MUL,      // *
-    TOK_DIV,      // /
-    TOK_MOD,      // %
-    TOK_DOT,      // .
-    TOK_COL,      // :
-    TOK_PP,       // ||
-    TOK_AA,       // &&
-
-    // Slightly Shortened SQL Keywords
-    TOK_SEL,      // SELECT
-    TOK_INS,      // INSERT
-    TOK_UPD,      // UPDATE
-    TOK_DEL,      // DELETE
-    TOK_CRT,      // CREATE
-    TOK_DRP,      // DROP
-    TOK_ALT,      // ALTER
-    TOK_TBL,      // TABLE
-    TOK_FRM,      // FROM
-    TOK_WR,       // WHERE
-    TOK_AND,      // AND
-    TOK_OR,       // OR
-    TOK_NOT,      // NOT
-    TOK_ODR,      // ORDER
-    TOK_BY,       // BY
-    TOK_GRP,      // GROUP
-    TOK_HAV,      // HAVING
-    TOK_LIM,      // LIM
-    TOK_OFF,      // OFFSET
-    TOK_VAL,      // VALUES
-    TOK_SET,      // SET
-    TOK_INTO,      // INTO
-    TOK_AS,       // AS (alias)
-    TOK_JN,       // JOIN
-    TOK_ON,       // ON
-    TOK_IN,       // IN
-    TOK_IS,       // IS
-    TOK_NL,       // NULL
-    TOK_DST,      // DISTINCT
-    TOK_PK,       // PRIMARY KEY
-    TOK_FK,       // FOREIGN KEY
-    TOK_REF,      // REFERENCES
-    TOK_IDX,      // INDEX
-    TOK_CST,      // CAST
-    TOK_CSE,      // CASE
-    TOK_WHEN,     // WHEN
-    TOK_THEN,     // THEN
-    TOK_ELS,      // ELSE
-    TOK_END,      // END
-    TOK_DEF,      // DEFAULT
-    TOK_CHK,      // CHECK
-    TOK_UNQ,      // UNIQUE
-    TOK_CNST,     // CONSTRAINT 
-    TOK_LIKE,     // LIKE
-    TOK_BETWEEN,  // BETWEEN
-    TOK_IF,  // IF
-    TOK_EXISTS, // EXISTS
-    TOK_CASCADE, // CASCADE
-    TOK_RESTRICT, // RESTRICT
-    TOK_RETURNING, // RETURNING
-    TOK_TO, // TO
-    TOK_RENAME, // RENAME
-    TOK_TABLESPACE, // TABLESPACE
-    TOK_OWNER, // OWNER
-    TOK_KW_ADD,      // ADD
-    TOK_KW_COL,      // COLUMN
-
-    // Sorting & Transactions
-    TOK_ASC,      // ASC (Ascending Sort)
-    TOK_DESC,     // DESC (Descending Sort)
-    TOK_BEG,      // BEGIN (Transaction)
-    TOK_CMT,      // COMMIT
-    TOK_RBK,      // ROLLBACK
-
-    TOK_NO_CONSTRAINTS, // _unsafecon
-
-    // Literals
-    TOK_L_UINT,
-    TOK_L_INT,
-    TOK_L_FLOAT,            // 32-bit floating-point
-    TOK_L_DOUBLE,           // 64-bit double-precision floating-point
-    TOK_L_CHAR,             // 8-bit character
-    TOK_L_STRING,           // Dynamic array of characters (string)
-    TOK_L_BOOL,             // 8-bit boolean
-  } type;
+  TokenType type;
 } Token;
 
 #define VALID_TYPES_MASK ( \

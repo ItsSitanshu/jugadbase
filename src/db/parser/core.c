@@ -14,14 +14,60 @@ void parser_reset(Parser* parser) {
   parser->cur = lexer_next_token(parser->lexer);
 }
 
-void parser_free(Parser* parser) {
-  if (!parser) {
-    return;
+JQLCommand* jql_command_init(JQLCommandType type) {
+  JQLCommand* cmd = malloc(sizeof(JQLCommand));
+  if (!cmd) return NULL;
+
+  cmd->type = type;
+  cmd->schema = malloc(sizeof(TableSchema));
+  if (!cmd->schema) {
+    free(cmd);
+    return NULL;
   }
 
-  lexer_free(parser->lexer);
+  cmd->schema->column_count = 0;
+  cmd->schema->columns = NULL;
+  memset(cmd->schema->table_name, 0, MAX_IDENTIFIER_LEN);
 
-  parser = NULL;
+  cmd->row_count = 0;
+  cmd->values = NULL;
+
+  cmd->constraint_count = 0;
+
+  cmd->function_count = 0;
+
+  memset(cmd->value_counts, 0, MAX_OPERATIONS);
+  memset(cmd->conditions, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->order_by, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->group_by, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->having, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->join_table, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->join_condition, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->transaction, 0, MAX_IDENTIFIER_LEN);
+
+  return cmd;
+}
+
+void jql_command_plain_init(JQLCommand* cmd, int cmd_type) {
+  memset(cmd, 0, sizeof(JQLCommand)); 
+  cmd->type = cmd_type; 
+  cmd->is_invalid = true; 
+}
+
+JQLCommand parser_expect(Parser* parser, int expected, char* error_msg) {
+  if ((parser)->cur->type != (expected)) { 
+    REPORT_ERROR((parser)->lexer, (error_msg));
+    return (JQLCommand){.is_invalid = true}; 
+  }
+
+  parser_consume(parser); 
+}
+
+JQLCommand parser_expect_nc(Parser* parser, int expected, char* error_msg) {
+  if ((parser)->cur->type != (expected)) { 
+    REPORT_ERROR((parser)->lexer, (error_msg));
+    return (JQLCommand){.is_invalid = true}; 
+  }
 }
 
 void parser_consume(Parser* parser) {
@@ -106,6 +152,15 @@ int find_column_index(TableSchema* schema, const char* name) {
 bool is_primary_key_column(TableSchema* schema, int column_index) {
   if (column_index < 0 || column_index >= schema->column_count) return false;
   return schema->columns[column_index].is_primary_key;
+}
+
+TableSchema* get_validated_table(Database* db, const char* table_name) {
+  uint32_t idx = hash_fnv1a(table_name, MAX_TABLES);
+  if (is_struct_zeroed(&db->tc[idx].schema, sizeof(TableSchema))) {
+    LOG_ERROR("Table '%s' doesn't exist", table_name);
+    return NULL;
+  }
+  return db->tc[idx].schema;
 }
 
 bool verify_select_col(SelectColumn* col, ColumnValue* evaluated_expr) {
@@ -275,41 +330,6 @@ void print_column_value(ColumnValue* val) {
 
   printf("]");
 }
-
-JQLCommand* jql_command_init(JQLCommandType type) {
-  JQLCommand* cmd = malloc(sizeof(JQLCommand));
-  if (!cmd) return NULL;
-
-  cmd->type = type;
-  cmd->schema = malloc(sizeof(TableSchema));
-  if (!cmd->schema) {
-    free(cmd);
-    return NULL;
-  }
-
-  cmd->schema->column_count = 0;
-  cmd->schema->columns = NULL;
-  memset(cmd->schema->table_name, 0, MAX_IDENTIFIER_LEN);
-
-  cmd->row_count = 0;
-  cmd->values = NULL;
-
-  cmd->constraint_count = 0;
-
-  cmd->function_count = 0;
-
-  memset(cmd->value_counts, 0, MAX_OPERATIONS);
-  memset(cmd->conditions, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->order_by, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->group_by, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->having, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->join_table, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->join_condition, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->transaction, 0, MAX_IDENTIFIER_LEN);
-
-  return cmd;
-}
-
 
 char* str_column_value(ColumnValue* val) {
   if (val->is_null) {
@@ -601,6 +621,15 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val) {
   }
 }
 
+void parser_free(Parser* parser) {
+  if (!parser) {
+    return;
+  }
+
+  lexer_free(parser->lexer);
+
+  parser = NULL;
+}
 
 void free_expr_node(ExprNode* node) {
   if (!node) return;
