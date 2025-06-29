@@ -196,6 +196,7 @@ AggregateType get_aggregate_type(const char* name) {
 
 void print_column_value(ColumnValue* val) {
   if (val->is_null) {
+    printf("NULL");
     return;
   }
 

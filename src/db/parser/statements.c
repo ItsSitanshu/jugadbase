@@ -252,7 +252,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
         REPORT_ERROR(parser->lexer, "E_INVALID_COLUMN_EXPR");
         return command;
       }
-      
+
       char* alias = NULL;
       if (parser->cur->type == TOK_AS) {
         parser_consume(parser);

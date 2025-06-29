@@ -164,13 +164,13 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         REPORT_ERROR(parser->lexer, "Too many columns in constraint");
         return false;
       }
-      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      strcpy(cmd->constraint.columns[i++], parser->cur->value);
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
     }
 
-    cmd->constraint.ref_columns_count = i;
+    cmd->constraint.columns_count = i;
 
     if (parser->cur->type != TOK_RP) {
       REPORT_ERROR(parser->lexer, "Expected ) at end of constraint column list");
@@ -196,7 +196,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         return false;
       }
 
-      strcpy(cmd->constraint.ref_columns[i], parser->cur->value);
+      strcpy(cmd->constraint.columns[i], parser->cur->value);
       parser_consume(parser);
       i += 1;
 
@@ -204,7 +204,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
       else break;
     }
 
-    cmd->constraint.ref_columns_count = i;
+    cmd->constraint.columns_count = i;
 
     if (parser->cur->type != TOK_RP) {
       REPORT_ERROR(parser->lexer, "Expected ) after UNIQUE column list");
@@ -229,13 +229,13 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         REPORT_ERROR(parser->lexer, "Too many columns in FK constraint");
         return false;
       }
-      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      strcpy(cmd->constraint.columns[i++], parser->cur->value);
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
     }
 
-    cmd->constraint.ref_columns_count = i;
+    cmd->constraint.columns_count = i;
 
     if (parser->cur->type != TOK_RP) {
       REPORT_ERROR(parser->lexer, "Expected ) after FK column list");

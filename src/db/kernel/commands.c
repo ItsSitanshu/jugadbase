@@ -798,7 +798,8 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
 
     for (int j = 0; j < col_count; j++) {
       ExprNode* expr = cmd->sel_columns[j].expr;
-      
+      ColumnValue val = {0};
+
       if (cmd->sel_columns[j].alias) {
         aliases[j] = strdup(cmd->sel_columns[j].alias);
       } else if (expr->type == EXPR_ARRAY_ACCESS) {
@@ -808,8 +809,10 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "%s[%d]", base_name, array_idx);
         aliases[j] = strdup(buffer);
+      } else if (expr->type == EXPR_FUNCTION) {
+        aliases[j] = strdup(expr->fn.name);
       } else {
-        aliases[j] = strdup(cmd->schema->columns[j].name);
+        aliases[j] = strdup(cmd->schema->columns[expr->column.index].name);
       }
       
       if (!expr) {
@@ -820,7 +823,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       if (is_aggregate_col[j]) {
         dst->values[j] = aggregate_results[j];
       } else {
-        ColumnValue val = evaluate_expression(expr, src, schema, db, schema_idx);
+        val = evaluate_expression(expr, src, schema, db, schema_idx);
         dst->values[j] = val;
       }
     }

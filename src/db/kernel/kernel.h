@@ -116,9 +116,8 @@ TableSchema* get_table_schema_by_id(Database* db, int64_t table_id);
 typedef enum ConstraintType {
   CONSTRAINT_PRIMARY_KEY = 1,
   CONSTRAINT_UNIQUE = 2,
-  CONSTRAINT_NOT_NULL = 3,
+  CONSTRAINT_FOREIGN_KEY = 3,
   CONSTRAINT_CHECK = 4,
-  CONSTRAINT_FOREIGN_KEY = 5,
 } ConstraintType;
 
 typedef struct {

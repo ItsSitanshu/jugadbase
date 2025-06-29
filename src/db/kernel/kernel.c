@@ -85,7 +85,7 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
 
         // LOG_DEBUG("%d : alias: %s norm: %s", c, result.exec.aliases[alias_count], col.name);
 
-        if (!val.is_null && result.exec.aliases[alias_count]) {
+        if (result.exec.aliases[alias_count]) {
           printf("%s: ", result.exec.aliases[alias_count]);
           alias_count++;
         }
@@ -95,7 +95,7 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
           break;
         }
 
-        if ((c < cmd->value_counts[0] - 1) && (!val.is_null))  {
+        if ((c < cmd->value_counts[0] - 1))  {
           printf(", ");
         }
       }

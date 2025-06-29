@@ -90,10 +90,12 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
 
   ParserState state = parser_save_state(db->core->parser);
 
+  // LOG_DEBUG("ref array: %s", ref_columns_array);
+
   char query[2048];
   snprintf(query, sizeof(query),
     "INSERT INTO jb_constraints "
-    "(table_id, columns, name, constraint_type, check_expr, ref_table, columns, "
+    "(table_id, columns, name, constraint_type, check_expr, ref_table, ref_columns, "
     "on_delete, on_update, is_deferrable, is_deferred, is_nullable, is_primary, is_unique, created_at) "
     "VALUES (%ld, \"%s\", \"%s\", %d, %s, %s, \"%s\", %d, %d, %s, %s, %s, %s, %s, NOW()) RETURNING id;",
     table_id,
@@ -112,7 +114,7 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
     flags[4]
   );
 
-  // LOG_DEBUG("[+] constraint: %s", query);
+  LOG_DEBUG("[+] constraint: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -494,7 +496,7 @@ bool validate_foreign_key_constraint(Database* db, Constraint* constraint, Table
   // Check if referenced record exists
   char query[2048];
   snprintf(query, sizeof(query),
-    "SELECT TAN(*) FROM %s WHERE %s;", ref_schema->table_name, where_clause);
+    "SELECT COUNT() FROM %s WHERE %s;", ref_schema->table_name, where_clause);
 
   Result res = process_silent(db->core, query);
   bool fk_valid = (res.exec.code == 0 && res.exec.row_count > 0 && 
