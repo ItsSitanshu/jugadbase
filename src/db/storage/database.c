@@ -601,7 +601,7 @@ bool load_schema_tc(Database* db, char* table_name) {
   }
 
   db->tc[idx].schema = schema;
-  LOG_INFO("Created new schema entry in the in memory catalog at %d", idx);
+  LOG_INFO("Created new schema entry in the in memory catalog at %d, %s", idx, schema->table_name);
   return true;
 }
 

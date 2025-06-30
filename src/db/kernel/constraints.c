@@ -114,7 +114,7 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
     flags[4]
   );
 
-  LOG_DEBUG("[+] constraint: %s", query);
+  // LOG_DEBUG("[+] constraint: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -386,9 +386,7 @@ Result get_table_constraints(Database* db, int64_t table_id) {
   return res;
 }
 
-bool validate_not_null_constraint(Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {
-  LOG_DEBUG("!! %s, cc %d", schema->table_name, schema->column_count);
-  
+bool validate_not_null_constraint(Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {  
   for (int i = 0; i < constraint->column_count; i++) {
     int column_idx = find_column_index(schema, constraint->columns[i]);
     if (column_idx >= 0 && column_idx < value_count) {
@@ -436,10 +434,8 @@ bool validate_unique_constraint(Database* db, Constraint* constraint, TableSchem
   char query[2048];
   snprintf(query, sizeof(query),
     "SELECT COUNT() FROM %s WHERE %s;", schema->table_name, where_clause);
-
-  // LOG_DEBUG("filter_unique: %s", query);
       
-  Result res = process_silent(db->core, query);
+  Result res = process_silent(db, query);
   bool is_unique = (res.exec.code == 0 && res.exec.row_count <= 0);
 
   if (!is_unique) {
@@ -462,7 +458,8 @@ bool validate_foreign_key_constraint(Database* db, Constraint* constraint, Table
 
   ParserState state = parser_save_state(db->core->parser);
 
-  TableSchema* ref_schema = get_table_schema_by_id(db->core, constraint->ref_table_id);
+  TableSchema* ref_schema = get_table_schema_by_id(db, constraint->ref_table_id);
+  
   if (!ref_schema) {
     LOG_ERROR("Referenced table not found for constraint '%s'", constraint->name);
     parser_restore_state(db->core->parser, state);
@@ -493,12 +490,11 @@ bool validate_foreign_key_constraint(Database* db, Constraint* constraint, Table
 
   if (!where_clause) return true;
 
-  // Check if referenced record exists
   char query[2048];
   snprintf(query, sizeof(query),
     "SELECT COUNT() FROM %s WHERE %s;", ref_schema->table_name, where_clause);
 
-  Result res = process_silent(db->core, query);
+  Result res = process_silent(db, query);
   bool fk_valid = (res.exec.code == 0 && res.exec.row_count > 0 && 
                    res.exec.rows[0].values[0].int_value > 0);
 
