@@ -23,6 +23,7 @@
 
 struct Database;
 typedef struct Database Database;
+typedef struct ParsedConstraint ParsedConstraint;
 typedef struct ExprNode ExprNode;
 typedef struct ColumnValue ColumnValue;
 typedef struct Function Function;
@@ -177,6 +178,27 @@ typedef struct ExprNode {
   };
 } ExprNode;
 
+typedef struct ParsedConstraint {
+  char constraint_name[MAX_IDENTIFIER_LEN];
+  
+  enum {
+    ALTER_CONSTRAINT_PRIMARY_KEY,
+    ALTER_CONSTRAINT_UNIQUE,
+    ALTER_CONSTRAINT_FOREIGN_KEY,
+    ALTER_CONSTRAINT_CHECK
+  } constraint_type;
+
+  char constraint_expr[TOAST_CHUNK_SIZE];
+  char ref_table[MAX_IDENTIFIER_LEN];
+  char columns[MAX_COLUMNS][MAX_IDENTIFIER_LEN];
+  char ref_columns[MAX_COLUMNS][MAX_IDENTIFIER_LEN];
+
+  int columns_count;
+  int ref_columns_count;
+
+  FKAction on_delete, on_update;
+} ParsedConstraint;
+
 typedef struct {
   char name[MAX_IDENTIFIER_LEN];
 
@@ -201,6 +223,7 @@ typedef struct {
   char check_expr[MAX_IDENTIFIER_LEN];
 
   bool is_array;
+  ParsedConstraint constraint;
 
   bool is_foreign_key;
   char foreign_table[MAX_IDENTIFIER_LEN];
@@ -289,26 +312,7 @@ typedef struct AlterTableCommand {
       bool not_null;                            
     } column;
 
-    struct AlterTableCommandConstraint {
-      char constraint_name[MAX_IDENTIFIER_LEN];
-      
-      enum {
-        ALTER_CONSTRAINT_PRIMARY_KEY,
-        ALTER_CONSTRAINT_UNIQUE,
-        ALTER_CONSTRAINT_FOREIGN_KEY,
-        ALTER_CONSTRAINT_CHECK
-      } constraint_type;
-
-      char constraint_expr[TOAST_CHUNK_SIZE];
-      char ref_table[MAX_IDENTIFIER_LEN];
-      char columns[MAX_COLUMNS][MAX_IDENTIFIER_LEN];
-      char ref_columns[MAX_COLUMNS][MAX_IDENTIFIER_LEN];
-
-      int columns_count;
-      int ref_columns_count;
-
-      FKAction on_delete, on_update;
-    } constraint;
+    ParsedConstraint constraint;
 
     struct {
       char new_table_name[MAX_IDENTIFIER_LEN];
@@ -365,6 +369,7 @@ typedef struct {
   }* order_by; 
 
   AlterTableCommand* alter;
+  ParsedConstraint constraint;
 
   char conditions[MAX_IDENTIFIER_LEN]; // WHERE conditions
   char group_by[MAX_IDENTIFIER_LEN];  // GROUP BY clause

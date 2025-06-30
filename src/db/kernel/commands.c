@@ -66,6 +66,22 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     if (col->has_default) {
       char* default_value = str_column_value(col->default_value);
       insert_attr_default(db->core, table_id, col->name, default_value, cmd->is_unsafe);
+    } 
+
+    if (col->is_primary_key) {
+      insert_constraint(db, table_id, col->constraint.constraint_name,
+        col->constraint.constraint_type, col->constraint.columns, col->constraint.columns_count,
+        strdup(col->constraint.constraint_expr), -1, col->constraint.ref_columns,
+        col->constraint.ref_columns_count, col->constraint.on_delete, col->constraint.on_update);
+    } 
+    
+    if (col->is_foreign_key) {
+      int64_t ref_table = find_table(db, col->constraint.ref_table);
+
+      insert_constraint(db, table_id, col->constraint.constraint_name,
+        col->constraint.constraint_type, col->constraint.columns, col->constraint.columns_count,
+        strdup(col->constraint.constraint_expr), ref_table, col->constraint.ref_columns,
+        col->constraint.ref_columns_count, col->constraint.on_delete, col->constraint.on_update);
     }
   }
 
@@ -343,7 +359,7 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
     }
     
     case ALTER_ADD_CONSTRAINT: {
-      struct AlterTableCommandConstraint cnstr = alter_cmd->constraint;
+      ParsedConstraint cnstr = alter_cmd->constraint;
 
       for (int i = 0; i < cnstr.columns_count; i++) {
         bool found = false;
@@ -593,13 +609,13 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       return NULL;
     }
         
-    if (schema->columns[i].is_foreign_key) {
-      if (!check_foreign_key(db, schema->columns[i], cur)) {
-        LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
-          str_column_value(&cur), schema->columns[i].foreign_table, schema->columns[i].foreign_column);
-        return NULL;
-      }
-    }
+    // if (schema->columns[i].is_foreign_key) {
+    //   if (!check_foreign_key(db, schema->columns[i], cur)) {
+    //     LOG_ERROR("Foreign key constraint evaluation failed: \n> %s does not match any %s.%s",
+    //       str_column_value(&cur), schema->columns[i].foreign_table, schema->columns[i].foreign_column);
+    //     return NULL;
+    //   }
+    // }
 
     row->values[i] = cur;
 
@@ -892,12 +908,12 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
           return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};
         }
         
-        if (schema->columns[col_index].is_foreign_key && !check_foreign_key(db, schema->columns[col_index], evaluated)) {
-          free(update_cols);
-          free(old_vals);
-          free(new_vals);
-          return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};
-        }
+        // if (schema->columns[col_index].is_foreign_key && !check_foreign_key(db, schema->columns[col_index], evaluated)) {
+        //   free(update_cols);
+        //   free(old_vals);
+        //   free(new_vals);
+        //   return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};
+        // }
 
         update_cols[valid_updates] = col_index;
 

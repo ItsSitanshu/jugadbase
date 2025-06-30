@@ -625,55 +625,76 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
     column.is_array = true;
   }
 
+  memset(&column.constraint, 0, sizeof(column.constraint));
+
+
   while (parser->cur->type != TOK_COM && parser->cur->type != TOK_RP) {
     switch (parser->cur->type) {
-      case TOK_PK:
+      case TOK_PK: {
         column.is_primary_key = true;
         column.has_constraints = true;
         column.is_unique = true;
         column.is_not_null = true;
+
+        column.constraint.constraint_type = 1;  
+        strcpy(column.constraint.columns[0], column.name);
+        column.constraint.columns_count = 1;
+
+        sprintf(column.constraint.constraint_name, "%s_%s_pk", command->schema->table_name, column.name);
+
         parser_consume(parser);
         break;
+      }
       case TOK_FK: {
+        sprintf(column.constraint.constraint_name, "%s_%s_fk", command->schema->table_name, column.name);
+
+        column.constraint.constraint_type = 3; // FOREIGN KEY
         column.has_constraints = true;
         column.is_foreign_key = true;
+
         parser_consume(parser);
-        
+
         if (parser->cur->type != TOK_REF) {
           REPORT_ERROR(parser->lexer, "SYE_E_FK_REF");
           return false;
         }
         parser_consume(parser);
-        
+
         if (parser->cur->type != TOK_ID) {
           REPORT_ERROR(parser->lexer, "SYE_E_FK_TBL");
           return false;
         }
-        strcpy(column.foreign_table, parser->cur->value);
-
+        strcpy(column.constraint.ref_table, parser->cur->value);
         parser_consume(parser);
+
         if (parser->cur->type != TOK_LP) {
           REPORT_ERROR(parser->lexer, "SYE_E_FK_LP");
           return false;
         }
-        
         parser_consume(parser);
+
         if (parser->cur->type != TOK_ID) {
           REPORT_ERROR(parser->lexer, "SYE_E_FK_COL");
           return false;
         }
-        strcpy(column.foreign_column, parser->cur->value);
-        
+
+        strcpy(column.constraint.columns[0], column.name); 
+        column.constraint.columns_count = 1;
+
+        strcpy(column.constraint.ref_columns[0], parser->cur->value); 
+        column.constraint.ref_columns_count = 1;
+
         parser_consume(parser);
+
         if (parser->cur->type != TOK_RP) {
           REPORT_ERROR(parser->lexer, "SYE_E_FK_RP");
           return false;
         }
+        parser_consume(parser);
 
-        parser_consume(parser); 
         while (parser->cur->type == TOK_ON) {
           parser_consume(parser);
-          
+
           bool is_delete = false;
           if (parser->cur->type == TOK_DEL) {
             is_delete = true;
@@ -684,7 +705,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
             return false;
           }
           parser_consume(parser);
-          
+
           FKAction action = FK_NO_ACTION;
           if (parser->cur->type == TOK_CASCADE) {
             action = FK_CASCADE;
@@ -705,15 +726,16 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
             REPORT_ERROR(parser->lexer, "SYE_E_INVALID_ACTION");
             return false;
           }
-          
+
           if (is_delete) {
-            column.on_delete = action;
+            column.constraint.on_delete = action;
           } else {
-            column.on_update = action;
+            column.constraint.on_update = action;
           }
         }
         break;
-      }
+    }
+
       case TOK_UNQ:
         column.has_constraints = true;
         column.is_unique = true;
