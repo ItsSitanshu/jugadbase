@@ -61,7 +61,7 @@ static char* employees_setup_queries[] = {
 static void setup_test_data(Database* db, char* setup_queries[]) {
   for (int i = 0; i < 16; i++) {
     printf("Executing setup query #%d: %s\n", i + 1, setup_queries[i]);
-    ExecutionResult res = process(db, setup_queries[i]).exec;
+    ExecutionResult res = process_silent(db, setup_queries[i]).exec;
     ck_assert_int_eq(res.code, 0);
   }
 }

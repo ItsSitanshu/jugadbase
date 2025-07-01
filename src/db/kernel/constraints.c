@@ -642,77 +642,88 @@ bool extract_fk_tuple(Row* row, TableSchema* schema, Constraint* fk, ColumnValue
 }
 
 ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLCommand* cmd,
-                                               Constraint* referencing_fks, int fk_count,
-                                               RowSet* update_set, FKConstraintValues* old_fk,
-                                               FKConstraintValues* new_fk) {
+  Constraint* referencing_fks, int fk_count,
+  RowSet* update_set, FKConstraintValues* old_fk,
+  FKConstraintValues* new_fk) {
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
-  
+
   for (uint16_t page_idx = 0; page_idx < pool->num_pages; ++page_idx) {
     Page* page = pool->pages[page_idx];
     if (!page || page->num_rows == 0) continue;
-  
+
     for (uint16_t row_idx = 0; row_idx < page->num_rows; ++row_idx) {
       Row* row = &page->rows[row_idx];
-      
+
       if (row->deleted || !row) continue;
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) continue;
 
       if (!expand_row_set(update_set)) return (ExecutionResult){1, "OOM"};
       update_set->rows[update_set->count++] = (RowID){page_idx, row_idx};
 
-      Row temp_row = *row;
-      int max_updates = cmd->value_counts[0];
-      
-      for (int k = 0; k < max_updates; ++k) {
-        int col_index = cmd->update_columns[k].index;
-        ColumnValue eval = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
-        ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
-        
-        if (!infer_and_cast_value(&eval, &schema->columns[col_index])) {
-          return (ExecutionResult){-1, "Invalid conversion whilst trying to update row"};
-        }
-
-        if (schema->columns[col_index].is_foreign_key && !check_foreign_key(db, schema->columns[col_index], eval)) {
-          return (ExecutionResult){-1, "Foreign key constraint restricted UPDATE"};
-        }
-
-        if (!is_struct_zeroed(&array_idx, sizeof(ColumnValue))) {
-          temp_row.values[col_index].array.array_value[array_idx.int_value] = eval;
-        } else {
-          temp_row.values[col_index] = eval;
-        }
-      }
-
       for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
         Constraint* fk = &referencing_fks[fk_idx];
-        
+
         ColumnValue* old_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
         ColumnValue* new_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
-        
+
         if (!old_tuple || !new_tuple) {
           free(old_tuple);
           free(new_tuple);
           return (ExecutionResult){1, "OOM"};
         }
-        
-        bool valid_old = extract_fk_tuple(row, schema, fk, old_tuple);
-        bool valid_new = extract_fk_tuple(&temp_row, schema, fk, new_tuple);
-        
-        if (valid_old && valid_new) {
-          if (!store_fk_tuple(&old_fk[fk_idx], old_tuple, fk, schema) ||
-              !store_fk_tuple(&new_fk[fk_idx], new_tuple, fk, schema)) {
-            free(old_tuple);
-            free(new_tuple);
-            return (ExecutionResult){1, "OOM"};
-          }
+
+        if (!extract_fk_tuple(row, schema, fk, old_tuple)) {
+          free(old_tuple);
+          free(new_tuple);
+          continue;
         }
-        
+
+        for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+          int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
+
+          bool will_update = false;
+          ColumnValue new_value = row->values[schema_col_idx];
+
+          for (int k = 0; k < cmd->value_counts[0]; ++k) {
+            if (cmd->update_columns[k].index == schema_col_idx) {
+              ColumnValue eval = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
+              ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
+
+              if (!infer_and_cast_value(&eval, &schema->columns[schema_col_idx])) {
+                free(old_tuple);
+                free(new_tuple);
+                return (ExecutionResult){1, "Invalid type casting in FK update"};
+              }
+
+              if (!is_struct_zeroed(&array_idx, sizeof(ColumnValue))) {
+                new_value = new_value;
+                new_value.array.array_value[array_idx.int_value] = eval;
+              } else {
+                new_value = eval;
+              }
+
+              will_update = true;
+              break;
+            }
+          }
+
+          new_tuple[col_idx] = will_update ? new_value : row->values[schema_col_idx];
+        }
+
+        if (!store_fk_tuple(&old_fk[fk_idx], old_tuple, fk, schema) ||
+          !store_fk_tuple(&new_fk[fk_idx], new_tuple, fk, schema)) {
+          free(old_tuple);
+          free(new_tuple);
+          return (ExecutionResult){1, "OOM"};
+        }
+
         free(old_tuple);
         free(new_tuple);
       }
     }
   }
+
   return (ExecutionResult){0, "Success"};
 }
 
