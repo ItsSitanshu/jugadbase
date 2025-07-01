@@ -873,10 +873,69 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   load_btree_cluster(db, schema->table_name);
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
 
+  int64_t table_id = find_table(db, schema->table_name);
+  if (table_id == -1) {
+    return (ExecutionResult){-1, "Table not found in catalog"};
+  }
+
+  // Get foreign key constraints that reference this table (for ON UPDATE actions)
+  int fk_constraint_count = 0;
+  Constraint* referencing_fks = get_fk_constr_ref_table(db, table_id, &fk_constraint_count);
+
+  // Validate that FK constraints have on_update enabled
+  for (int i = 0; i < fk_constraint_count; i++) {
+    Constraint* fk = &referencing_fks[i];
+    if (fk->ref_column_count != fk->column_count) {
+      return (ExecutionResult){1, "Foreign key constraint validation failed: ref_column_count != column_count"};
+    }
+    if (!fk->on_update) {
+      return (ExecutionResult){1, "UPDATE restricted by foreign key constraint - ON UPDATE not enabled"};
+    }
+  }
+
   BufferPool* pool = &db->lake[schema_idx];
   size_t null_bitmap_size = (schema->column_count + 7) / 8;
   uint32_t rows_updated = 0;
+
+  // Collect rows that will be updated and their old/new FK key values
+  RowID* update_rows = malloc(sizeof(RowID) * 4096);
+  uint32_t update_row_count = 0, update_row_cap = 4096;
   
+  FKConstraintValues* old_fk_constraints = malloc(sizeof(FKConstraintValues) * fk_constraint_count);
+  FKConstraintValues* new_fk_constraints = malloc(sizeof(FKConstraintValues) * fk_constraint_count);
+
+  if (!update_rows || !old_fk_constraints || !new_fk_constraints) {
+    free(update_rows);
+    free(old_fk_constraints);
+    free(new_fk_constraints);
+    return (ExecutionResult){1, "OOM"};
+  }
+
+  // Initialize FK constraint value collectors
+  for (int i = 0; i < fk_constraint_count; i++) {
+    old_fk_constraints[i].values = malloc(sizeof(ColumnValue) * 256 * referencing_fks[i].ref_column_count);
+    old_fk_constraints[i].count = 0;
+    old_fk_constraints[i].capacity = 256;
+    old_fk_constraints[i].column_idx = 0;
+
+    new_fk_constraints[i].values = malloc(sizeof(ColumnValue) * 256 * referencing_fks[i].ref_column_count);
+    new_fk_constraints[i].count = 0;
+    new_fk_constraints[i].capacity = 256;
+    new_fk_constraints[i].column_idx = 0;
+    
+    if (!old_fk_constraints[i].values || !new_fk_constraints[i].values) {
+      for (int j = 0; j <= i; j++) {
+        free(old_fk_constraints[j].values);
+        free(new_fk_constraints[j].values);
+      }
+      free(old_fk_constraints);
+      free(new_fk_constraints);
+      free(update_rows);
+      return (ExecutionResult){1, "OOM"};
+    }
+  }
+  
+  // First pass: collect rows to update and their FK constraint values
   for (uint16_t page_idx = 0; page_idx < pool->num_pages; ++page_idx) {
     Page* page = pool->pages[page_idx];
     if (!page || page->num_rows == 0) continue;
@@ -888,76 +947,337 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) {
         continue;
       }
-  
+
+      // Expand update_rows capacity if needed
+      if (update_row_count >= update_row_cap) {
+        update_row_cap <<= 1;
+        RowID* new_update_rows = realloc(update_rows, sizeof(RowID) * update_row_cap);
+        if (!new_update_rows) {
+          for (int i = 0; i < fk_constraint_count; i++) {
+            free(old_fk_constraints[i].values);
+            free(new_fk_constraints[i].values);
+          }
+          free(old_fk_constraints);
+          free(new_fk_constraints);
+          free(update_rows);
+          return (ExecutionResult){1, "OOM"};
+        }
+        update_rows = new_update_rows;
+      }
+      update_rows[update_row_count++] = (RowID){page_idx, row_idx};
+
+      // Create a temporary row with updated values for FK validation
+      Row temp_row = *row;
       int max_updates = cmd->value_counts[0];
-      uint16_t* update_cols = malloc(sizeof(uint16_t) * max_updates);
-      ColumnValue* old_vals = malloc(sizeof(ColumnValue) * max_updates);
-      ColumnValue* new_vals = malloc(sizeof(ColumnValue) * max_updates);
-  
-      int valid_updates = 0;
+      
       for (int k = 0; k < max_updates; ++k) {
         int col_index = cmd->update_columns[k].index;
-
         ColumnValue evaluated = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
         ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
         
         if (!infer_and_cast_value(&evaluated, &schema->columns[col_index])) {
-          free(update_cols);
-          free(old_vals);
-          free(new_vals);
+          for (int i = 0; i < fk_constraint_count; i++) {
+            free(old_fk_constraints[i].values);
+            free(new_fk_constraints[i].values);
+          }
+          free(old_fk_constraints);
+          free(new_fk_constraints);
+          free(update_rows);
           return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};
         }
-        
-        // if (schema->columns[col_index].is_foreign_key && !check_foreign_key(db, schema->columns[col_index], evaluated)) {
-        //   free(update_cols);
-        //   free(old_vals);
-        //   free(new_vals);
-        //   return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};
-        // }
 
-        update_cols[valid_updates] = col_index;
+        // Check outgoing FK constraints (this table references others)
+        if (schema->columns[col_index].is_foreign_key && !check_foreign_key(db, schema->columns[col_index], evaluated)) {
+          for (int i = 0; i < fk_constraint_count; i++) {
+            free(old_fk_constraints[i].values);
+            free(new_fk_constraints[i].values);
+          }
+          free(old_fk_constraints);
+          free(new_fk_constraints);
+          free(update_rows);
+          return (ExecutionResult){1, "Foreign key constraint restricted UPDATE"};
+        }
 
+        // Apply update to temp row for FK constraint checking
         if (!is_struct_zeroed(&array_idx, sizeof(ColumnValue))) {
-          old_vals[valid_updates] = row->values[col_index];
-          new_vals[valid_updates] = old_vals[valid_updates];
-          new_vals[valid_updates].array.array_value[array_idx.int_value] = evaluated;
-          continue;
+          temp_row.values[col_index].array.array_value[array_idx.int_value] = evaluated;
+        } else {
+          temp_row.values[col_index] = evaluated;
+        }
+      }
+
+      // Collect FK constraint values (old and new) for incoming FK constraints
+      for (int fk_idx = 0; fk_idx < fk_constraint_count; fk_idx++) {
+        Constraint* fk = &referencing_fks[fk_idx];
+        FKConstraintValues* old_fk_constraint = &old_fk_constraints[fk_idx];
+        FKConstraintValues* new_fk_constraint = &new_fk_constraints[fk_idx];
+        
+        // Extract old key tuple
+        ColumnValue* old_key_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
+        ColumnValue* new_key_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
+        
+        if (!old_key_tuple || !new_key_tuple) {
+          free(old_key_tuple);
+          free(new_key_tuple);
+          for (int i = 0; i < fk_constraint_count; i++) {
+            free(old_fk_constraints[i].values);
+            free(new_fk_constraints[i].values);
+          }
+          free(old_fk_constraints);
+          free(new_fk_constraints);
+          free(update_rows);
+          return (ExecutionResult){1, "OOM"};
         }
         
-        old_vals[valid_updates] = row->values[col_index];
-        new_vals[valid_updates] = evaluated;
-        valid_updates++;
-      }
-      
-      if (valid_updates == 0) {
-        free(update_cols);
-        free(old_vals);
-        free(new_vals);
-        continue;
-      }
-      
-      write_update_wal(db->wal, schema_idx, page_idx, row_idx, update_cols, old_vals, new_vals, valid_updates, schema);
-      
-      for (int u = 0; u < valid_updates; ++u) {
-        row->values[update_cols[u]] = new_vals[u];
-      }
+        bool valid_old_tuple = true, valid_new_tuple = true;
+        for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+          int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
+          if (schema_col_idx == -1) {
+            valid_old_tuple = valid_new_tuple = false;
+            break;
+          }
+          old_key_tuple[col_idx] = row->values[schema_col_idx];
+          new_key_tuple[col_idx] = temp_row.values[schema_col_idx];
+        }
+        
+        if (!valid_old_tuple || !valid_new_tuple) {
+          free(old_key_tuple);
+          free(new_key_tuple);
+          continue;
+        }
 
-      if (cmd->bitmap) {
-        row->null_bitmap = (uint8_t*)malloc(null_bitmap_size);
-        memcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
-      } else {
-        row->null_bitmap = (uint8_t*)calloc(null_bitmap_size, 1);
-      }
+        // Store old key tuple if unique
+        bool old_tuple_exists = false;
+        for (uint32_t i = 0; i < old_fk_constraint->count; i++) {
+          ColumnValue* existing_tuple = &old_fk_constraint->values[i * fk->ref_column_count];
+          bool tuple_match = true;
+          
+          for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+            int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
+            void* existing_val = get_column_value_as_pointer(&existing_tuple[col_idx]);
+            void* new_val = get_column_value_as_pointer(&old_key_tuple[col_idx]);
+            int type = schema->columns[schema_col_idx].type;
+            
+            if (key_compare(existing_val, new_val, type) != 0) {
+              tuple_match = false;
+              break;
+            }
+          }
+          
+          if (tuple_match) {
+            old_tuple_exists = true;
+            break;
+          }
+        }
 
-      rows_updated++;
-      page->is_dirty = true;
+        if (!old_tuple_exists) {
+          // Expand capacity if needed
+          if (old_fk_constraint->count >= old_fk_constraint->capacity) {
+            old_fk_constraint->capacity <<= 1;
+            ColumnValue* new_values = realloc(old_fk_constraint->values, 
+                                             sizeof(ColumnValue) * old_fk_constraint->capacity * fk->ref_column_count);
+            if (!new_values) {
+              free(old_key_tuple);
+              free(new_key_tuple);
+              for (int i = 0; i < fk_constraint_count; i++) {
+                free(old_fk_constraints[i].values);
+                free(new_fk_constraints[i].values);
+              }
+              free(old_fk_constraints);
+              free(new_fk_constraints);
+              free(update_rows);
+              return (ExecutionResult){1, "OOM"};
+            }
+            old_fk_constraint->values = new_values;
+          }
+          
+          ColumnValue* dest_tuple = &old_fk_constraint->values[old_fk_constraint->count * fk->ref_column_count];
+          for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+            dest_tuple[col_idx] = old_key_tuple[col_idx];
+          }
+          old_fk_constraint->count++;
+        }
+
+        // Store new key tuple if unique
+        bool new_tuple_exists = false;
+        for (uint32_t i = 0; i < new_fk_constraint->count; i++) {
+          ColumnValue* existing_tuple = &new_fk_constraint->values[i * fk->ref_column_count];
+          bool tuple_match = true;
+          
+          for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+            int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
+            void* existing_val = get_column_value_as_pointer(&existing_tuple[col_idx]);
+            void* new_val = get_column_value_as_pointer(&new_key_tuple[col_idx]);
+            int type = schema->columns[schema_col_idx].type;
+            
+            if (key_compare(existing_val, new_val, type) != 0) {
+              tuple_match = false;
+              break;
+            }
+          }
+          
+          if (tuple_match) {
+            new_tuple_exists = true;
+            break;
+          }
+        }
+
+        if (!new_tuple_exists) {
+          // Expand capacity if needed
+          if (new_fk_constraint->count >= new_fk_constraint->capacity) {
+            new_fk_constraint->capacity <<= 1;
+            ColumnValue* new_values = realloc(new_fk_constraint->values, 
+                                             sizeof(ColumnValue) * new_fk_constraint->capacity * fk->ref_column_count);
+            if (!new_values) {
+              free(old_key_tuple);
+              free(new_key_tuple);
+              for (int i = 0; i < fk_constraint_count; i++) {
+                free(old_fk_constraints[i].values);
+                free(new_fk_constraints[i].values);
+              }
+              free(old_fk_constraints);
+              free(new_fk_constraints);
+              free(update_rows);
+              return (ExecutionResult){1, "OOM"};
+            }
+            new_fk_constraint->values = new_values;
+          }
+          
+          ColumnValue* dest_tuple = &new_fk_constraint->values[new_fk_constraint->count * fk->ref_column_count];
+          for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+            dest_tuple[col_idx] = new_key_tuple[col_idx];
+          }
+          new_fk_constraint->count++;
+        }
+        
+        free(old_key_tuple);
+        free(new_key_tuple);
+      }
+    }
+  }
+
+  // Validate FK constraints before performing updates
+  LOG_DEBUG("Collected unique FK key tuples across %d constraints for UPDATE", fk_constraint_count);
+  for (int fk_idx = 0; fk_idx < fk_constraint_count; fk_idx++) {
+    FKConstraintValues* old_fk_constraint = &old_fk_constraints[fk_idx];
+    FKConstraintValues* new_fk_constraint = &new_fk_constraints[fk_idx];
+    Constraint* fk = &referencing_fks[fk_idx];
+
+    LOG_DEBUG("Constraint %s has %d old key tuples and %d new key tuples", 
+              fk->name, old_fk_constraint->count, new_fk_constraint->count);
+    
+    // if (!handle_on_update_constraints(db, fk, old_fk_constraint, new_fk_constraint)) {
+    //   for (int i = 0; i < fk_constraint_count; i++) {
+    //     free(old_fk_constraints[i].values);
+    //     free(new_fk_constraints[i].values);
+    //   }
+    //   free(old_fk_constraints);
+    //   free(new_fk_constraints);
+    //   free(update_rows);
+    //   return (ExecutionResult){1, "UPDATE restricted by foreign key constraint"};
+    // }
+  }
+
+  // Second pass: perform the actual updates
+  for (uint32_t i = 0; i < update_row_count; i++) {
+    uint16_t page_idx = update_rows[i].page_id;
+    uint16_t row_idx = update_rows[i].row_id;
+    
+    Page* page = pool->pages[page_idx];
+    Row* row = &page->rows[row_idx];
+
+    int max_updates = cmd->value_counts[0];
+    uint16_t* update_cols = malloc(sizeof(uint16_t) * max_updates);
+    ColumnValue* old_vals = malloc(sizeof(ColumnValue) * max_updates);
+    ColumnValue* new_vals = malloc(sizeof(ColumnValue) * max_updates);
+
+    if (!update_cols || !old_vals || !new_vals) {
       free(update_cols);
       free(old_vals);
       free(new_vals);
+      for (int j = 0; j < fk_constraint_count; j++) {
+        free(old_fk_constraints[j].values);
+        free(new_fk_constraints[j].values);
+      }
+      free(old_fk_constraints);
+      free(new_fk_constraints);
+      free(update_rows);
+      return (ExecutionResult){1, "OOM"};
     }
+
+    int valid_updates = 0;
+    for (int k = 0; k < max_updates; ++k) {
+      int col_index = cmd->update_columns[k].index;
+
+      ColumnValue evaluated = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
+      ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
+      
+      if (!infer_and_cast_value(&evaluated, &schema->columns[col_index])) {
+        free(update_cols);
+        free(old_vals);
+        free(new_vals);
+        for (int j = 0; j < fk_constraint_count; j++) {
+          free(old_fk_constraints[j].values);
+          free(new_fk_constraints[j].values);
+        }
+        free(old_fk_constraints);
+        free(new_fk_constraints);
+        free(update_rows);
+        return (ExecutionResult){1, "Invalid conversion whilst trying to update row"};
+      }
+
+      update_cols[valid_updates] = col_index;
+
+      if (!is_struct_zeroed(&array_idx, sizeof(ColumnValue))) {
+        old_vals[valid_updates] = row->values[col_index];
+        new_vals[valid_updates] = old_vals[valid_updates];
+        new_vals[valid_updates].array.array_value[array_idx.int_value] = evaluated;
+      } else {
+        old_vals[valid_updates] = row->values[col_index];
+        new_vals[valid_updates] = evaluated;
+      }
+      valid_updates++;
+    }
+    
+    if (valid_updates == 0) {
+      free(update_cols);
+      free(old_vals);
+      free(new_vals);
+      continue;
+    }
+    
+    write_update_wal(db->wal, schema_idx, page_idx, row_idx, update_cols, old_vals, new_vals, valid_updates, schema);
+    
+    for (int u = 0; u < valid_updates; ++u) {
+      row->values[update_cols[u]] = new_vals[u];
+    }
+
+    if (cmd->bitmap) {
+      row->null_bitmap = (uint8_t*)malloc(null_bitmap_size);
+      memcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
+    } else {
+      row->null_bitmap = (uint8_t*)calloc(null_bitmap_size, 1);
+    }
+
+    rows_updated++;
+    page->is_dirty = true;
+    free(update_cols);
+    free(old_vals);
+    free(new_vals);
   }
+
+  // Cleanup
+  for (int i = 0; i < fk_constraint_count; i++) {
+    free(old_fk_constraints[i].values);
+    free(new_fk_constraints[i].values);
+  }
+  free(old_fk_constraints);
+  free(new_fk_constraints);
+  free(update_rows);
+
   return (ExecutionResult){0, "Update executed successfully", .row_count = rows_updated};
 }
+
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
@@ -982,6 +1302,13 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   int fk_constraint_count = 0;
   Constraint* referencing_fks = get_fk_constr_ref_table(db, table_id, &fk_constraint_count);
 
+  for (int i = 0; i < fk_constraint_count; i++) {
+    Constraint* fk = &referencing_fks[i];
+    if (fk->ref_column_count != fk->column_count) {
+      return (ExecutionResult){1, "Foreign key constraint validation failed: ref_column_count != column_count"};
+    }
+  }
+
   RowID* rows = malloc(sizeof(RowID) * 4096);
   uint32_t row_count = 0, row_cap = 4096;
 
@@ -994,7 +1321,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   }
 
   for (int i = 0; i < fk_constraint_count; i++) {
-    fk_constraints[i].values = malloc(sizeof(ColumnValue) * 256);
+    fk_constraints[i].values = malloc(sizeof(ColumnValue) * 256 * referencing_fks[i].ref_column_count);
     fk_constraints[i].count = 0;
     fk_constraints[i].capacity = 256;
     fk_constraints[i].column_idx = 0; 
@@ -1034,60 +1361,98 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
       }
       rows[row_count++] = (RowID){page_idx, row_idx};
 
+      // Collect complete key tuples for each FK constraint
       for (int fk_idx = 0; fk_idx < fk_constraint_count; fk_idx++) {
         Constraint* fk = &referencing_fks[fk_idx];
+        FKConstraintValues* fk_constraint = &fk_constraints[fk_idx];
         
+        // Extract the complete key tuple for this constraint
+        ColumnValue* key_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
+        if (!key_tuple) {
+          for (int i = 0; i < fk_constraint_count; i++) {
+            free(fk_constraints[i].values);
+          }
+          free(fk_constraints);
+          free(rows);
+          return (ExecutionResult){1, "OOM"};
+        }
+        
+        bool valid_tuple = true;
         for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
           int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
-          if (schema_col_idx == -1) continue;
+          if (schema_col_idx == -1) {
+            valid_tuple = false;
+            break;
+          }
+          key_tuple[col_idx] = row->values[schema_col_idx];
+        }
+        
+        if (!valid_tuple) {
+          free(key_tuple);
+          continue;
+        }
 
-          ColumnValue* col_value = &row->values[schema_col_idx];
-          FKConstraintValues* fk_constraint = &fk_constraints[fk_idx];
+        // Check if this key tuple already exists in our collection
+        bool tuple_exists = false;
+        for (uint32_t i = 0; i < fk_constraint->count; i++) {
+          ColumnValue* existing_tuple = &fk_constraint->values[i * fk->ref_column_count];
+          bool tuple_match = true;
           
-          bool value_exists = false;
-          for (uint32_t i = 0; i < fk_constraint->count; i++) {
-            void* existing_val = get_column_value_as_pointer(&fk_constraint->values[i]);
-            void* new_val = get_column_value_as_pointer(col_value);
+          for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+            int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
+            void* existing_val = get_column_value_as_pointer(&existing_tuple[col_idx]);
+            void* new_val = get_column_value_as_pointer(&key_tuple[col_idx]);
             int type = schema->columns[schema_col_idx].type;
             
-            if (key_compare(existing_val, new_val, type) == 0) {
-              value_exists = true;
+            if (key_compare(existing_val, new_val, type) != 0) {
+              tuple_match = false;
               break;
             }
           }
-
-          if (!value_exists) {
-            if (fk_constraint->count >= fk_constraint->capacity) {
-              fk_constraint->capacity <<= 1;
-              ColumnValue* new_values = realloc(fk_constraint->values, 
-                                               sizeof(ColumnValue) * fk_constraint->capacity);
-              if (!new_values) {
-                for (int i = 0; i < fk_constraint_count; i++) {
-                  free(fk_constraints[i].values);
-                }
-                free(fk_constraints);
-                free(rows);
-                return (ExecutionResult){1, "OOM"};
-              }
-              fk_constraint->values = new_values;
-            }
-            
-
-            fk_constraint->values[fk_constraint->count] = *col_value;
-            fk_constraint->column_idx = schema_col_idx;
-            fk_constraint->count++;
+          
+          if (tuple_match) {
+            tuple_exists = true;
+            break;
           }
         }
+
+        if (!tuple_exists) {
+          // Expand capacity if needed
+          if (fk_constraint->count >= fk_constraint->capacity) {
+            fk_constraint->capacity <<= 1;
+            ColumnValue* new_values = realloc(fk_constraint->values, 
+                                             sizeof(ColumnValue) * fk_constraint->capacity * fk->ref_column_count);
+            if (!new_values) {
+              free(key_tuple);
+              for (int i = 0; i < fk_constraint_count; i++) {
+                free(fk_constraints[i].values);
+              }
+              free(fk_constraints);
+              free(rows);
+              return (ExecutionResult){1, "OOM"};
+            }
+            fk_constraint->values = new_values;
+          }
+          
+          // Store the complete key tuple
+          ColumnValue* dest_tuple = &fk_constraint->values[fk_constraint->count * fk->ref_column_count];
+          for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+            dest_tuple[col_idx] = key_tuple[col_idx];
+          }
+          fk_constraint->count++;
+        }
+        
+        free(key_tuple);
       }
     }
   }
 
-  LOG_DEBUG("Collected unique FK values across %d constraints", fk_constraint_count);
+  LOG_DEBUG("Collected unique FK key tuples across %d constraints", fk_constraint_count);
   for (int fk_idx = 0; fk_idx < fk_constraint_count; fk_idx++) {
     FKConstraintValues* fk_constraint = &fk_constraints[fk_idx];
     Constraint* fk = &referencing_fks[fk_idx];
 
-    LOG_DEBUG("Constraint %s has %d unique values", fk->name, fk_constraints[fk_idx].count);
+    LOG_DEBUG("Constraint %s has %d unique key tuples", fk->name, fk_constraints[fk_idx].count);
     
     if (!handle_on_delete_constraints(db, fk, fk_constraint)) {
       for (int i = 0; i < fk_constraint_count; i++) {
