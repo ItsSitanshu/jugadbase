@@ -140,8 +140,9 @@ typedef struct {
   bool is_unique;
 } Constraint;
 
-int64_t insert_default_constraint(Database* db, int64_t table_id, const char* column_name, const char* default_expr);
-int64_t find_default_constraint(Database* db, int64_t table_id, const char* column_name);
+bool init_fk_constraints(FKConstraintValues* fk_constraints, Constraint* referencing_fks, int count);
+void cleanup_fk_constraints(FKConstraintValues* fk_constraints, int count);
+
 int64_t insert_constraint(Database* db, int64_t table_id, char* name, 
                           int constraint_type, char (*columns)[MAX_IDENTIFIER_LEN], int col_count,
                           char* check_expr, int ref_table, 
@@ -167,6 +168,24 @@ bool validate_primary_key_constraint(Database* db, Constraint* constraint, Table
 bool validate_foreign_key_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
 bool validate_check_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
 bool validate_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
+
+void cleanup_fk_constraints(FKConstraintValues* fk_constraints, int count);
+bool expand_row_set(RowSet* set);
+bool expand_fk_constraint(FKConstraintValues* fk_constraint, int ref_col_count);
+bool tuple_exists(FKConstraintValues* fk_constraint, ColumnValue* key_tuple, 
+                        Constraint* fk, TableSchema* schema);
+bool store_fk_tuple(FKConstraintValues* fk_constraint, ColumnValue* key_tuple, 
+                          Constraint* fk, TableSchema* schema);
+bool extract_fk_tuple(Row* row, TableSchema* schema, Constraint* fk, ColumnValue* tuple);
+ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLCommand* cmd,
+                                               Constraint* referencing_fks, int fk_count,
+                                               RowSet* update_set, FKConstraintValues* old_fk,
+                                               FKConstraintValues* new_fk);
+ExecutionResult collect_fk_tuples_delete(Database* db, TableSchema* schema, JQLCommand* cmd,
+                                               Constraint* referencing_fks, int fk_count,
+                                               RowSet* delete_set, FKConstraintValues* fk_constraints);
+ExecutionResult perform_updates(Database* db, TableSchema* schema, JQLCommand* cmd, RowSet* update_set);
+ExecutionResult perform_deletes(Database* db, TableSchema* schema, RowSet* delete_set);
 
 bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_count);

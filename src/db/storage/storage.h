@@ -22,6 +22,19 @@ typedef struct Row {
   bool deleted;
 } Row;
 
+typedef struct RowSet {
+  RowID* rows;
+  uint32_t count;
+  uint32_t capacity;
+} RowSet;
+
+typedef struct UpdateData {
+  uint16_t* cols;
+  ColumnValue* old_vals;
+  ColumnValue* new_vals;
+  int count;
+} UpdateData;
+
 typedef struct Page {
   uint32_t page_id; 
   uint16_t num_rows;

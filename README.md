@@ -80,6 +80,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Implement row_x.attr = row_y.attr comparisons
 - Implement TOAST for large arrays
 - Add support for database-specific file management, including backing up and restoring individual files
+- Beta version documentation
 - Implement composite primary keys
 - Custom importable C-written functions with <dlfcn.h>
 - Batch mass inserts
