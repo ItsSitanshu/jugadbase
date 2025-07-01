@@ -599,7 +599,7 @@ int key_compare(void* key1, void* key2, int16_t type) {
   */
 
   if (!key1 || !key2) {
-    LOG_ERROR("NULL key passed to key_compare (key1=%p, key2=%p)", key1, key2);
+    // LOG_ERROR("NULL key passed to key_compare (key1=%p, key2=%p)", key1, key2);
     return 0; 
   }
 

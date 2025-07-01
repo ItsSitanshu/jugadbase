@@ -114,7 +114,7 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
     flags[4]
   );
 
-  // LOG_DEBUG("[+] constraint: %s", query);
+  LOG_DEBUG("[+] constraint: %s", query);
 
   Result res = process_silent(db->core, query);
   bool success = res.exec.code == 0;
@@ -601,7 +601,45 @@ bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_colum
   return success;
 }
 
-// Set NULL on delete operation
+Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_count) {
+  if (!db || !out_count) return NULL;
+
+  char query[1024];
+  snprintf(query, sizeof(query),
+    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
+    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
+    "is_deferred, is_nullable, is_primary, is_unique "
+    "FROM jb_constraints WHERE ref_table = %ld AND constraint_type = %d;",
+    table_id, CONSTRAINT_FOREIGN_KEY
+  );
+
+  ParserState saved_state = parser_save_state(db->core->parser);
+  Result res = process(db->core, query);
+  parser_restore_state(db->core->parser, saved_state);
+
+  if (res.exec.code != 0 || res.exec.row_count == 0) {
+    free_result(&res);
+    *out_count = 0;
+    return NULL;
+  }
+
+  int count = res.exec.row_count;
+  Constraint* constraints = malloc(sizeof(Constraint) * count);
+  if (!constraints) {
+    free_result(&res);
+    *out_count = 0;
+    return NULL;
+  }
+
+  for (int i = 0; i < count; i++) {
+    constraints[i] = parse_constraint_from_row(&res.exec.rows[i]);
+  }
+
+  free_result(&res);
+  *out_count = count;
+  return constraints;
+}
+
 bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
   TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
   if (!ref_schema) {
@@ -721,28 +759,33 @@ bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** re
   return success;
 }
 
-// Check if there are no references (for RESTRICT)
-bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+bool check_no_del_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
   TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
   if (!ref_schema) {
     return false;
   }
 
-  // Build WHERE clause
   char where_clause[1024] = {0};
   bool first = true;
+
+  for (int i = 0; i < value_count; i++) {
+    LOG_DEBUG("at %i %s", i, str_column_value(&(values[i])));
+  }
   
   for (int i = 0; i < ref_column_count && i < value_count; i++) {
     if (!first) {
-      strcat(where_clause, " AND ");
+      strncat(where_clause, " AND ", sizeof(where_clause) - strlen(where_clause) - 1);
     }
+
+    int idx = find_column_index(ref_schema, ref_columns[i]);
     
     char value_str[256];
+    LOG_DEBUG("At %s/%d got %s", ref_columns[i], idx, str_column_value(&values[i]));
     format_column_value(value_str, sizeof(value_str), &values[i]);
     
     char condition[512];
     snprintf(condition, sizeof(condition), "%s = %s", ref_columns[i], value_str);
-    strcat(where_clause, condition);
+    strncat(where_clause, condition, sizeof(where_clause) - strlen(where_clause) - 1);
     
     first = false;
   }
@@ -751,12 +794,18 @@ bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_
   snprintf(query, sizeof(query), "SELECT COUNT() FROM %s WHERE %s;", 
     ref_schema->table_name, where_clause);
 
+  LOG_DEBUG("[~frnkey no references]: %s", query);
+
   ParserState state = parser_save_state(db->core->parser);
-  Result res = process_silent(db->core, query);
+  Result res = process(db, query);
   parser_restore_state(db->core->parser, state);
 
-  bool no_references = (res.exec.code == 0 && res.exec.row_count > 0 && 
-                        res.exec.rows[0].values[0].int_value == 0);
+  bool no_references = false;
+  if (res.exec.code == 0 && res.exec.row_count == 1) {
+    // char* count_str = res.exec.rows[0].columns[0];
+    // int count = atoi(count_str);
+    no_references = true;
+  }
 
   if (!no_references) {
     LOG_INFO("Operation restricted due to foreign key references in table '%s'", 
@@ -767,6 +816,57 @@ bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_
 
   return no_references;
 }
+
+bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+  TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
+  if (!ref_schema) return false;
+
+  for (int i = 0; i < value_count; i++) {
+    char where_clause[512] = {0};
+    bool first = true;
+
+    for (int j = 0; j < ref_column_count; j++) {
+      if (!first) strcat(where_clause, " AND ");
+
+      int idx = find_column_index(ref_schema, ref_columns[j]);
+      if (idx == -1) {
+        LOG_WARN("Reference column '%s' not found in schema '%s'", ref_columns[j], ref_schema->table_name);
+        return false;
+      }
+
+      char value_str[256];
+      format_column_value(value_str, sizeof(value_str), &values[i * ref_column_count + j]);
+
+      char condition[512];
+      snprintf(condition, sizeof(condition), "%s = %s", ref_columns[j], value_str);
+      strcat(where_clause, condition);
+
+      first = false;
+    }
+
+    char query[1024];
+    snprintf(query, sizeof(query), "SELECT COUNT() FROM %s WHERE %s;", ref_schema->table_name, where_clause);
+
+    LOG_DEBUG("[~frnkey no references]: %s", query);
+
+    ParserState state = parser_save_state(db->core->parser);
+    Result res = process(db, query);
+    parser_restore_state(db->core->parser, state);
+
+    bool no_references = (res.exec.code == 0 && res.exec.row_count == 0);
+
+    if (!no_references) {
+      LOG_INFO("Operation restricted due to foreign key references in table '%s'", ref_schema->table_name);
+      free_result(&res);
+      return false; 
+    }
+
+    free_result(&res);
+  }
+
+  return true;
+}
+
 
 // Cascade update operation
 bool cascade_update(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* old_values, ColumnValue* new_values, int value_count) {
@@ -794,7 +894,6 @@ bool cascade_update(Database* db, int64_t referencing_table_id, char** ref_colum
     first = false;
   }
 
-  // Build WHERE clause using old values
   char where_clause[1024] = {0};
   first = true;
   
@@ -869,53 +968,32 @@ bool handle_single_on_update_constraint(Database* db, Constraint* constraint, Co
   }
 }
 
-bool handle_on_delete_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count) {
-  if (!db) {
-    LOG_ERROR("Invalid database parameter");
-    return false;
-  }
-
-  char query[512];
-  snprintf(query, sizeof(query),
-    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
-    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
-    "is_deferred, is_nullable, is_primary, is_unique "
-    "FROM jb_constraints WHERE table_id = %ld AND constraint_type = %d;",
-    table_id, CONSTRAINT_FOREIGN_KEY
-  );
-
-  ParserState state = parser_save_state(db->core->parser);
-  Result res = process_silent(db->core, query);
-  parser_restore_state(db->core->parser, state);
-
-  if (res.exec.code != 0) {
-    free_result(&res);
-    return false;
-  }
-
+bool handle_on_delete_constraints(Database* db, Constraint* constraint, FKConstraintValues* fk_constraint) {
   bool success = true;
-  for (int i = 0; i < res.exec.row_count; i++) {
-    Constraint constraint = parse_constraint_from_row(&res.exec.rows[i]);
-    
-    if (!handle_single_on_delete_constraint(db, &constraint, values, value_count)) {
-      success = false;
-    }
-    
-    free_constraint(&constraint);
+
+  switch (constraint->on_delete) {
+    // case FK_CASCADE:
+    // case FK_SET_NULL:
+    case FK_RESTRICT:
+      success = check_no_references(db, constraint->table_id, constraint->columns, 
+        constraint->column_count, fk_constraint->values, fk_constraint->count
+      );
+      break;
+    case FK_NO_ACTION:
+    default:
+      break;
   }
 
-  free_result(&res);
   return success;
 }
 
-// Handle ON UPDATE constraints for foreign keys
+
 bool handle_on_update_constraints(Database* db, int64_t table_id, ColumnValue* old_values, ColumnValue* new_values, int value_count) {
   if (!db) {
     LOG_ERROR("Invalid database parameter");
     return false;
   }
 
-  // Get all foreign key constraints that reference this table
   char query[512];
   snprintf(query, sizeof(query),
     "SELECT id, table_id, columns, name, constraint_type, check_expr, "

@@ -958,7 +958,6 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   }
   return (ExecutionResult){0, "Update executed successfully", .row_count = rows_updated};
 }
-
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
@@ -973,18 +972,42 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   cmd->schema = schema;
 
   int64_t table_id = find_table(db, schema->table_name);
-
   if (table_id == -1) {
-    return (ExecutionResult){
-      .code = -1,
-      .message = "Table not found in catalog",
-    };
+    return (ExecutionResult){-1, "Table not found in catalog"};
   }
 
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
 
-  uint32_t rows_deleted = 0;
+  int fk_constraint_count = 0;
+  Constraint* referencing_fks = get_fk_constr_ref_table(db, table_id, &fk_constraint_count);
+
+  RowID* rows = malloc(sizeof(RowID) * 4096);
+  uint32_t row_count = 0, row_cap = 4096;
+
+  FKConstraintValues* fk_constraints = malloc(sizeof(FKConstraintValues) * fk_constraint_count);
+
+  if (!rows || !fk_constraints) {
+    free(rows); 
+    free(fk_constraints);
+    return (ExecutionResult){1, "OOM"};
+  }
+
+  for (int i = 0; i < fk_constraint_count; i++) {
+    fk_constraints[i].values = malloc(sizeof(ColumnValue) * 256);
+    fk_constraints[i].count = 0;
+    fk_constraints[i].capacity = 256;
+    fk_constraints[i].column_idx = 0; 
+    
+    if (!fk_constraints[i].values) {
+      for (int j = 0; j < i; j++) {
+        free(fk_constraints[j].values);
+      }
+      free(fk_constraints);
+      free(rows);
+      return (ExecutionResult){1, "OOM"};
+    }
+  }
 
   for (uint16_t page_idx = 0; page_idx < pool->num_pages; page_idx++) {
     Page* page = pool->pages[page_idx];
@@ -993,42 +1016,129 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
     for (uint16_t row_idx = 0; row_idx < page->num_rows; row_idx++) {
       Row* row = &page->rows[row_idx];
 
-      if (is_struct_zeroed(row, sizeof(Row))) continue;
-      if (row->deleted) continue;
+      if (is_struct_zeroed(row, sizeof(Row)) || row->deleted) continue;
       if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) continue;
-      
-      write_delete_wal(db->wal, schema_idx, page_idx, row_idx, row, schema);
 
-      for (uint8_t k = 0; k < schema->column_count; k++) {
-        if (schema->columns[k].is_primary_key) {
-          uint8_t btree_idx = hash_fnv1a(schema->columns[k].name, MAX_COLUMNS);
-          void* key = get_column_value_as_pointer(&row->values[k]);
-
-          if (!btree_delete(db->tc[schema_idx].btree[btree_idx], key)) {
-            LOG_WARN("Warning: failed to delete PK from B-tree");
+      if (row_count >= row_cap) {
+        row_cap <<= 1;
+        RowID* new_rows = realloc(rows, sizeof(RowID) * row_cap);
+        if (!new_rows) {
+          for (int i = 0; i < fk_constraint_count; i++) {
+            free(fk_constraints[i].values);
           }
+          free(fk_constraints);
+          free(rows);
+          return (ExecutionResult){1, "OOM"};
         }
+        rows = new_rows;
+      }
+      rows[row_count++] = (RowID){page_idx, row_idx};
 
-        if (row->values[k].is_toast) {
-          bool res = toast_delete(db, row->values[k].toast_object);
+      for (int fk_idx = 0; fk_idx < fk_constraint_count; fk_idx++) {
+        Constraint* fk = &referencing_fks[fk_idx];
+        
+        for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+          int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
+          if (schema_col_idx == -1) continue;
 
-          if (!res) LOG_WARN("Unable to delete TOAST entries \n > run 'fix'");
-        }
+          ColumnValue* col_value = &row->values[schema_col_idx];
+          FKConstraintValues* fk_constraint = &fk_constraints[fk_idx];
+          
+          bool value_exists = false;
+          for (uint32_t i = 0; i < fk_constraint->count; i++) {
+            void* existing_val = get_column_value_as_pointer(&fk_constraint->values[i]);
+            void* new_val = get_column_value_as_pointer(col_value);
+            int type = schema->columns[schema_col_idx].type;
+            
+            if (key_compare(existing_val, new_val, type) == 0) {
+              value_exists = true;
+              break;
+            }
+          }
 
-        if (schema->columns[k].is_foreign_key) {
-          if (!handle_on_delete_constraints(db, table_id, row->values, schema->column_count)) {
-            return (ExecutionResult){1, "DELETE restricted by foreign constraint"};
+          if (!value_exists) {
+            if (fk_constraint->count >= fk_constraint->capacity) {
+              fk_constraint->capacity <<= 1;
+              ColumnValue* new_values = realloc(fk_constraint->values, 
+                                               sizeof(ColumnValue) * fk_constraint->capacity);
+              if (!new_values) {
+                for (int i = 0; i < fk_constraint_count; i++) {
+                  free(fk_constraints[i].values);
+                }
+                free(fk_constraints);
+                free(rows);
+                return (ExecutionResult){1, "OOM"};
+              }
+              fk_constraint->values = new_values;
+            }
+            
+
+            fk_constraint->values[fk_constraint->count] = *col_value;
+            fk_constraint->column_idx = schema_col_idx;
+            fk_constraint->count++;
           }
         }
       }
-
-      RowID id = {page_idx, row_idx + 1};
-      serialize_delete(pool, id);
-      
-      page->is_dirty = true;
-      rows_deleted += 1;
     }
   }
+
+  LOG_DEBUG("Collected unique FK values across %d constraints", fk_constraint_count);
+  for (int fk_idx = 0; fk_idx < fk_constraint_count; fk_idx++) {
+    FKConstraintValues* fk_constraint = &fk_constraints[fk_idx];
+    Constraint* fk = &referencing_fks[fk_idx];
+
+    LOG_DEBUG("Constraint %s has %d unique values", fk->name, fk_constraints[fk_idx].count);
+    
+    if (!handle_on_delete_constraints(db, fk, fk_constraint)) {
+      for (int i = 0; i < fk_constraint_count; i++) {
+        free(fk_constraints[i].values);
+      }
+      free(fk_constraints);
+      free(rows);
+      return (ExecutionResult){1, "DELETE restricted by foreign constraint"};
+    }
+  }
+
+  uint32_t rows_deleted = 0;
+
+  for (uint32_t i = 0; i < row_count; i++) {
+    uint16_t page_idx = rows[i].page_id;
+    uint16_t row_idx = rows[i].row_id;
+
+    Page* page = pool->pages[page_idx];
+    Row* row = &page->rows[row_idx];
+
+    write_delete_wal(db->wal, schema_idx, page_idx, row_idx, row, schema);
+
+    for (uint8_t k = 0; k < schema->column_count; k++) {
+      if (schema->columns[k].is_primary_key) {
+        uint8_t btree_idx = hash_fnv1a(schema->columns[k].name, MAX_COLUMNS);
+        void* key = get_column_value_as_pointer(&row->values[k]);
+
+        if (!btree_delete(db->tc[schema_idx].btree[btree_idx], key)) {
+          LOG_WARN("Warning: failed to delete PK from B-tree");
+        }
+      }
+
+      if (row->values[k].is_toast) {
+        if (!toast_delete(db, row->values[k].toast_object)) {
+          LOG_WARN("Unable to delete TOAST entries \n > run 'fix'");
+        }
+      }
+    }
+
+    RowID id = {page_idx, row_idx + 1};
+    serialize_delete(pool, id);
+
+    page->is_dirty = true;
+    rows_deleted++;
+  }
+
+  for (int i = 0; i < fk_constraint_count; i++) {
+    free(fk_constraints[i].values);
+  }
+  free(fk_constraints);
+  free(rows);
 
   return (ExecutionResult){
     .code = 0,

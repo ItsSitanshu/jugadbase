@@ -169,16 +169,18 @@ bool validate_check_constraint(Database* db, Constraint* constraint, TableSchema
 bool validate_constraint(Database* db, Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count);
 
 bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
+Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_count);
 
 bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 
+bool check_no_del_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 bool check_no_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 bool cascade_update(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* old_values, ColumnValue* new_values, int value_count);
 
 bool handle_single_on_delete_constraint(Database* db, Constraint* constraint, ColumnValue* values, int value_count);
 bool handle_single_on_update_constraint(Database* db, Constraint* constraint, ColumnValue* old_values, ColumnValue* new_values, int value_count);
-bool handle_on_delete_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count);
+bool handle_on_delete_constraints(Database* db, Constraint* constraint, FKConstraintValues* fk_constraint);
 bool handle_on_update_constraints(Database* db, int64_t table_id, ColumnValue* old_values, ColumnValue* new_values, int value_count);
 
 bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count);

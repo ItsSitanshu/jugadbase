@@ -355,6 +355,8 @@ ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema*
   ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &defn);
   type = defn.type;
 
+  if (left.is_null || right.is_null) result.is_null = true;
+
   switch (type) {
     case TOK_T_INT:
     case TOK_T_UINT:
@@ -419,8 +421,7 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
   valid_conversion = infer_and_cast_value(&right, &defn);
 
   if (!valid_conversion) {
-    LOG_ERROR("Invalid conversion whilst trying to evaluate conditions");
-    return (ColumnValue){0};
+    return (ColumnValue){.is_null = true};
   }
 
   int cmp = key_compare(get_column_value_as_pointer(&left),
@@ -436,8 +437,10 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
     case TOK_LE: result.bool_value = (cmp == 0 || cmp == -1); break;
     case TOK_GE: result.bool_value = (cmp == 0 || cmp == 1); break;
     default: result.bool_value = false; break;
-  }
-  
+  }  
+
+  if (left.is_null || right.is_null) result.is_null = true;
+
   return result;
 }
 
@@ -507,26 +510,28 @@ ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema
 ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue left = evaluate_expression(expr->binary.left, row, schema, db, schema_idx);
   if (!left.bool_value) {
-    return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false };
+    return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = false, .is_null = (left.is_null) ? true : false};
   }
   
-  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, db, schema_idx);
-  return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = left.bool_value && right.bool_value };
+  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, db, schema_idx);  
+  return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = left.bool_value && right.bool_value, .is_null = (left.is_null || right.is_null) ? true : false };
 }
 
 ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue left = evaluate_expression(expr->binary.left, row, schema, db, schema_idx);
   if (left.bool_value) {
-    return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = true };
+    return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = true, .is_null = (left.is_null) ? true : false };
   }
   
   ColumnValue right = evaluate_expression(expr->binary.right, row, schema, db, schema_idx);
-  return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = left.bool_value || right.bool_value };
+  
+  return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = left.bool_value || right.bool_value, .is_null = (left.is_null || right.is_null) ? true : false };
 }
 
 ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
   ColumnValue operand = evaluate_expression(expr->unary, row, schema, db, schema_idx);
-  return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = !operand.bool_value };
+    
+  return (ColumnValue){ .type = TOK_T_BOOL, .bool_value = !operand.bool_value, .is_null = (operand.is_null) ? true : false };
 }
 
 
@@ -534,6 +539,6 @@ bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Database*
   if (!expr) return false;
   
   ColumnValue result = evaluate_expression(expr, row, schema, db, schema_idx);
-
+  
   return result.bool_value;
 }

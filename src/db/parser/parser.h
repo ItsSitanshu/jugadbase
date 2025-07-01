@@ -199,6 +199,13 @@ typedef struct ParsedConstraint {
   FKAction on_delete, on_update;
 } ParsedConstraint;
 
+typedef struct FKConstraintValues {
+  ColumnValue* values;
+  uint32_t count;       
+  uint32_t capacity;  
+  uint8_t column_idx; 
+} FKConstraintValues;
+
 typedef struct {
   char name[MAX_IDENTIFIER_LEN];
 
