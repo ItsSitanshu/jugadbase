@@ -916,13 +916,22 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
     free(update_set.rows);
     return result;
   }
-
-  LOG_DEBUG("Collected unique FK key tuples across %d constraints for UPDATE", fk_count);
+  
+  LOG_DEBUG("Collected unique FK key tuples across %d constraints", fk_count);
   for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
     Constraint* fk = &referencing_fks[fk_idx];
-    LOG_DEBUG("Constraint %s has %d old key tuples and %d new key tuples", 
-              fk->name, old_fk[fk_idx].count, new_fk[fk_idx].count);
+    LOG_DEBUG("Constraint %s has %d unique key tuples", fk->name, old_fk[fk_idx].count);
+    
+    if (!handle_on_update_constraints(db, fk, &(old_fk[fk_idx]), &(new_fk[fk_idx]))) {
+      cleanup_fk_constraints(old_fk, fk_count);
+      cleanup_fk_constraints(new_fk, fk_count);
+      free(old_fk);
+      free(new_fk);
+      free(update_set.rows);
+      return (ExecutionResult){1, "UPDATE restricted by foreign constraint"};
+    }
   }
+
 
   result = perform_updates(db, schema, cmd, &update_set);
 

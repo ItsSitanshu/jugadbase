@@ -200,7 +200,7 @@ bool cascade_update(Database* db, int64_t referencing_table_id, char** ref_colum
 bool handle_single_on_delete_constraint(Database* db, Constraint* constraint, ColumnValue* values, int value_count);
 bool handle_single_on_update_constraint(Database* db, Constraint* constraint, ColumnValue* old_values, ColumnValue* new_values, int value_count);
 bool handle_on_delete_constraints(Database* db, Constraint* constraint, FKConstraintValues* fk_constraint);
-bool handle_on_update_constraints(Database* db, int64_t table_id, ColumnValue* old_values, ColumnValue* new_values, int value_count);
+bool handle_on_update_constraints(Database* db, Constraint* constraint, FKConstraintValues* old_fk, FKConstraintValues* new_fk);
 
 bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count);
 
