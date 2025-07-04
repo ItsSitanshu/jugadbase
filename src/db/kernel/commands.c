@@ -73,7 +73,12 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
         col->constraint.constraint_type, col->constraint.columns, col->constraint.columns_count,
         strdup(col->constraint.constraint_expr), -1, col->constraint.ref_columns,
         col->constraint.ref_columns_count, col->constraint.on_delete, col->constraint.on_update);
-    } 
+    } else if (col->is_unique) {
+      insert_constraint(db, table_id, col->constraint.constraint_name,
+        col->constraint.constraint_type, col->constraint.columns, col->constraint.columns_count,
+        strdup(col->constraint.constraint_expr), -1, col->constraint.ref_columns,
+        col->constraint.ref_columns_count, col->constraint.on_delete, col->constraint.on_update);
+    }
     
     if (col->is_foreign_key) {
       int64_t ref_table = find_table(db, col->constraint.ref_table);

@@ -1012,6 +1012,8 @@ bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_c
   snprintf(query, sizeof(query), "UPDATE %s SET %s WHERE %s;", 
     ref_schema->table_name, set_clause, where_clause);
 
+  LOG_DEBUG("[~frnkey set null]: %s", query);
+
   ParserState state = parser_save_state(db->core->parser);
   Result res = process_silent(db->core, query);
   parser_restore_state(db->core->parser, state);
@@ -1271,6 +1273,13 @@ bool handle_on_update_constraints(Database* db, Constraint* constraint, FKConstr
       if (!cascade_update(db, constraint->table_id, constraint->columns,
                           constraint->column_count, old_fk->values, 
                           new_fk->values, constraint->column_count)) {
+        return false;
+      }
+      return true;
+    case FK_SET_NULL:
+      if (!set_null_on_delete(db, constraint->table_id, constraint->columns,
+                              constraint->column_count, old_fk->values, 
+                              constraint->column_count)) {
         return false;
       }
       return true;

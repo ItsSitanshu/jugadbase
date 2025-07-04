@@ -636,7 +636,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         column.is_unique = true;
         column.is_not_null = true;
 
-        column.constraint.constraint_type = 1;  
+        column.constraint.constraint_type = ALTER_CONSTRAINT_PRIMARY_KEY;  
         strcpy(column.constraint.columns[0], column.name);
         column.constraint.columns_count = 1;
 
@@ -648,7 +648,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
       case TOK_FK: {
         sprintf(column.constraint.constraint_name, "%s_%s_fk", command->schema->table_name, column.name);
 
-        column.constraint.constraint_type = 3; // FOREIGN KEY
+        column.constraint.constraint_type = ALTER_CONSTRAINT_FOREIGN_KEY;
         column.has_constraints = true;
         column.is_foreign_key = true;
 
@@ -734,13 +734,22 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
           }
         }
         break;
-    }
-
-      case TOK_UNQ:
+      }
+      case TOK_UNQ: {
         column.has_constraints = true;
         column.is_unique = true;
+
+        column.constraint.constraint_type = ALTER_CONSTRAINT_UNIQUE;
+        strcpy(column.constraint.columns[0], column.name);
+        column.constraint.columns_count = 1;
+
+        sprintf(column.constraint.constraint_name, "%s_%s_unq", command->schema->table_name, column.name);
+
         parser_consume(parser);
         break;
+      }
+
+
       case TOK_NOT:
         parser_consume(parser); 
 
