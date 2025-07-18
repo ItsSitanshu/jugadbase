@@ -551,7 +551,7 @@ bool validate_constraint(Database* db, Constraint* constraint, TableSchema* sche
       return validate_check_constraint(db, constraint, schema, values, value_count);
     
     default:
-      LOG_WARN("Unknown constraint type: %d", constraint->constraint_type);
+      LOG_WARN("Unknown constraint type: %d called %s", constraint->constraint_type, constraint->name);
       return true; // Allow unknown constraints to pass
   }
 }
@@ -969,7 +969,7 @@ Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_cou
   return constraints;
 }
 
-bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+bool set_null(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
   TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
   if (!ref_schema) {
     return false;
@@ -1015,7 +1015,7 @@ bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_c
   LOG_DEBUG("[~frnkey set null]: %s", query);
 
   ParserState state = parser_save_state(db->core->parser);
-  Result res = process_silent(db->core, query);
+  Result res = process_silent(db, query);
   parser_restore_state(db->core->parser, state);
 
   bool success = (res.exec.code == 0);
@@ -1277,7 +1277,7 @@ bool handle_on_update_constraints(Database* db, Constraint* constraint, FKConstr
       }
       return true;
     case FK_SET_NULL:
-      if (!set_null_on_delete(db, constraint->table_id, constraint->columns,
+      if (!set_null(db, constraint->table_id, constraint->columns,
                               constraint->column_count, old_fk->values, 
                               constraint->column_count)) {
         return false;
@@ -1307,7 +1307,13 @@ bool handle_on_delete_constraints(Database* db, Constraint* constraint, FKConstr
         constraint->column_count, fk_constraint->values, fk_constraint->count
       );
       break;
-    // case FK_SET_NULL:
+    case FK_SET_NULL:
+      success = set_null(db, constraint->table_id, constraint->columns, 
+        constraint->column_count, fk_constraint->values, fk_constraint->count
+      );
+
+      LOG_DEBUG("[~frnkey set null]: %s", success ? "Success" : "Failed");
+      break;
     case FK_RESTRICT:
       success = check_no_references(db, constraint->table_id, constraint->columns, 
         constraint->column_count, fk_constraint->values, fk_constraint->count

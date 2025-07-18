@@ -178,15 +178,17 @@ typedef struct ExprNode {
   };
 } ExprNode;
 
+typedef enum ConstraintType {
+  CONSTRAINT_PRIMARY_KEY = 1,
+  CONSTRAINT_UNIQUE = 2,
+  CONSTRAINT_FOREIGN_KEY = 3,
+  CONSTRAINT_CHECK = 4,
+} ConstraintType;
+
 typedef struct ParsedConstraint {
   char constraint_name[MAX_IDENTIFIER_LEN];
   
-  enum {
-    ALTER_CONSTRAINT_PRIMARY_KEY,
-    ALTER_CONSTRAINT_UNIQUE,
-    ALTER_CONSTRAINT_FOREIGN_KEY,
-    ALTER_CONSTRAINT_CHECK
-  } constraint_type;
+  ConstraintType constraint_type;
 
   char constraint_expr[TOAST_CHUNK_SIZE];
   char ref_table[MAX_IDENTIFIER_LEN];

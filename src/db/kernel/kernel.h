@@ -113,12 +113,6 @@ TableSchema* get_table_schema_by_id(Database* db, int64_t table_id);
 #ifndef KERNEL_CONSTRAINTS_H
 #define KERNEL_CONSTRAINTS_H
 
-typedef enum ConstraintType {
-  CONSTRAINT_PRIMARY_KEY = 1,
-  CONSTRAINT_UNIQUE = 2,
-  CONSTRAINT_FOREIGN_KEY = 3,
-  CONSTRAINT_CHECK = 4,
-} ConstraintType;
 
 typedef struct {
   int64_t id;
@@ -190,7 +184,7 @@ ExecutionResult perform_deletes(Database* db, TableSchema* schema, RowSet* delet
 bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_count);
 
-bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
+bool set_null(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 
 bool check_no_del_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);

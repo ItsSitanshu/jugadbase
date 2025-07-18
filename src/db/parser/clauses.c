@@ -636,7 +636,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         column.is_unique = true;
         column.is_not_null = true;
 
-        column.constraint.constraint_type = ALTER_CONSTRAINT_PRIMARY_KEY;  
+        column.constraint.constraint_type = CONSTRAINT_PRIMARY_KEY;  
         strcpy(column.constraint.columns[0], column.name);
         column.constraint.columns_count = 1;
 
@@ -648,7 +648,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
       case TOK_FK: {
         sprintf(column.constraint.constraint_name, "%s_%s_fk", command->schema->table_name, column.name);
 
-        column.constraint.constraint_type = ALTER_CONSTRAINT_FOREIGN_KEY;
+        column.constraint.constraint_type = CONSTRAINT_FOREIGN_KEY;
         column.has_constraints = true;
         column.is_foreign_key = true;
 
@@ -739,7 +739,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         column.has_constraints = true;
         column.is_unique = true;
 
-        column.constraint.constraint_type = ALTER_CONSTRAINT_UNIQUE;
+        column.constraint.constraint_type = CONSTRAINT_UNIQUE;
         strcpy(column.constraint.columns[0], column.name);
         column.constraint.columns_count = 1;
 

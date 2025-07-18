@@ -450,6 +450,11 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
   uint16_t str_len, max_len;
   bool is_toast_pointer = false;
 
+  if (col_val->is_null) {
+    memset(buffer + offset, 0, sizeof(int64_t));
+    return sizeof(int64_t);
+  }
+
   if (col_val->is_array && col_def->is_array) {
     return write_array_value_to_buffer(buffer, col_val, col_def);
   }
