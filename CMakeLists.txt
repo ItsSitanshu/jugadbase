@@ -46,6 +46,7 @@ set(DB_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/fs.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/storage.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/wal.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/syscache.c
 )
 
 set(UTILS_SOURCES
