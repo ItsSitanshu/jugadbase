@@ -58,7 +58,8 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Implement `DEFAULT` values~~
 - ~~Implement array conditionals / expressions~~
 - ~~Implement foreign constraints~~
-- Design casading  
+- ~~Design casading~~
+- Implement constraint cache for efficiency  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
 - Implement a permission check layer
 - Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)

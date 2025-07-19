@@ -4,7 +4,11 @@ description: Developer Docs for
 baseurl: "/jugadbase"
 url: "https://itssitanshu.github.io/"
 
-theme: just-the-docs
+remote_theme: pmarsceill/just-the-docs
+plugins:
+  - jekyll-remote-theme
+  - jekyll-feed
+  - jekyll-seo-tag
 
 plugins:
   - jekyll-feed
