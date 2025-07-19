@@ -1,5 +1,11 @@
 ---
 title: Flags
+parent: 
+nav_order: 1
+---
+
+---
+title: Flags
 ---
 
 # `__fl_<x>` Internal Flag System
