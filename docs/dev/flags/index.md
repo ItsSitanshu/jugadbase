@@ -1,3 +1,7 @@
+---
+title: Flags
+---
+
 # `__fl_<x>` Internal Flag System
 
 The `__fl_<x>` system (short for *force logic flags*) is a set of internal, engine-level flags designed to override or bypass certain parts of the standard query execution pipeline in trusted, non-user-facing contexts such as migrations, recovery, or system-level operations.
