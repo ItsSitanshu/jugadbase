@@ -9,44 +9,26 @@ plugins:
   - jekyll-remote-theme
   - jekyll-feed
   - jekyll-seo-tag
+  - jekyll-include-cache
 
 just_the_docs:
   search_enabled: true
   dark_mode: true
-  sidebar:
-    nav:
-      - title: Developer Docs
-        url: /jugadbase/dev/
-        items:
-          - title: Flags
-            url: /jugadbase/dev/flags/
-          - title: Architecture
-            url: /jugadbase/dev/architecture/
-          - title: API Reference
-            url: /jugadbase/dev/api_reference/
-          - title: Tutorials
-            url: /jugadbase/dev/tutorials/
-          - title: SQL Syntax
-            url: /jugadbase/dev/sql_syntax/
-          - title: Contributing
-            url: /jugadbase/dev/contributing/
-          - title: Roadmap
-            url: /jugadbase/dev/roadmap/
-
-      - title: User Docs
-        url: /jugadbase/user/
-        items:
-          - title: Getting Started
-            url: /jugadbase/user/getting_started/
-          - title: Installation
-            url: /jugadbase/user/installation/
-          - title: Usage
-            url: /jugadbase/user/usage/
-          - title: CLI Reference
-            url: /jugadbase/user/cli_reference/
-          - title: Administration
-            url: /jugadbase/user/administration/
-          - title: Troubleshooting
-            url: /jugadbase/user/troubleshooting/
-          - title: FAQ
-            url: /jugadbase/user/faq/
+  nav_order:
+    - index.md
+    - dev/index.md
+    - dev/flags.md
+    - dev/architecture.md
+    - dev/api_reference.md
+    - dev/tutorials.md
+    - dev/sql_syntax.md
+    - dev/contributing.md
+    - dev/roadmap.md
+    - user/index.md
+    - user/getting_started.md
+    - user/installation.md
+    - user/usage.md
+    - user/cli_reference.md
+    - user/administration.md
+    - user/troubleshooting.md
+    - user/faq.md
