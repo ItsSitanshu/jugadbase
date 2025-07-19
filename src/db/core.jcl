@@ -1,26 +1,25 @@
 -- jb.core - version b.0.4
 
-INSERT _unsafecon INTO jb_tables (id, name, database_name, owner, created_at) VALUES
+INSERT __fl_a INTO jb_tables (id, name, database_name, owner, created_at) VALUES
   (0, 'jb_tables', 'core', 'sudo', NOW()),
   (1, 'jb_sequences', 'core', 'sudo', NOW()),
   (2, 'jb_attribute', 'core', 'sudo', NOW()),
   (3, 'jb_attrdef', 'core', 'sudo', NOW());
 
-INSERT _unsafecon INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
+INSERT __fl_a INTO jb_sequences (id, name, current_value, increment_by, min_value, max_value, cycle) VALUES
   (0, 'jb_sequencesid', 1, 1, 0, NULL, false),
-  (1, 'jb_tablesid', 3, 1, 0, NULL, false);
-INSERT _unsafecon INTO jb_sequences (name, current_value, increment_by, min_value, max_value, cycle) VALUES
-  ('jb_attributeid', 0, 1, 0, NULL, false),
-  ('jb_attrdefid', 0, 1, 0, NULL, false);
+  (1, 'jb_tablesid', 3, 1, 0, NULL, false),
+  (2, 'jb_attributeid', 0, 1, 0, NULL, false),
+  (3, 'jb_attrdefid', 0, 1, 0, NULL, false);
 
-INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT __fl_a INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (0, "id", 19, 0, true, false, false, NOW()),
 (0, "name", 3, 1, false, false, false, NOW()),
 (0, "database_name", 3, 2, true, false, false, NOW()),
 (0, "owner", 3, 3, true, true, false, NOW()),
 (0, "created_at", 13, 4, true, false, false, NOW());
 
-INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT __fl_a INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (1, "id", 19, 0, true, false, false, NOW()),
 (1, "name", 3, 1, true, false, false, NOW()),
 (1, "current_value", 0, 2, false, true, false, NOW()),
@@ -29,7 +28,7 @@ INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_p
 (1, "max_value", 0, 5, true, false, false, NOW()),
 (1, "cycle", 4, 6, true, false, false, NOW());
 
-INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT __fl_a INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (2, "id", 19, 0, true, false, false, NOW()),
 (2, "table_id", 0, 1, true, false, false, NOW()),
 (2, "column_name", 3, 2, true, false, false, NOW()),
@@ -40,14 +39,14 @@ INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_p
 (2, "has_constraints", 4, 7, true, false, false, NOW()),
 (2, "created_at", 13, 8, true, false, false, NOW());
 
-INSERT _unsafecon INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
+INSERT __fl_a INTO jb_attribute (table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) VALUES
 (3, "id", 19, 0, true, false, false, NOW()),
 (3, "table_id", 0, 1, false, false, false, NOW()),
 (3, "column_name", 3, 2, false, false, false, NOW()),
 (3, "default_expr", 3, 3, false, false, false, NOW()),
 (3, "created_at", 13, 4, true, false, false, NOW());
 
-CREATE _unsafecon TABLE jb_constraints (
+CREATE __fl_a TABLE jb_constraints (
   id SERIAL,
   table_id INT,
   columns TEXT[],
@@ -100,6 +99,8 @@ ALTER TABLE jb_tables ADD CONSTRAINT jb_tables_name_unique UNIQUE (name);
 
 ALTER TABLE jb_sequences ADD CONSTRAINT jb_sequences_id_pk PRIMKEY (id);
 -- ALTER TABLE jb_sequences ADD CONSTRAINT jb_sequences_name_unique UNIQUE (name);
+
+SELECT * FROM jb_tables;
 
 ALTER TABLE jb_indexes ADD CONSTRAINT jb_indexes_id_pk PRIMKEY (id);
 ALTER TABLE jb_indexes ADD CONSTRAINT jb_indexes_tbable_id_fk FRNKEY (table_id) REFERENCES jb_tables(id) ON DELETE CASCADE;

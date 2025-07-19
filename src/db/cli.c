@@ -59,32 +59,29 @@ int main(int argc, char* argv[]) {
       continue;
     }
     
-    if (strcmp(input, "exit") == 0 || strcmp(input, "quit") == 0) {
-      free(input);
-      break;
-    }
-    
     if (is_cluster_cmd(input)) {
       process_cluster_cmd(cluster_manager, &db, input);
-    } else if (db) {
-      if (!process_cmd(cluster_manager, db, input)) {
-        Result result = process(db, input);
-        
-        if (result.exec.code == 0) {
-          char output_buffer[8192];
-          output_result(config, output_buffer);
-          
-          if (config->output_mode == OUTPUT_FILE && config->output_filename) {
-            print_text_table_to_file(result.exec, result.cmd, config->output_filename);
-          }
-        }
-        
-        free_result(&result);
-      }
     } else {
-      const char* msg = "No active database. Use .cluster commands to create or select a database.\n";
-      output_result(config, msg);
-    }
+      if (process_cmd_no_db(cluster_manager, input)) {
+      } else if (db) {
+        if (!process_cmd_with_db(db, input)) {
+          Result result = process(db, input);
+
+          if (result.exec.code == 0) {
+            char output_buffer[8192];
+            output_result(config, output_buffer);
+
+            if (config->output_mode == OUTPUT_FILE && config->output_filename) {
+              print_text_table_to_file(result.exec, result.cmd, config->output_filename);
+            }
+          }
+          free_result(&result);
+        }
+      } else {
+        const char* msg = "Lost? Use help command or read documentation at https://itssitanshu.github.io/jugadbase/\n";
+        output_result(config, msg);
+      }
+    } 
 
     free(input);
   }
