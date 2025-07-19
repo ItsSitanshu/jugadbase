@@ -13,12 +13,14 @@ typedef struct ConstraintCacheEntry {
   UT_hash_handle hh_id;      // by constraint.id
   UT_hash_handle hh_name;    // by constraint.name
   UT_hash_handle hh_tableid; // by constraint.table_id
+  UT_hash_handle hh_refid; // by constraint.table_id
 } ConstraintCacheEntry;
 
 typedef struct SysCache {
   ConstraintCacheEntry* by_id;
   ConstraintCacheEntry* by_name;
   ConstraintCacheEntry* by_table_id;
+  ConstraintCacheEntry* by_ref_id;
 } SysCache;
 
 typedef struct ConstraintListNode {

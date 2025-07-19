@@ -1,11 +1,14 @@
 #ifndef KERNEL_H
 #define KERNEL_H
 
+#include <stdarg.h>
+
 #include "storage/database.h"
+
 #include "internal/functions.h"
+
 #include "utils/log.h"
 #include "utils/security.h"
-#include <stdarg.h>
 
 typedef struct {
   int code;

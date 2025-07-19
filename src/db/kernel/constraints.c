@@ -1,5 +1,7 @@
 #include "kernel/kernel.h"
 
+#include "storage/syscache.h"
+
 bool init_fk_constraints(FKConstraintValues* fk_constraints, Constraint* referencing_fks, int count) {
   for (int i = 0; i < count; i++) {
     fk_constraints[i].values = malloc(sizeof(ColumnValue) * 256 * referencing_fks[i].ref_column_count);
@@ -131,36 +133,20 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
   return value;
 }
 
-
 int64_t find_constraint_by_name(Database* db, int64_t table_id, const char* name) {
-  if (!db || !name) {
+  if (!db || !db->constr_cache || !name) {
     LOG_ERROR("Invalid parameters to find_constraint_by_name");
     return -1;
   }
 
-  if (!db->core) db->core = db;
-
-  ParserState state = parser_save_state(db->core->parser);
-
-  char query[512];
-  snprintf(query, sizeof(query),
-    "SELECT id FROM jb_constraints WHERE table_id = %ld AND name = '%s';",
-    table_id, name
-  );
-
-  Result res = process_silent(db->core, query);
-  bool success = res.exec.code == 0 && res.exec.row_count > 0;
-
-  int64_t value = -1;
-  if (success) {
-    value = res.exec.rows[0].values[0].int_value;
+  Constraint* constraint = syscache_get_constraint_by_name(db->constr_cache, name);
+  if (constraint && constraint->table_id == table_id) {
+    return constraint->id;
   }
 
-  parser_restore_state(db->core->parser, state);
-  free_result(&res);
-
-  return value;
+  return -1;
 }
+
 
 bool delete_constraint(Database* db, int64_t constraint_id) {
   if (!db) {
@@ -357,32 +343,6 @@ void free_constraint(Constraint* constraint) {
     free(constraint->name);
     free(constraint->check_expr);
   }
-}
-
-Result get_table_constraints(Database* db, int64_t table_id) {
-  if (!db) {
-    LOG_ERROR("Invalid database parameter");
-    Result empty_result = {0};
-    return empty_result;
-  }
-
-  if (!db->core) db->core = db;
-
-  ParserState state = parser_save_state(db->core->parser);
-
-  char query[512];
-  snprintf(query, sizeof(query),
-    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
-    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
-    "is_deferred, is_nullable, is_primary, is_unique "
-    "FROM jb_constraints WHERE table_id = %ld;",
-    table_id
-  );
-
-  Result res = process_silent(db->core, query);
-  parser_restore_state(db->core->parser, state);
-
-  return res;
 }
 
 bool validate_not_null_constraint(Constraint* constraint, TableSchema* schema, ColumnValue* values, int value_count) {  
@@ -932,43 +892,42 @@ bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_colum
 }
 
 Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_count) {
-  if (!db || !out_count) return NULL;
+  if (!db || !db->constr_cache || !out_count) return NULL;
 
-  char query[1024];
-  snprintf(query, sizeof(query),
-    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
-    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
-    "is_deferred, is_nullable, is_primary, is_unique "
-    "FROM jb_constraints WHERE ref_table = %ld AND constraint_type = %d;",
-    table_id, CONSTRAINT_FOREIGN_KEY
-  );
+  ConstraintCacheEntry* entry;
+  ConstraintCacheEntry* tmp;
 
-  ParserState saved_state = parser_save_state(db->core->parser);
-  Result res = process(db->core, query);
-  parser_restore_state(db->core->parser, saved_state);
+  int count = 0;
 
-  if (res.exec.code != 0 || res.exec.row_count == 0) {
-    free_result(&res);
+  HASH_ITER(hh_refid, db->constr_cache->by_ref_id, entry, tmp) {
+    if (entry->constraint.ref_table_id == table_id) {
+      count++;
+    }
+  }
+
+  if (count == 0) {
     *out_count = 0;
     return NULL;
   }
 
-  int count = res.exec.row_count;
   Constraint* constraints = malloc(sizeof(Constraint) * count);
   if (!constraints) {
-    free_result(&res);
     *out_count = 0;
     return NULL;
   }
 
-  for (int i = 0; i < count; i++) {
-    constraints[i] = parse_constraint_from_row(&res.exec.rows[i]);
+  int i = 0;
+  HASH_ITER(hh_refid, db->constr_cache->by_ref_id, entry, tmp) {
+    if (entry->constraint.ref_table_id == table_id) {
+      constraints[i++] = entry->constraint;
+    }
   }
 
-  free_result(&res);
   *out_count = count;
   return constraints;
 }
+
+
 
 bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
   TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
@@ -1329,34 +1288,30 @@ bool handle_on_delete_constraints(Database* db, Constraint* constraint, FKConstr
 }
 
 bool validate_all_constraints(Database* db, int64_t table_id, ColumnValue* values, int value_count) {
-  if (!db->core) db->core = db;
- 
-  
+  if (!db || !db->constr_cache) {
+      LOG_ERROR("Invalid database or cache");
+      return false;
+  }
+
   TableSchema* schema = get_table_schema_by_id(db, table_id);
   if (!schema) {
     LOG_ERROR("Could not get table schema for table_id %ld", table_id);
     return false;
   }
 
-  Result constraints = get_table_constraints(db, table_id);
-  
-  if (constraints.exec.code != 0) {
-    free_result(&constraints);
-    return false;
+  ConstraintListNode* constraints = syscache_get_constraints_by_table(db->constr_cache, table_id);
+  if (!constraints) {
+    return true;
   }
 
   bool all_valid = true;
-  for (int i = 0; i < constraints.exec.row_count; i++) {
-    Constraint constraint = parse_constraint_from_row(&constraints.exec.rows[i]);
-    
-    if (!validate_constraint(db, &constraint, schema, values, value_count)) {
+  for (ConstraintListNode* cur = constraints; cur != NULL; cur = cur->next) {
+    if (!validate_constraint(db, cur->constraint, schema, values, value_count)) {
       all_valid = false;
     }
-    
-    free_constraint(&constraint);
   }
 
-  free_result(&constraints);
-  
+  free_constraint_list(constraints);
+
   return all_valid;
 }

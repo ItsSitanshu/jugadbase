@@ -10,6 +10,7 @@ SysCache* create_syscache() {
   cache->by_id = NULL;
   cache->by_name = NULL;
   cache->by_table_id = NULL;
+  cache->by_ref_id = NULL;  // initialize new hash index
   return cache;
 }
 
@@ -21,6 +22,7 @@ void destroy_syscache(SysCache* cache) {
     HASH_DELETE(hh_id, cache->by_id, entry);
     HASH_DELETE(hh_name, cache->by_name, entry);
     HASH_DELETE(hh_tableid, cache->by_table_id, entry);
+    HASH_DELETE(hh_refid, cache->by_ref_id, entry);  // delete from ref_id hash
     free(entry);
   }
   free(cache);
@@ -37,6 +39,7 @@ void syscache_add_constraint(SysCache* cache, Constraint* c) {
   HASH_ADD(hh_id, cache->by_id, constraint.id, sizeof(int64_t), entry);
   HASH_ADD_KEYPTR(hh_name, cache->by_name, entry->constraint.name, strlen(entry->constraint.name), entry);
   HASH_ADD(hh_tableid, cache->by_table_id, constraint.table_id, sizeof(int64_t), entry);
+  HASH_ADD(hh_refid, cache->by_ref_id, constraint.ref_table_id, sizeof(int64_t), entry);  // add to ref_id hash
 }
 
 Constraint* syscache_get_constraint_by_id(SysCache* cache, int64_t id) {
@@ -82,6 +85,32 @@ ConstraintListNode* syscache_get_constraints_by_table(SysCache* cache, int64_t t
   return head;
 }
 
+ConstraintListNode* syscache_get_constraints_by_ref_table(SysCache* cache, int64_t ref_table) {
+  if (!cache) return NULL;
+
+  ConstraintListNode *head = NULL, *tail = NULL;
+
+  ConstraintCacheEntry *entry, *tmp;
+  HASH_ITER(hh_refid, cache->by_ref_id, entry, tmp) {
+    if (entry->constraint.ref_table_id == ref_table) {
+      ConstraintListNode* node = malloc(sizeof(ConstraintListNode));
+      if (!node) {
+        while (head) {
+          ConstraintListNode* next = head->next;
+          free(head);
+          head = next;
+        }
+        return NULL;
+      }
+      node->constraint = &entry->constraint;
+      node->next = NULL;
+      if (!head) head = tail = node;
+      else { tail->next = node; tail = node; }
+    }
+  }
+  return head;
+}
+
 void free_constraint_list(ConstraintListNode* head) {
   while (head) {
     ConstraintListNode* next = head->next;
@@ -100,6 +129,7 @@ void syscache_remove_constraint_by_id(SysCache* cache, int64_t id) {
   HASH_DELETE(hh_id, cache->by_id, entry);
   HASH_DELETE(hh_name, cache->by_name, entry);
   HASH_DELETE(hh_tableid, cache->by_table_id, entry);
+  HASH_DELETE(hh_refid, cache->by_ref_id, entry);  // remove from ref_id hash
 
   free(entry);
 }
