@@ -1,4 +1,6 @@
 #include "storage/database.h"
+
+#include "storage/syscache.h"
 #include "kernel/kernel.h"
 #include "utils/uuid.h"
 
@@ -56,6 +58,8 @@ Database* db_init(char* dir, Database* core) {
   db->tc_writer = io_init(db->fs->schema_file, FILE_WRITE, 1024);
   db->tc_appender = io_init(db->fs->schema_file, FILE_APPEND, 1024);
   db->wal = wal_open(db->fs->wal_file, "w+b");
+
+  db->constr_cache = create_syscache();
 
   db->core = core;
 

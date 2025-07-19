@@ -50,7 +50,6 @@ int64_t find_default_constraint(Database* db, int64_t table_id, const char* colu
   return value;
 }
 
-
 int64_t insert_constraint(Database* db, int64_t table_id, char* name, 
                           int constraint_type, char (*columns)[MAX_IDENTIFIER_LEN], int col_count,
                           char* check_expr, int ref_table, 
@@ -91,14 +90,12 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
 
   ParserState state = parser_save_state(db->core->parser);
 
-  // LOG_DEBUG("ref array: %s", ref_columns_array);
-
   char query[2048];
   snprintf(query, sizeof(query),
     "INSERT INTO jb_constraints "
     "(table_id, columns, name, constraint_type, check_expr, ref_table, ref_columns, "
     "on_delete, on_update, is_deferrable, is_deferred, is_nullable, is_primary, is_unique, created_at) "
-    "VALUES (%ld, \"%s\", \"%s\", %d, %s, %s, \"%s\", %d, %d, %s, %s, %s, %s, %s, NOW()) RETURNING id;",
+    "VALUES (%ld, \"%s\", \"%s\", %d, %s, %s, \"%s\", %d, %d, %s, %s, %s, %s, %s, NOW()) RETURNING *;",
     table_id,
     columns_array,
     name,
@@ -118,18 +115,22 @@ int64_t insert_constraint(Database* db, int64_t table_id, char* name,
   LOG_DEBUG("[+] constraint: %s", query);
 
   Result res = process_silent(db->core, query);
-  bool success = res.exec.code == 0;
+  bool success = (res.exec.code == 0) && (res.exec.row_count == 1);
 
   if (!success) {
     LOG_ERROR("Failed to insert constraint '%s'", name);
     return -1;
   }
 
+  Constraint constr = parse_constraint_from_row(&(res.exec.rows[0]));
   int64_t value = res.exec.rows[0].values[0].int_value;
-  parser_restore_state(db->core->parser, state);
 
+  syscache_add_constraint(db->constr_cache, &constr);
+
+  parser_restore_state(db->core->parser, state);
   return value;
 }
+
 
 int64_t find_constraint_by_name(Database* db, int64_t table_id, const char* name) {
   if (!db || !name) {

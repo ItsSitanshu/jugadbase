@@ -189,18 +189,25 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   if (parser->cur->type == TOK_RETURNING) {
     parser_consume(parser);
     command.returning_columns = calloc(command.col_count, sizeof(char *));
-    
-    while (parser->cur->type == TOK_ID) {
-      command.returning_columns[command.ret_col_count++] = strdup(parser->cur->value);
+
+    if (parser->cur->type == TOK_MUL) {
+      command.returning_columns = command.columns;
+      command.ret_col_count = command.col_count;
       parser_consume(parser);
-      
-      if (parser->cur->type == TOK_COM) {
+    } else {
+      while (parser->cur->type == TOK_ID) {
+        command.returning_columns[command.ret_col_count++] = strdup(parser->cur->value);
         parser_consume(parser);
-      } else {
-        break;
+
+        if (parser->cur->type == TOK_COM) {
+          parser_consume(parser);
+        } else {
+          break;
+        }
       }
     }
   }
+
 
   command.is_invalid = false;
   return command;

@@ -4,7 +4,6 @@
 #include <stdbool.h>
 
 #include "kernel/kernel.h" 
-#include "storage/syscache.h"
 
 #define MAX_DBS_PER_CLUSTER 256
 #define MAX_CLUSTERS 8
@@ -20,8 +19,7 @@ typedef struct DbCluster {
   char name[MAX_CLUSTER_NAME];
   
   Database* databases[MAX_DBS_PER_CLUSTER];
-  SysCache* constr_cache;
-
+  
   char db_paths[MAX_DBS_PER_CLUSTER][256];
   int db_count;
   

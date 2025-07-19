@@ -1,13 +1,16 @@
 #ifndef DATABASE_H
 #define DATABASE_H
 
-#include "storage/fs.h"
-#include "utils/io.h"
-#include "internal/btree.h"
 #include "parser/parser.h"
-#include "storage.h"
+
+#include "internal/btree.h"
 #include "internal/toast.h"
-#include "wal.h"
+
+#include "storage/fs.h"
+#include "storage/storage.h"
+#include "storage/wal.h"
+
+#include "utils/io.h"
 
 #define MAX_COMMANDS 1024
 #define MAX_TABLES 256 
@@ -15,6 +18,7 @@
 
 typedef struct Database Database;
 typedef struct ClusterManager ClusterManager;
+typedef struct SysCache SysCache; 
 
 typedef struct Database {
   Lexer* lexer;
@@ -32,6 +36,8 @@ typedef struct Database {
   FILE* tc_writer;
   FILE* tc_appender;
   FILE* wal;
+
+  SysCache* constr_cache;
 
   FS* fs;
   Database* core;
