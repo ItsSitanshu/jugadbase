@@ -158,6 +158,9 @@ bool cluster_create(ClusterManager* manager, char* name) {
   cluster->name[MAX_CLUSTER_NAME - 1] = '\0';
   cluster->db_count = 0;
   cluster->active_db = -1;
+
+  cluster->constr_cache = create_syscache();
+
   cluster->initialized = true;
   
   manager->cluster_count++;

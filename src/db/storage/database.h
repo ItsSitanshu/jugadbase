@@ -40,7 +40,8 @@ typedef struct Database {
 Database* db_init(char* dir, Database* core);
 void db_free(Database* db);
 
-bool process_cmd(ClusterManager* cm, Database* db, char* input);
+bool process_cmd_no_db(ClusterManager* cm, char* input);
+bool process_cmd_with_db(Database* db, char* input);
 void list_tables(Database* db);
 void process_file(Database* db, char* filename, bool show);
 

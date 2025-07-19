@@ -113,22 +113,17 @@ void db_free(Database* db) {
   free(db->uuid);
 }
 
-bool process_cmd(ClusterManager* cm, Database* db, char* input) {
+bool process_cmd_no_db(ClusterManager* cm, char* input) {
   if (strcmp(input, ".help") == 0 || tolower(input[0]) == 'h') {
-    LOG_INFO("Available commands:\n"
-      "  tables       - List all tables\n"
-      "  quit/Q         - Exit the program\n"
-      "  help/H         - Show this help message\n"
-      "  stats        - Show database statistics\n"
-      "  dump <file>  - Export database to a file"
-      "  exec/E <file>   - Run a script file"
+    LOG_INFO(
+      "Available commands:\n"
+      "  tables       - List all tables (requires DB)\n"
+      "  quit/Q       - Exit the program\n"
+      "  help/H       - Show this help message\n"
+      "  stats        - Show database statistics (requires DB)\n"
+      "  dump <file>  - Export database to a file (requires DB)\n"
+      "  exec/E <file> - Run a script file (requires DB)"
     );
-    return true;
-  } else if (strcmp(input, "tables") == 0) {
-    list_tables(db);
-    return true;
-  } else if (strcmp(input, "stats") == 0) {
-    // show_db_stats(db); backtrack transactions?
     return true;
   } else if (strcmp(input, ".quit") == 0 || tolower(input[0]) == 'q') {
     LOG_INFO("Exiting...");
@@ -137,6 +132,21 @@ bool process_cmd(ClusterManager* cm, Database* db, char* input) {
     return true;
   } else if (strcmp(input, "clear") == 0) {
     clear_screen();
+    return true;
+  }
+  return false;
+}
+
+bool process_cmd_with_db(Database* db, char* input) {
+  if (!db) {
+    LOG_INFO("No active database connection");
+    return false;
+  }
+
+  if (strcmp(input, "tables") == 0) {
+    list_tables(db);
+    return true;
+  } else if (strcmp(input, "stats") == 0) {
     return true;
   } else if (strncmp(input, "exec", 4) == 0 || tolower(input[0]) == 'e') {
     char* filename = NULL;
@@ -167,7 +177,6 @@ bool process_cmd(ClusterManager* cm, Database* db, char* input) {
     process_file(db, filename, !show);
     return true;
   }
-
 
   return false;
 }
@@ -605,30 +614,30 @@ bool load_schema_tc(Database* db, char* table_name) {
   return true;
 }
 
-TableSchema* get_table_schema(Database* db, const char* filename) {
-  if (!db || !filename) {
+TableSchema* get_table_schema(Database* db, const char* tablename) {
+  if (!db || !tablename) {
     LOG_ERROR("Invalid database or filename provided.");
     return NULL;
   }
 
-  unsigned int idx = hash_fnv1a(filename, MAX_TABLES);
+  unsigned int idx = hash_fnv1a(tablename, MAX_TABLES);
   
-  if (db->tc[idx].schema && strcmp(db->tc[idx].schema->table_name, filename) == 0) {
+  if (db->tc[idx].schema && strcmp(db->tc[idx].schema->table_name, tablename) == 0) {
     return db->tc[idx].schema;
   }
 
   for (int i = 0; i < db->table_count; i++) {
     
-    if (db->tc[i].schema && strcmp(db->tc[i].schema->table_name, filename) == 0) {
-      if (!load_schema_for_table(db, i, filename)) {
-        LOG_ERROR("Failed to load schema for table: %s", filename);
+    if (db->tc[i].schema && strcmp(db->tc[i].schema->table_name, tablename) == 0) {
+      if (!load_schema_for_table(db, i, tablename)) {
+        LOG_ERROR("Failed to load schema for table: %s", tablename);
         return false;
       }
       return db->tc[i].schema;
     }
   }
 
-  LOG_ERROR("Schema for filename '%s' not found.", filename);
+  LOG_ERROR("Schema for table '%s' not found.", tablename);
   return NULL;
 }
 
