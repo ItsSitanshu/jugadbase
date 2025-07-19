@@ -10,10 +10,6 @@ plugins:
   - jekyll-feed
   - jekyll-seo-tag
 
-plugins:
-  - jekyll-feed
-  - jekyll-seo-tag
-
 just_the_docs:
   search_enabled: true
   dark_mode: true
