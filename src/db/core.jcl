@@ -1,4 +1,4 @@
--- jb.core - version b.0.4
+-- jb.core - version b.0.5
 
 INSERT __fl_a INTO jb_tables (id, name, database_name, owner, created_at) VALUES
   (0, 'jb_tables', 'core', 'sudo', NOW()),
