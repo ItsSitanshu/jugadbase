@@ -60,6 +60,9 @@ bool load_schema_tc(Database* db, char* table_name);
 TableSchema* get_table_schema(Database* db, const char* filename);
 bool load_initial_schema(Database* db);
 
+void load_constr_syscache(Database* db);
+
+
 void load_lake(Database* db);
 void flush_lake(Database* db);
 

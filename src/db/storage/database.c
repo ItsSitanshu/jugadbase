@@ -70,6 +70,8 @@ Database* db_init(char* dir, Database* core) {
   load_lake(db);
   LOG_INFO("Successfully loaded %lu table(s) from catalog", db->table_count);
 
+  load_constr_syscache(db);
+
   register_builtin_functions();
 
   return db;
@@ -855,6 +857,51 @@ cleanup:
   free(schema);
   return false;
 }
+
+void load_constr_syscache(Database* db) {
+  if (!db) return;
+
+  SysCache* cache = create_syscache();
+  if (!cache) {
+    LOG_ERROR("Failed to allocate SysCache");
+    return;
+  }
+
+  if (!db->core) db->core = db;
+
+  ParserState state = parser_save_state(db->core->parser);
+
+  const char* query = 
+    "SELECT id, table_id, columns, name, constraint_type, check_expr, "
+    "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
+    "is_deferred, is_nullable, is_primary, is_unique "
+    "FROM jb_constraints;";
+
+  Result res = process_silent(db->core, query);
+
+  parser_restore_state(db->core->parser, state);
+
+  if (res.exec.code != 0) {
+    LOG_ERROR("Failed to load constraints from jb_constraints");
+    free_result(&res);
+    destroy_syscache(cache);
+    return;
+  }
+
+  for (int i = 0; i < res.exec.row_count; i++) {
+    Constraint c = parse_constraint_from_row(&res.exec.rows[i]);
+    syscache_add_constraint(cache, &c);
+    free_constraint(&c); 
+  }
+
+  free_result(&res);
+
+  if (db->constr_cache) {
+    destroy_syscache(db->constr_cache);
+  }
+  db->constr_cache = cache;
+}
+
 
 void load_lake(Database* db) {
   FILE* file = NULL;
