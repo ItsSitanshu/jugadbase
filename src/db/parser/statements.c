@@ -58,8 +58,8 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
   command.schema = calloc(1, sizeof(TableSchema));
   parser_consume(parser);
 
-  if (parser->cur->type == TOK_NO_CONSTRAINTS) {
-    command.is_unsafe = true;
+  if (parser->cur->type == TOK_CI_A) {
+    command.flag_a = true;
     parser_consume(parser);
   }
 
@@ -111,8 +111,8 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   
   parser_consume(parser);
 
-  if (parser->cur->type == TOK_NO_CONSTRAINTS) {
-    command.is_unsafe = true;
+  if (parser->cur->type == TOK_CI_A) {
+    command.flag_a = true;
     parser_consume(parser);
   }
 
@@ -121,7 +121,7 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 
   command.schema = get_table_schema(db, parser->cur->value);
   if (!command.schema) {
-    LOG_ERROR("Table %s doesn't exist", parser->cur->value);
+    LOG_ERROR("! Table '%s' doesn't exist", parser->cur->value);
     return command;
   }
 
@@ -222,6 +222,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   parser_consume(parser);
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
   
+  // LOG_DEBUG("Parsing SELECT for table: %s", parser->cur->value);
   TableSchema* schema = get_validated_table(db, parser->cur->value);
   if (!schema) return command;
   
@@ -297,6 +298,12 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
   jql_command_plain_init(&command, CMD_UPDATE);
   
   parser_consume(parser);
+
+  if (parser->cur->type == TOK_CI_A) {
+    command.flag_a = true;
+    parser_consume(parser);
+  }
+
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
   
   uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);

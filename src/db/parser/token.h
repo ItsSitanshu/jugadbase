@@ -6,7 +6,7 @@
 #define NO_OF_KEYWORDS 82
 #define KEYWORDS keywords
 
-#define MAX_KEYWORD_LEN 11
+#define MAX_KEYWORD_LEN 11  
 #define MAX_IDENTIFIER_LEN 256
 #define MAX_FLOAT_LIT_DIGITS 7
 #define MAX_DOUBLE_LIT_DIGITS 15
@@ -135,7 +135,7 @@ typedef enum TokenType {
   TOK_CMT,      // COMMIT
   TOK_RBK,      // ROLLBACK
 
-  TOK_NO_CONSTRAINTS, // _unsafecon
+  TOK_CI_A, // __fl_a (no constraints)
 
   // Literals
   TOK_L_UINT,

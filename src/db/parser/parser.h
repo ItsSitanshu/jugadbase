@@ -394,7 +394,7 @@ typedef struct {
 
   char transaction[MAX_IDENTIFIER_LEN];
   bool is_invalid;
-  bool is_unsafe;
+  bool flag_a;
 } JQLCommand;
 
 typedef struct {
