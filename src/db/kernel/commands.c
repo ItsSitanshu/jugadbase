@@ -49,7 +49,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     if (col->has_sequence) {
       char seq_name[MAX_IDENTIFIER_LEN * 2];
       sprintf(seq_name, "%s%s", schema->table_name, col->name);
-      col->sequence_id = create_default_sequence(db->core, seq_name, cmd->is_unsafe);
+      col->sequence_id = create_default_sequence(db->core, seq_name, cmd->flag_a);
 
       if (col->sequence_id == -1) {
         return (ExecutionResult){-1, "Table creation failed"};;
@@ -61,11 +61,11 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     io_write(tca_io, &col->is_foreign_key, sizeof(bool));
     
     insert_attribute(db->core, table_id, col->name, col->type, i, 
-      !col->is_not_null, col->has_default, col->has_constraints, cmd->is_unsafe);
+      !col->is_not_null, col->has_default, col->has_constraints, cmd->flag_a);
 
     if (col->has_default) {
       char* default_value = str_column_value(col->default_value);
-      insert_attr_default(db->core, table_id, col->name, default_value, cmd->is_unsafe);
+      insert_attr_default(db->core, table_id, col->name, default_value, cmd->flag_a);
     } 
 
     if (col->is_primary_key) {
@@ -158,7 +158,9 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
     return result;
   }
   
-  TableSchema* schema = db->tc[table_offset].schema;
+  LOG_DEBUG("alter table %s with operation %d", alter_cmd->table_name, alter_cmd->operation);
+
+  TableSchema* schema = get_table_schema(db, alter_cmd->table_name);
   int64_t table_id = find_table(db, alter_cmd->table_name);
 
   if (table_id == -1) {
@@ -507,12 +509,12 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   
   for (uint32_t i = 0; i < cmd->row_count; i++) {
     row = execute_row_insert(cmd->values[i], db, schema_idx, primary_key_cols,
-      primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order, table_id, cmd->is_unsafe);
+      primary_key_vals, schema, column_count, cmd->columns, cmd->col_count, cmd->specified_order, table_id, cmd->flag_a);
 
     if (!row) {
       for (uint32_t j = 0; j < inserted_count; j++) {
         serialize_delete(cmd->schema, inserted_rows[j]);  
-      }
+      }      
 
       free(primary_key_cols);
       free(primary_key_vals);
@@ -530,7 +532,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   }
 
   // wal_write(db->wal, WAL_INSERT, schema_idx, wal_buf, wal_len);
-
+  
   free(primary_key_cols);
   free(primary_key_vals);
   free(inserted_rows);
@@ -538,7 +540,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   if (cmd->ret_col_count <= 0) {
     free(ret_rows);
   } 
-  
+
   return (ExecutionResult) {
     .code = 0,
     .message = "Inserted successfully",
@@ -553,7 +555,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
 Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
                       ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
                       TableSchema* schema, uint8_t column_count,
-                      char** columns, uint8_t up_col_count, bool specified_order, int64_t table_id, bool is_unsafe) {
+                      char** columns, uint8_t up_col_count, bool specified_order, int64_t table_id, bool flag_a) {
 
   uint8_t primary_key_count = 0;
 
@@ -644,6 +646,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
        
     // LOG_DEBUG("Row size + %zu = %zu", size_from_value(&row.values[i], &schema->columns[i]), row.row_length);
   }
+
   
   for (uint8_t i = 0; i < column_count; i++) {
     if (row->values[i].type == TOK_T_SERIAL) {
@@ -659,7 +662,6 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       null_bitmap[i / 8] &= ~(1 << (i % 8));
       row->values[i].is_null = false;
     }
-
   }
 
   for (uint8_t i = 0; i < primary_key_count; i++) {
@@ -673,9 +675,9 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
         return NULL;
       }
     }
-  }
-
-  if (!is_unsafe) {
+  } 
+  
+  if (!flag_a) {
     // LOG_INFO("========= validating constraints for: %d", table_id);
     if (!validate_all_constraints(db, table_id, row->values, schema->column_count)) {
       free(row->values);
@@ -707,7 +709,6 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       }
     }
   }
-
 
   return (Row*)row;  
 }
@@ -864,7 +865,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
-  
+
   TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
@@ -878,76 +879,76 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   }
 
   int fk_count = 0;
-  Constraint* referencing_fks = get_fk_constr_ref_table(db, table_id, &fk_count);
+  Constraint* referencing_fks = NULL;
+  FKConstraintValues* old_fk = NULL;
+  FKConstraintValues* new_fk = NULL;
 
-  for (int i = 0; i < fk_count; i++) {
-    Constraint* fk = &referencing_fks[i];
-    if (fk->ref_column_count != fk->column_count) {
-      return (ExecutionResult){1, "Foreign key constraint validation failed: ref_column_count != column_count"};
+  if (!cmd->flag_a) {
+    referencing_fks = get_fk_constr_ref_table(db, table_id, &fk_count);
+
+    for (int i = 0; i < fk_count; i++) {
+      Constraint* fk = &referencing_fks[i];
+      if (fk->ref_column_count != fk->column_count) {
+        return (ExecutionResult){1, "Foreign key constraint validation failed: ref_column_count != column_count"};
+      }
+      if (!fk->on_update) {
+        return (ExecutionResult){1, "UPDATE restricted by foreign key constraint - ON UPDATE not enabled"};
+      }
     }
-    if (!fk->on_update) {
-      return (ExecutionResult){1, "UPDATE restricted by foreign key constraint - ON UPDATE not enabled"};
+
+    old_fk = malloc(sizeof(FKConstraintValues) * fk_count);
+    new_fk = malloc(sizeof(FKConstraintValues) * fk_count);
+    if (!old_fk || !new_fk) {
+      goto cleanup;
+    }
+
+    if (!init_fk_constraints(old_fk, referencing_fks, fk_count) ||
+        !init_fk_constraints(new_fk, referencing_fks, fk_count)) {
+      goto cleanup;
     }
   }
 
   RowSet update_set = {malloc(sizeof(RowID) * 4096), 0, 4096};
-  FKConstraintValues* old_fk = malloc(sizeof(FKConstraintValues) * fk_count);
-  FKConstraintValues* new_fk = malloc(sizeof(FKConstraintValues) * fk_count);
-
-  if (!update_set.rows || !old_fk || !new_fk) {
-    free(update_set.rows);
-    free(old_fk);
-    free(new_fk);
-    return (ExecutionResult){1, "OOM"};
+  if (!update_set.rows) {
+    goto cleanup;
   }
 
-  if (!init_fk_constraints(old_fk, referencing_fks, fk_count) ||
-      !init_fk_constraints(new_fk, referencing_fks, fk_count)) {
-    cleanup_fk_constraints(old_fk, fk_count);
-    cleanup_fk_constraints(new_fk, fk_count);
-    free(old_fk);
-    free(new_fk);
-    free(update_set.rows);
-    return (ExecutionResult){1, "OOM"};
-  }
+  ExecutionResult result = collect_fk_tuples_update(
+    db,
+    schema,
+    cmd,
+    cmd->flag_a ? NULL : referencing_fks,
+    fk_count,
+    &update_set,
+    cmd->flag_a ? NULL : old_fk,
+    cmd->flag_a ? NULL : new_fk
+  );
 
-  ExecutionResult result = collect_fk_tuples_update(db, schema, cmd, referencing_fks, fk_count,
-                                                   &update_set, old_fk, new_fk);
   if (result.code != 0) {
-    cleanup_fk_constraints(old_fk, fk_count);
-    cleanup_fk_constraints(new_fk, fk_count);
-    free(old_fk);
-    free(new_fk);
-    free(update_set.rows);
-    return result;
+    goto cleanup;
   }
-  
-  LOG_DEBUG("Collected unique FK key tuples across %d constraints", fk_count);
-  for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
-    Constraint* fk = &referencing_fks[fk_idx];
-    LOG_DEBUG("Constraint %s has %d unique key tuples", fk->name, old_fk[fk_idx].count);
-    
-    if (!handle_on_update_constraints(db, fk, &(old_fk[fk_idx]), &(new_fk[fk_idx]))) {
-      cleanup_fk_constraints(old_fk, fk_count);
-      cleanup_fk_constraints(new_fk, fk_count);
-      free(old_fk);
-      free(new_fk);
-      free(update_set.rows);
-      return (ExecutionResult){1, "UPDATE restricted by foreign constraint"};
+
+  if (!cmd->flag_a) {
+    for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
+      Constraint* fk = &referencing_fks[fk_idx];
+      if (!handle_on_update_constraints(db, fk, &old_fk[fk_idx], &new_fk[fk_idx])) {
+        result = (ExecutionResult){1, "UPDATE restricted by foreign constraint"};
+        goto cleanup;
+      }
     }
   }
 
-
   result = perform_updates(db, schema, cmd, &update_set);
 
-  cleanup_fk_constraints(old_fk, fk_count);
-  cleanup_fk_constraints(new_fk, fk_count);
+cleanup:
+  if (old_fk) cleanup_fk_constraints(old_fk, fk_count);
+  if (new_fk) cleanup_fk_constraints(new_fk, fk_count);
   free(old_fk);
   free(new_fk);
   free(update_set.rows);
-
-  return result;
+  return result.code == 0 ? result : (result.code ? result : (ExecutionResult){1, "OOM or error in cleanup"});
 }
+
 
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   if (!db || !cmd || !cmd->schema) {

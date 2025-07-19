@@ -47,7 +47,7 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd);
 Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
   ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
   TableSchema* schema, uint8_t column_count,
-  char** columns, uint8_t up_col_count, bool specified_order, int64_t table_id, bool is_unsafe);
+  char** columns, uint8_t up_col_count, bool specified_order, int64_t table_id, bool flag_a);
 
 #endif
 
@@ -96,10 +96,10 @@ int64_t insert_table(Database* db, char* name);
 
 int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name, 
                         int data_type, int ordinal_position, bool is_nullable, 
-                        bool has_default, bool has_constraints, bool is_unsafe);
+                        bool has_default, bool has_constraints, bool flag_a);
 Attribute* load_attribute(Database* db, int64_t table_id, const char* column_name);
 
-int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr, bool is_unsafe);
+int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr, bool flag_a);
 ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name);
 
 bool bootstrap_core_tables(Database* db);
@@ -184,7 +184,7 @@ ExecutionResult perform_deletes(Database* db, TableSchema* schema, RowSet* delet
 bool cascade_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_count);
 
-bool set_null(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
+bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
 
 bool check_no_del_references(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count);
@@ -216,7 +216,7 @@ void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
 #define KERNEL_SEQUENCE_H
 
 int64_t sequence_next_val(Database* db, char* name);
-int64_t create_default_sequence(Database* db, char* name, bool is_unsafe);
+int64_t create_default_sequence(Database* db, char* name, bool flag_a);
 int64_t find_sequence(Database* db, char* name);
 
 #endif

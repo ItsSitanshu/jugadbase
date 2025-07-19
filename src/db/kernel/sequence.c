@@ -12,7 +12,7 @@ int64_t sequence_next_val(Database* db, char* name) {
 
   char pquery[2048];
   snprintf(pquery, sizeof(pquery),
-    "UPDATE jb_sequences SET current_value = current_value + increment_by "
+    "UPDATE __fl_a jb_sequences SET current_value = current_value + increment_by "
     "WHERE name = '%s'; ",
     name
   );
@@ -47,11 +47,11 @@ int64_t sequence_next_val(Database* db, char* name) {
   // free_result(&res);
 
   parser_restore_state(db->core->parser, state);
-
+  
   return copy;
 }
 
-int64_t create_default_sequence(Database* db, char* name, bool is_unsafe) {
+int64_t create_default_sequence(Database* db, char* name, bool flag_a) {
   if (!db || !name) {
     LOG_ERROR("Invalid parameters to insert_table");
     return -1;
@@ -68,7 +68,7 @@ int64_t create_default_sequence(Database* db, char* name, bool is_unsafe) {
     "(name, current_value, increment_by, min_value, max_value, cycle) "
     "VALUES ('%s', 0, 1, 0, NULL, false) "
     "RETURNING id; ",
-    is_unsafe ? "INSERT _unsafecon INTO" : "INSERT INTO",
+    flag_a ? "INSERT __fl_a INTO" : "INSERT INTO",
     name
   );
 

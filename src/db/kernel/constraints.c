@@ -969,7 +969,7 @@ Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_cou
   return constraints;
 }
 
-bool set_null(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
+bool set_null_on_delete(Database* db, int64_t referencing_table_id, char** ref_columns, int ref_column_count, ColumnValue* values, int value_count) {
   TableSchema* ref_schema = get_table_schema_by_id(db, referencing_table_id);
   if (!ref_schema) {
     return false;
@@ -1277,7 +1277,7 @@ bool handle_on_update_constraints(Database* db, Constraint* constraint, FKConstr
       }
       return true;
     case FK_SET_NULL:
-      if (!set_null(db, constraint->table_id, constraint->columns,
+      if (!set_null_on_delete(db, constraint->table_id, constraint->columns,
                               constraint->column_count, old_fk->values, 
                               constraint->column_count)) {
         return false;
@@ -1308,7 +1308,7 @@ bool handle_on_delete_constraints(Database* db, Constraint* constraint, FKConstr
       );
       break;
     case FK_SET_NULL:
-      success = set_null(db, constraint->table_id, constraint->columns, 
+      success = set_null_on_delete(db, constraint->table_id, constraint->columns, 
         constraint->column_count, fk_constraint->values, fk_constraint->count
       );
 

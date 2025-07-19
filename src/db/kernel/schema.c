@@ -61,7 +61,7 @@ int64_t insert_table(Database* db, char* name) {
 
   char query[2048];
   snprintf(query, sizeof(query),
-    "INSERT _unsafecon INTO jb_tables "
+    "INSERT __fl_a INTO jb_tables "
     "(name, database_name, owner, created_at) "
     "VALUES ('%s', '%s', 'sudo', NOW()) RETURNING id;",
     name,
@@ -85,7 +85,7 @@ int64_t insert_table(Database* db, char* name) {
 
 int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name, 
                         int data_type, int ordinal_position, bool is_nullable, 
-                        bool has_default, bool has_constraints, bool is_unsafe) {
+                        bool has_default, bool has_constraints, bool flag_a) {
   if (!db || !column_name) {
     LOG_ERROR("Invalid parameters to insert_attribute");
     return -1;
@@ -102,7 +102,7 @@ int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name
     "%s jb_attribute "
     "(table_id, column_name, data_type, ordinal_position, is_nullable, has_default, has_constraints, created_at) "
     "VALUES (%ld, \"%s\", %d, %d, %s, %s, %s, NOW()) RETURNING id;",
-    is_unsafe ? "INSERT _unsafecon INTO" : "INSERT INTO",
+    flag_a ? "INSERT __fl_a INTO" : "INSERT INTO",
     table_id,
     column_name,
     data_type,
@@ -176,7 +176,7 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
   return attr;
 }
 
-int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr, bool is_unsafe) {
+int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr, bool flag_a) {
   if (!db || !column_name || !default_expr) {
     LOG_ERROR("Invalid parameters to insert_attr_default");
     return -1;
@@ -191,7 +191,7 @@ int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_n
     "%s jb_attrdef "
     "(table_id, column_name, default_expr, created_at) "
     "VALUES (%ld, '%s', '%s', NOW()) RETURNING id;",
-    is_unsafe ? "INSERT _unsafecon INTO" : "INSERT INTO",
+    flag_a ? "INSERT __fl_a INTO" : "INSERT INTO",
     table_id,
     column_name,
     default_expr
