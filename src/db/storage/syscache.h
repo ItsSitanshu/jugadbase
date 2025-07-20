@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "utils/ext/uthash.h"  
+#include "uthash.h"  
 #include "kernel/kernel.h"  
 
 typedef struct ConstraintCacheEntry {

@@ -66,3 +66,7 @@ libtorch/
 !src/coco/Cargo.lock
 
 Cargo.lock
+
+deps/*
+!deps/README.md
+!deps/uthash.h

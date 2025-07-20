@@ -2,7 +2,7 @@
 #include <string.h>
 
 #include "storage/syscache.h"
-#include "utils/ext/uthash.h" 
+#include "uthash.h" 
 
 SysCache* create_syscache() {
   SysCache* cache = malloc(sizeof(SysCache));
