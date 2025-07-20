@@ -59,9 +59,10 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Implement array conditionals / expressions~~
 - ~~Implement foreign constraints~~
 - ~~Design casading~~
-- Implement constraint cache for efficiency  
+- ~~Implement constraint cache for efficiency~~  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
 - Implement a permission check layer
+- Implement advanced constraints and tests for them
 - Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
 - Implement locking boosted sequences
 - Implement `$variables` for cleaner SDK support
