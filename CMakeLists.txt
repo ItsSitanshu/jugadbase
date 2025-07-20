@@ -79,6 +79,7 @@ set(TEST_UNIT_SOURCES
   # test/unit/test_create_table.c
   test/unit/test_simple_select.c
   test/unit/test_combined_select.c
+  test/unit/test_constraints.c
   test/unit/test_select_in_between.c
   test/unit/test_select_like.c
   test/unit/test_select_limit.c
