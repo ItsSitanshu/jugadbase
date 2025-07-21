@@ -5,8 +5,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "cluster.h"
-#include "../utils/log.h"
+#include "storage/cluster.h"
+#include "internal/roles.h"
+
+#include "utils/log.h"
 
 char* get_core_jcl_path() {
   char* env_path = getenv("CORE_JCL_PATH");
@@ -486,7 +488,75 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
     }
     return true;
   }
-  
+  else if (strcmp(cmd, "login") == 0) {
+    if (!(*current_db)) {
+      LOG_ERROR("No active database. Switch to a DB first.");
+      return true;
+    }
+
+    if (arg1[0] == '\0') {
+      LOG_ERROR("Username required. Usage: login <username>");
+      return true;
+    }
+
+    Database* meta_db = get_internal_meta_db(manager);
+    if (!meta_db) {
+      LOG_ERROR("Failed to load internal metadata DB");
+      return true;
+    }
+
+    printf("Password: ");
+    char* password = get_hidden_input();
+    Role* role = login_role(meta_db, arg1, password);
+    free(password);
+
+    if (!role) {
+      LOG_ERROR("Login failed: invalid username or password");
+      return true;
+    }
+
+    (*current_db)->current_role = role;
+    printf("Logged in as '%s'\n", arg1);
+    return true;
+  }
+  else if (strcmp(cmd, "register") == 0) {
+    if (!(*current_db)) {
+      LOG_ERROR("No active database. Switch to a DB first.");
+      return true;
+    }
+
+    if (arg1[0] == '\0') {
+      LOG_ERROR("Username required. Usage: register <username>");
+      return true;
+    }
+
+    Database* meta_db = get_internal_meta_db(manager);
+    if (!meta_db) {
+      LOG_ERROR("Failed to load internal metadata DB");
+      return true;
+    }
+
+    printf("Password: ");
+    char* password = get_hidden_input();
+
+    int status = register_role(meta_db, arg1, password);
+    free(password);
+
+    if (status == -2) {
+      LOG_ERROR("User/role '%s' already exists", arg1);
+      return true;
+    } else if (status == -1) {
+      LOG_ERROR("Password hashing failed");
+      return true;
+    } else if (status != 0) {
+      LOG_ERROR("Registration failed");
+      return true;
+    }
+
+    printf("User '%s' registered successfully\n", arg1);
+    return true;
+  }
+
   LOG_ERROR("Unknown cluster command: %s", cmd);
   return true;  
 }

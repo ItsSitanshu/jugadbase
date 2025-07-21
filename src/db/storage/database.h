@@ -5,6 +5,8 @@
 
 #include "internal/btree.h"
 #include "internal/toast.h"
+#include "internal/roles.h"
+
 
 #include "storage/fs.h"
 #include "storage/storage.h"
@@ -41,6 +43,8 @@ typedef struct Database {
 
   FS* fs;
   Database* core;
+
+  Role* current_role;
 } Database;
 
 Database* db_init(char* dir, Database* core);

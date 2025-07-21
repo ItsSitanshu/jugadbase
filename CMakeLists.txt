@@ -32,6 +32,7 @@ set(DB_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/btree.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/datetime.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/functions.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/roles.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/internal/toast.c
 
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/cluster.c
@@ -40,11 +41,13 @@ set(DB_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/storage.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/wal.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/storage/syscache.c
+
 )
 
 set(UTILS_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/io.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/setup.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/jugadline.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/log.c
 )
 

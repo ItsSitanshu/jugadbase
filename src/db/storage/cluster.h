@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "kernel/kernel.h" 
+#include "internal/roles.h" 
 
 #define MAX_DBS_PER_CLUSTER 256
 #define MAX_CLUSTERS 8
@@ -29,6 +30,7 @@ typedef struct DbCluster {
 
 typedef struct ClusterManager {
   DbCluster clusters[MAX_CLUSTERS];
+
   int cluster_count;
   int active_cluster;  
   bool initialized;
