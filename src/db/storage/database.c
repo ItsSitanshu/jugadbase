@@ -62,6 +62,7 @@ Database* db_init(char* dir, Database* core) {
   db->constr_cache = create_syscache();
 
   db->core = core;
+  db->current_role = NULL;
 
   load_tc(db);
   if (!load_initial_schema(db)) {
@@ -209,6 +210,15 @@ void process_file(Database* db, char* filename, bool show) {
   if (!file) {
     LOG_ERROR("Error opening file: %s", filename);
     return;
+  }
+
+  if (db->current_role == NULL && (!db->is_core)) {
+    LOG_ERROR("No active role. Please login first.");
+    return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
+  } 
+
+  if (!db->is_core) {
+    LOG_DEBUG("Current role: %s", db->current_role->name);
   }
 
   fseek(file, 0, SEEK_END); 

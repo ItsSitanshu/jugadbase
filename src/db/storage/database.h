@@ -31,6 +31,8 @@ typedef struct Database {
   BufferPool lake[MAX_TABLES];
   
   size_t table_count;
+  bool is_core;
+  
   uint8_t loaded_btree_clusters;
   uint8_t btree_idx_stack[BTREE_LIFETIME_THRESHOLD];
 

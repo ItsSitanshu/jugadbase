@@ -5,6 +5,15 @@ Result process(Database* db, char* buffer) {
     return (Result){(ExecutionResult){1, "Invalid context"}, NULL};
   }
 
+  if (db->current_role == NULL && (!db->is_core)) {
+    LOG_ERROR("No active role. Please login first.");
+    return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
+  } 
+
+  if (!db->is_core) {
+    LOG_DEBUG("Current role: %s", db->current_role->name);
+  }
+
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
 
