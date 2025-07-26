@@ -57,24 +57,10 @@ Database* get_internal_meta_db(ClusterManager* manager) {
 
 
   Database* user_db = cluster_get_active_db(manager);
-  printf("manager = %p\n", (void*)manager);
-  printf("returned user_db = %p\n", (void*)user_db);
-  printf("returned user_db->core = %p\n", (void*)user_db->core);
-  if (user_db) {
-    printf("returned user_db->core = %p\n", (void*)user_db->core);
-  }
-
   if (!user_db) return NULL;
 
   if (user_db && user_db->core == NULL) {
     LOG_FATAL("user_db->core is NULL");
-  }
-  
-  if (!user_db->core) {
-    LOG_FATAL("FUCKED");
-    // user_db->core = user_db;  
-    // if (!user_db->core) return NULL;
-    // process(user_db->core, INTERNAL_ROLES_SQL);
   }
 
   return user_db->core;
@@ -97,7 +83,7 @@ int register_role(Database* db, const char* name, const char* password) {
     "INSERT INTO jb_roles (name, hashed_password) VALUES ('%s','%s');",
     name, hashed
   );
-  
+
   return process(db, sql).exec.code;
 }
 

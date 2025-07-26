@@ -22,9 +22,7 @@ int main(int argc, char* argv[]) {
   
   char* input = NULL;
   CommandHistory history = { .current = 1, .size = 0 };
-  char short_cwd[256];
   char prompt[512];
-  get_short_cwd(short_cwd, sizeof(short_cwd));
   
   while (1) {
     const char* db_path = "none";
@@ -47,11 +45,14 @@ int main(int argc, char* argv[]) {
       db_name = db_path;
     }
 
+    char* current_role = active_cluster->databases[active_cluster->active_db]->current_role ? 
+      active_cluster->databases[active_cluster->active_db]->current_role->name : "unverified monkey";
+
     snprintf(prompt, sizeof(prompt), 
-             COLOR_RED "/%s<%s> " COLOR_MAGENTA "[%s~jugad-cli]" COLOR_RESET "> ", 
-             short_cwd, 
-             active_cluster ? active_cluster->name : "no-cluster",
-             db_name);
+             COLOR_RED "[%s @ %s] " COLOR_MAGENTA "<jdb: %s>" COLOR_RESET " $ ", 
+             db_name,
+             current_role,
+             active_cluster ? active_cluster->name : "no-cluster");
     
     input = jugadline(&history, prompt);
 
@@ -60,9 +61,7 @@ int main(int argc, char* argv[]) {
       continue;
     }
     
-    if (is_cluster_cmd(input)) {
-      process_cluster_cmd(cluster_manager, &db, input);
-    } else {
+    if (!(process_cluster_cmd(cluster_manager, &db, input))) {
       if (process_cmd_no_db(cluster_manager, input)) {
       } else if (db) {
         if (!process_cmd_with_db(db, input)) {
@@ -82,7 +81,7 @@ int main(int argc, char* argv[]) {
         const char* msg = "Lost? Use help command or read documentation at https://itssitanshu.github.io/jugadbase/\n";
         output_result(config, msg);
       }
-    } 
+    }
 
     free(input);
   }

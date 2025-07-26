@@ -288,15 +288,6 @@ Database* cluster_get_active_db(ClusterManager* manager) {
 
   Database* db = cluster->databases[cluster->active_db];
 
-  if (db->core) {
-  printf("cluster_get_active_db: db ptr = %p, db->core ptr = %p, uuid = %s\n",
-            (void*)db,
-            (void*)db->core,
-            db->core->uuid);
-  } else {
-    printf("Core of db[%d] is NULL\n", cluster->active_db);
-  }
-
   return (Database*)db;
 }
 
@@ -376,18 +367,10 @@ static bool parse_cluster_cmd(char* input, char* cmd, char* arg1, char* arg2) {
   
   char* ptr = input;
   while (*ptr && isspace(*ptr)) ptr++;
-  
-  if (strncmp(ptr, "~ ", 2) == 0) {
-    ptr += 2;
-  } else {
-    return false;
-  }
-  
-  while (*ptr && isspace(*ptr)) ptr++;
-  
+
   int i = 0;
   while (*ptr && !isspace(*ptr) && i < 31) {
-      cmd[i++] = *ptr++;
+    cmd[i++] = *ptr++;
   }
   cmd[i] = '\0';
   
@@ -410,6 +393,7 @@ static bool parse_cluster_cmd(char* input, char* cmd, char* arg1, char* arg2) {
   return true;
 }
 
+
 bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* input) {
   if (!manager || !input || !current_db) return false;
   
@@ -418,7 +402,6 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
   char arg2[256] = {0};
   
   if (!parse_cluster_cmd(input, cmd, arg1, arg2)) {
-    LOG_ERROR("Failed to parse cluster command: %s", input);
     return false;
   }
   
@@ -534,7 +517,7 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
     printf("Logged in as '%s'\n", arg1);
     return true;
   }
-  else if (strcmp(cmd, "register") == 0) {
+  else if ((strcmp(cmd, "register") == 0) || strcmp(cmd, "reg") == 0) {
     if (!(*current_db)) {
       LOG_ERROR("No active database. Switch to a DB first.");
       return true;
@@ -554,11 +537,6 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
     printf("Password: ");
     char* password = get_hidden_input();
 
-    printf("[DEBUG] meta_db = %p\n", (void*)meta_db);
-    printf("[DEBUG] arg1 (username) = %p, value = '%s'\n", (void*)arg1, arg1);
-    printf("[DEBUG] password ptr = %p, value = '%s'\n", (void*)password, password);
-
-
     int status = register_role(meta_db, arg1, password);
     free(password);
 
@@ -577,8 +555,7 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
     return true;
   }
 
-  LOG_ERROR("Unknown cluster command: %s", cmd);
-  return true;  
+  return false;  
 }
 
 bool is_cluster_cmd(char* input) {

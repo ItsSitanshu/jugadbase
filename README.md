@@ -61,29 +61,32 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Design casading~~
 - ~~Implement constraint cache for efficiency~~  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
-- Implement a permission check layer
-- Implement advanced constraints and tests for them
-- Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
-- Implement locking boosted sequences
+- ~Implement a basic permission check layer~
 - Implement `$variables` for cleaner SDK support
 - Implement `DROP` to remove tables
 - Add indexing for performance optimization  
 - Implement `JOIN` operations  
+- Implement composite primary keys
+- Implement row_x.attr = row_y.attr comparisons
+- Implement TOAST for large arrays
 - Support transactions (`BEGIN`, `COMMIT`, `ROLLBACK`)  
-- Optimize `JOIN` performance  
-- Implement functions for dynamic types (DATETIME/JSON/BLOB/TEXT)
-- Benchmark query execution speed  
 - Implement `apply_wal()` for recovery
 - Add crash recovery on startup using WAL
 - Build basic physical-backup for Yielded Archival of Known States (YAKS)
+- Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
+- Implement locking boosted sequences
+- Implement advanced constraints and tests for them
+- Implment `POLICIES`
+- Implement a proper and advanced permission check layer
+- Implement a simple single cluster API instance
 - Add support for stored procedures  
 - Implement triggers  
 - Add replication and sharding for scalability  
-- Implement row_x.attr = row_y.attr comparisons
-- Implement TOAST for large arrays
 - Add support for database-specific file management, including backing up and restoring individual files
 - Beta version documentation
-- Implement composite primary keys
+- Benchmark query execution speed  
+- Implement functions for dynamic types (DATETIME/JSON/BLOB/TEXT)
+- Implement a multi-cluster API instance
 - Custom importable C-written functions with <dlfcn.h>
 - Batch mass inserts
 - PG-LZ compression for TOAST entries

@@ -10,10 +10,6 @@ Result process(Database* db, char* buffer) {
     return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
   } 
 
-  if (!db->is_core) {
-    LOG_DEBUG("Current role: %s", db->current_role->name);
-  }
-
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
 

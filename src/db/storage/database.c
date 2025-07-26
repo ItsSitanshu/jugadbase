@@ -122,14 +122,29 @@ void db_free(Database* db) {
 
 bool process_cmd_no_db(ClusterManager* cm, char* input) {
   if (strcmp(input, ".help") == 0 || tolower(input[0]) == 'h') {
-    LOG_INFO(
-      "Available commands:\n"
-      "  tables       - List all tables (requires DB)\n"
-      "  quit/Q       - Exit the program\n"
-      "  help/H       - Show this help message\n"
-      "  stats        - Show database statistics (requires DB)\n"
-      "  dump <file>  - Export database to a file (requires DB)\n"
-      "  exec/E <file> - Run a script file (requires DB)"
+    printf(
+      "Available Commands:\n"
+      "\n"
+      "General:\n"
+      "  help, H                      Show this help message\n"
+      "  quit, Q                      Exit the program\n"
+      "\n"
+      "Cluster Management:\n"
+      "  list, ls                     List all clusters\n"
+      "  create, new <name>           Create a new cluster\n"
+      "  add <cluster> <db-path>      Add a database to a cluster\n"
+      "  switch, use <cluster> [db]   Switch to a cluster (and optionally a database)\n"
+      "\n"
+      "Authentication:\n"
+      "  register, reg <username>     Register a new user\n"
+      "  login <username>             Log in as a user\n"
+      "\n"
+      "Database Operations:\n"
+      "  tables                       List all tables\n"
+      "  stats                        Show database statistics\n"
+      "  dump <file>                  Export the database to a file\n"
+      "  exec, E <file>               Run JDL/JCL from a script file\n"
+      "  <command>                    Run a JCL/JDL command (e.g. INSERT, SELECT..)\n"
     );
     return true;
   } else if (strcmp(input, ".quit") == 0 || tolower(input[0]) == 'q') {
