@@ -9,6 +9,7 @@
 #include "internal/roles.h"
 
 #include "utils/log.h"
+#include "utils/jugadline.h"
 
 char* get_core_jcl_path() {
   char* env_path = getenv("CORE_JCL_PATH");
@@ -216,7 +217,9 @@ bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path) {
     snprintf(full_path, sizeof(full_path), "%s/%s/%s", manager->path, cluster->name, db_path);
   }
   
-  Database* db = db_init(full_path, cluster->db_count > 0 ? cluster->databases[0] : NULL);
+  Database* core = cluster->db_count > 0 ? cluster->databases[0] : NULL;
+
+  Database* db = db_init(full_path, core);
   if (!db) {
     LOG_ERROR("Failed to initialize database at '%s'", full_path);
     db_free(db);
@@ -282,8 +285,19 @@ Database* cluster_get_active_db(ClusterManager* manager) {
   if (cluster->active_db < 0 || cluster->active_db >= cluster->db_count) {
     return NULL;
   }
-  
-  return cluster->databases[cluster->active_db];
+
+  Database* db = cluster->databases[cluster->active_db];
+
+  if (db->core) {
+  printf("cluster_get_active_db: db ptr = %p, db->core ptr = %p, uuid = %s\n",
+            (void*)db,
+            (void*)db->core,
+            db->core->uuid);
+  } else {
+    printf("Core of db[%d] is NULL\n", cluster->active_db);
+  }
+
+  return (Database*)db;
 }
 
 Result cluster_execute_all(ClusterManager* manager, char* cmd) {
@@ -539,6 +553,11 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
 
     printf("Password: ");
     char* password = get_hidden_input();
+
+    printf("[DEBUG] meta_db = %p\n", (void*)meta_db);
+    printf("[DEBUG] arg1 (username) = %p, value = '%s'\n", (void*)arg1, arg1);
+    printf("[DEBUG] password ptr = %p, value = '%s'\n", (void*)password, password);
+
 
     int status = register_role(meta_db, arg1, password);
     free(password);

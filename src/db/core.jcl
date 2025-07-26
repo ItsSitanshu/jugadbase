@@ -84,6 +84,7 @@ CREATE TABLE jb_indexes (
 CREATE TABLE jb_roles (
   id SERIAL,
   name TEXT NOT NULL,
+  hashed_password TEXT NOT NULL,
   is_superuser BOOL DEFAULT false,
   can_create_db BOOL DEFAULT false,
   can_create_user BOOL DEFAULT false

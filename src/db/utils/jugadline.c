@@ -1,7 +1,6 @@
 #include "utils/jugadline.h"
 #include "storage/fs.h"
 
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -368,15 +367,51 @@ char* jugadline(CommandHistory *history, char* prefix) {
 char* get_hidden_input() {
   static char input[128];
   struct termios oldt, newt;
-  
-  tcgetattr(STDIN_FILENO, &oldt);
-  newt = oldt;
-  newt.c_lflag &= ~ECHO;
-  
-  tcsetattr(STDIN_FILENO, TCSANOW, &newt);
-  fgets(input, sizeof(input), stdin);
-  tcsetattr(STDIN_FILENO, TCSANOW, &oldt);
+  int i = 0;
+  int c;
 
-  input[strcspn(input, "\n")] = 0; 
-  return input;
+  if (tcgetattr(STDIN_FILENO, &oldt) != 0) {
+    perror("tcgetattr");
+    return NULL;
+  }
+
+  newt = oldt;
+  newt.c_lflag &= ~(ECHO | ICANON);  // disable echo and canonical mode (read char-by-char)
+  if (tcsetattr(STDIN_FILENO, TCSANOW, &newt) != 0) {
+    perror("tcsetattr");
+    return NULL;
+  }
+
+  fflush(stdout);
+
+  while ((c = getchar()) != '\n' && c != EOF && i < (int)sizeof(input) - 1) {
+    if (c == 127 || c == 8) { // handle backspace
+      if (i > 0) {
+        i--;
+        printf("\b \b");
+        fflush(stdout);
+      }
+    } else if (c >= 32 && c <= 126) { 
+      input[i++] = (char)c;
+      putchar('*');
+      fflush(stdout);
+    }
+  }
+
+  input[i] = '\0';
+
+  if (tcsetattr(STDIN_FILENO, TCSANOW, &oldt) != 0) {
+    perror("tcsetattr restore");
+    return NULL;
+  }
+
+  printf("\n");
+
+  char* input_copy = strdup(input);
+  if (!input_copy) {
+    LOG_ERROR("strdup failed");
+    return NULL;
+  }
+  LOG_DEBUG("Password strdup returned: %p, value: '%s'", input_copy, input_copy);
+  return input_copy;
 }

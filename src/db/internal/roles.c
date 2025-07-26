@@ -2,6 +2,7 @@
 #include "utils/security.h"
 
 #include "kernel/kernel.h"
+#include "storage/cluster.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -54,9 +55,21 @@ bool has_privilege(Database* db, const char* username, const char* privilege) {
 Database* get_internal_meta_db(ClusterManager* manager) {
   if (!manager) return NULL;
 
+
   Database* user_db = cluster_get_active_db(manager);
+  printf("manager = %p\n", (void*)manager);
+  printf("returned user_db = %p\n", (void*)user_db);
+  printf("returned user_db->core = %p\n", (void*)user_db->core);
+  if (user_db) {
+    printf("returned user_db->core = %p\n", (void*)user_db->core);
+  }
+
   if (!user_db) return NULL;
 
+  if (user_db && user_db->core == NULL) {
+    LOG_FATAL("user_db->core is NULL");
+  }
+  
   if (!user_db->core) {
     LOG_FATAL("FUCKED");
     // user_db->core = user_db;  
@@ -68,6 +81,8 @@ Database* get_internal_meta_db(ClusterManager* manager) {
 }
 
 int register_role(Database* db, const char* name, const char* password) {
+  LOG_DEBUG("Password entered: %s", password);
+
   if (get_role_by_name(db, name)) {
     return -2;
   }
@@ -82,6 +97,7 @@ int register_role(Database* db, const char* name, const char* password) {
     "INSERT INTO jb_roles (name, hashed_password) VALUES ('%s','%s');",
     name, hashed
   );
+  
   return process(db, sql).exec.code;
 }
 

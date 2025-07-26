@@ -15,15 +15,10 @@ typedef struct Role {
 } Role;
 
 int create_role(Database* db, const char* name, bool super, bool cdb, bool cuser);
-
 Role* get_role_by_name(Database* db, const char* name);
-
 bool has_privilege(Database* db, const char* username, const char* privilege);
-
 int register_role(Database* db, const char* name, const char* password);
-
 Role* login_role(Database* db, const char* name, const char* password);
-
 Database* get_internal_meta_db(ClusterManager* manager);
 
 #endif // ROLES_H

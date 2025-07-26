@@ -22,6 +22,6 @@ char* get_partial_name(char *cmd, int cursor_pos);
 int find_completions(const char *dir_path, const char *partial, char **completions);
 void handle_tab_completion(char *cmd, int *cursor_pos, int *cmd_len, const char *prefix);
 char* jugadline(CommandHistory *history, char* prefix);
-char* get_hidden_input(void);
+char* get_hidden_input();
 
 #endif // JUGADLINE_H
