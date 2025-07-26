@@ -62,9 +62,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Implement constraint cache for efficiency~~  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
 - ~Implement a basic permission check layer~
-- Implement `$variables` for cleaner SDK support
 - Implement `DROP` to remove tables
-- Add indexing for performance optimization  
 - Implement `JOIN` operations  
 - Implement composite primary keys
 - Implement row_x.attr = row_y.attr comparisons
@@ -73,11 +71,13 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Implement `apply_wal()` for recovery
 - Add crash recovery on startup using WAL
 - Build basic physical-backup for Yielded Archival of Known States (YAKS)
+- Add indexing for performance optimization  
 - Implement locking mechanisms for files to handle concurrency across multiple files (tables/indexes)
 - Implement locking boosted sequences
 - Implement advanced constraints and tests for them
 - Implment `POLICIES`
 - Implement a proper and advanced permission check layer
+- Implement `$variables` for cleaner SDK support
 - Implement a simple single cluster API instance
 - Add support for stored procedures  
 - Implement triggers  
