@@ -28,7 +28,8 @@ JQLCommand parser_parse(Database* db) {
     {TOK_INS, parser_parse_insert},
     {TOK_SEL, parser_parse_select},
     {TOK_UPD, parser_parse_update},
-    {TOK_DEL, parser_parse_delete}
+    {TOK_DEL, parser_parse_delete},
+    {TOK_DRP, parser_parse_drop_table},
   };
   
   for (int i = 0; i < sizeof(handlers)/sizeof(handlers[0]); i++) {
@@ -430,5 +431,31 @@ JQLCommand parser_parse_alter_table(Parser* parser, Database* db) {
 
   REPORT_ERROR(parser->lexer, "Unknown ALTER TABLE operation");
   free(alter_cmd);
+  return command;
+}
+
+JQLCommand parser_parse_drop_table(Parser* parser, Database* db) {
+  JQLCommand command;
+  jql_command_plain_init(&command, CMD_DROP);
+
+  parser_consume(parser); 
+
+  parser_expect(parser, TOK_TBL, "SYE_E_EXPECTED_TABLE_KEYWORD");
+  parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
+
+  const char* table_name = parser->cur->value;
+  TableSchema* schema = get_validated_table(db, table_name);
+
+  if (!schema) {
+    LOG_ERROR("Table '%s' does not exist", table_name);
+    return command;
+  }
+
+  command.schema = malloc(sizeof(TableSchema));
+  strcpy(command.schema->table_name, table_name);
+
+  parser_consume(parser); 
+
+  command.is_invalid = false;
   return command;
 }

@@ -1024,3 +1024,52 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
 
   return result;
 }
+
+ExecutionResult execute_drop_table(Database* db, JQLCommand* cmd) {
+  if (!db || !cmd || !cmd->schema || !cmd->schema->table_name) {
+    return (ExecutionResult){1, "Invalid DROP TABLE command or context"};
+  }
+
+  const char* table_name = cmd->schema->table_name;
+
+  if (!get_validated_table(db, table_name)) {
+    return (ExecutionResult){1, "Table does not exist"};
+  }
+
+  int64_t table_id = find_table(db, table_name);
+  if (table_id < 0) {
+    return (ExecutionResult){1, "Table ID not found"};
+  }
+
+  delete_all_attributes(db->core, table_id);
+  delete_all_constraints(db->core, table_id);
+  delete_all_defaults(db->core, table_id);
+  delete_table_entry(db, table_name); 
+
+  uint32_t idx = hash_fnv1a(table_name, MAX_TABLES);
+  uint32_t zero_offset = 0;
+  int offset_index = idx * sizeof(uint32_t) + (2 * sizeof(uint32_t));
+  io_seek_write(db->tc_writer, offset_index, &zero_offset, sizeof(uint32_t), SEEK_SET);
+
+  uint32_t table_count;
+  io_seek(db->tc_reader, TABLE_COUNT_OFFSET, SEEK_SET);
+  io_read(db->tc_reader, &table_count, sizeof(uint32_t));
+  if (table_count > 0) table_count--;
+
+  io_flush(db->tc_writer);
+  db->table_count = table_count;
+
+  io_seek_write(db->tc_writer, TABLE_COUNT_OFFSET, &db->table_count, sizeof(uint32_t), SEEK_SET);
+
+  char table_dir[MAX_PATH_LENGTH];
+  snprintf(table_dir, sizeof(table_dir), "%s/%s", db->fs->tables_dir, table_name);
+
+  if (remove_directory_recursive(table_dir) != 0) {
+    return (ExecutionResult){1, "Failed to delete table files"};
+  }
+
+  io_flush(db->tc_writer);
+  load_tc(db);
+
+  return (ExecutionResult){0, "Table dropped successfully"};
+}

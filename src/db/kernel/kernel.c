@@ -44,10 +44,12 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
   Result result = {(ExecutionResult){0, "Execution successful"}, NULL};
 
   switch (cmd->type) {
-    case CMD_CREATE: {
+    case CMD_CREATE:
       result = (Result){execute_create_table(db, cmd), cmd};
       break;
-    }
+    case CMD_DROP:
+      result = (Result){execute_drop_table(db, cmd), cmd};
+      break;
     case CMD_ALTER:
       result = (Result){execute_alter_table(db, cmd), cmd};
       break;

@@ -968,3 +968,100 @@ char* process_str_arg(const char* check_expr) {
 
   return buf;
 }
+
+int remove_directory_recursive(const char* path) {
+  DIR* dir = opendir(path);
+  if (!dir) return -1;
+
+  struct dirent* entry;
+  char full_path[MAX_PATH_LENGTH];
+
+  while ((entry = readdir(dir)) != NULL) {
+    if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+
+    snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+
+    struct stat statbuf;
+    if (stat(full_path, &statbuf) == 0) {
+      if (S_ISDIR(statbuf.st_mode)) {
+        if (remove_directory_recursive(full_path) != 0) {
+          closedir(dir);
+          return -1;
+        }
+      } else {
+        if (unlink(full_path) != 0) {
+          closedir(dir);
+          return -1;
+        }
+      }
+    }
+  }
+
+  closedir(dir);
+  return rmdir(path);
+}
+
+void delete_table_entry(Database* db, const char* table_name) {
+  int i = hash_fnv1a(table_name, MAX_TABLES);
+  
+  if (is_struct_zeroed(&db->tc[i], sizeof(TableCatalogEntry))) return;
+    
+  db->tc[i].is_populated = false;
+  
+  free(db->tc[i].schema);
+  db->tc[i].schema = NULL;
+}
+
+void delete_all_attributes(Database* core, int64_t table_id) {
+  if (!core->core) core->core = core;
+
+  ParserState state = parser_save_state(core->core->parser);
+
+  char query[256];
+  snprintf(query, sizeof(query),
+    "DELETE FROM jb_attribute WHERE table_id = %ld;", table_id
+  );
+
+  Result res = process_silent(core->core, query);
+  if (res.exec.code != 0) {
+    LOG_ERROR("Failed to delete attributes for table_id=%ld", table_id);
+  }
+
+  parser_restore_state(core->core->parser, state);
+}
+
+void delete_all_defaults(Database* core, int64_t table_id) {
+  if (!core->core) core->core = core;
+
+  ParserState state = parser_save_state(core->core->parser);
+
+  char query[256];
+  snprintf(query, sizeof(query),
+    "DELETE FROM jb_attrdef WHERE table_id = %ld;", table_id
+  );
+
+  Result res = process_silent(core->core, query);
+  if (res.exec.code != 0) {
+    LOG_ERROR("Failed to delete default values for table_id=%ld", table_id);
+  }
+
+  parser_restore_state(core->core->parser, state);
+}
+
+void delete_all_constraints(Database* core, int64_t table_id) {
+  if (!core->core) core->core = core;
+
+  ParserState state = parser_save_state(core->core->parser);
+
+  char query[256];
+  snprintf(query, sizeof(query),
+    "DELETE FROM jb_constraints WHERE table_id = %ld;", table_id
+  );
+
+  Result res = process_silent(core->core, query);
+  if (res.exec.code != 0) {
+    LOG_ERROR("Failed to delete constraints for table_id=%ld", table_id);
+  }
+
+  parser_restore_state(core->core->parser, state);
+}

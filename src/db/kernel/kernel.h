@@ -46,6 +46,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd);
 ExecutionResult execute_select(Database* db, JQLCommand* cmd);
 ExecutionResult execute_update(Database* db, JQLCommand* cmd);
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd);
+ExecutionResult execute_drop_table(Database* db, JQLCommand* cmd);
 
 Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx, 
   ColumnDefinition* primary_key_cols, ColumnValue* primary_key_vals, 
@@ -228,5 +229,11 @@ bool like_match(char* str, char* pattern);
 void* get_column_value_as_pointer(ColumnValue* col_val);
 size_t size_from_type(ColumnDefinition* fallback);
 size_t size_from_value(ColumnValue* val, ColumnDefinition* fallback);
+
+int remove_directory_recursive(const char* path);
+void delete_table_entry(Database* db, const char* table_name);
+void delete_all_attributes(Database* core, int64_t table_id);
+void delete_all_constraints(Database* core, int64_t table_id);
+void delete_all_defaults(Database* core, int64_t table_id);
 
 #endif

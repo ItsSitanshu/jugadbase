@@ -433,6 +433,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db);
 JQLCommand parser_parse_update(Parser* parser, Database* db);
 JQLCommand parser_parse_delete(Parser* parser, Database* db);
 JQLCommand parser_parse_alter_table(Parser* parser, Database* db);
+JQLCommand parser_parse_drop_table(Parser* parser, Database* db);
 
 #endif // JQL_PARSER_STATEMENTS_H
 
