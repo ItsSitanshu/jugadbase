@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "utils/xmem.h"
+
 #define NO_OF_KEYWORDS 82
 #define KEYWORDS keywords
 

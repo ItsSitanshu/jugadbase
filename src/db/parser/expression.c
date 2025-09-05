@@ -10,7 +10,7 @@ ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema) {
     
     ExprNode* right = parser_parse_logical_and(parser, schema);
     
-    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_LOGICAL_OR;
     new_node->binary.left = node;
     new_node->binary.right = right;
@@ -30,7 +30,7 @@ ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema) {
     
     ExprNode* right = parser_parse_logical_not(parser, schema);
     
-    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_LOGICAL_AND;
     new_node->binary.left = node;
     new_node->binary.right = right;
@@ -45,7 +45,7 @@ ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema) {
   if (parser->cur->type == TOK_NOT) {
     parser_consume(parser);
     
-    ExprNode* node = calloc(1, sizeof(ExprNode));
+    ExprNode* node = xcalloc(1, sizeof(ExprNode));
     node->type = EXPR_LOGICAL_NOT;    
     node->unary = parser_parse_logical_not(parser, schema);
     
@@ -75,7 +75,7 @@ ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
       parser_consume(parser);
       ExprNode* right = parser_parse_arithmetic(parser, schema);
 
-      ExprNode* node = calloc(1, sizeof(ExprNode));
+      ExprNode* node = xcalloc(1, sizeof(ExprNode));
       node->type = EXPR_COMPARISON;
       node->binary.left = left;
       node->binary.right = right;
@@ -97,7 +97,7 @@ ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema) {
     parser_consume(parser);
     ExprNode* right = parser_parse_term(parser, schema);
 
-    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_BINARY_OP;
     new_node->binary.op = op;
     new_node->binary.left = node;
@@ -117,7 +117,7 @@ ExprNode* parser_parse_term(Parser* parser, TableSchema* schema) {
     parser_consume(parser);
     ExprNode* right = parser_parse_unary(parser, schema);
 
-    ExprNode* new_node = calloc(1, sizeof(ExprNode));
+    ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_BINARY_OP;
     new_node->binary.op = op;
     new_node->binary.left = node;
@@ -136,7 +136,7 @@ ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema) {
     ExprNode* operand = parser_parse_unary(parser, schema); 
     if (!operand) return NULL;
 
-    ExprNode* node = calloc(1, sizeof(ExprNode));
+    ExprNode* node = xcalloc(1, sizeof(ExprNode));
     node->type = EXPR_UNARY_OP;
     node->arth_unary.op = op;
     node->arth_unary.expr = operand;
@@ -159,15 +159,15 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   }
 
   if (parser->cur->type == TOK_ID) {
-    char* first_ident = strdup(parser->cur->value);
+    char* first_ident = xstrdup(parser->cur->value);
     parser_consume(parser);
 
     if (parser->cur->type == TOK_LP) {
-      ExprNode* node = calloc(1, sizeof(ExprNode));
+      ExprNode* node = xcalloc(1, sizeof(ExprNode));
       node->type = EXPR_FUNCTION;
       node->fn.name = first_ident;
       node->fn.type = get_aggregate_type(first_ident);
-      node->fn.args = calloc(MAX_FN_ARGS, sizeof(ExprNode*));
+      node->fn.args = xcalloc(MAX_FN_ARGS, sizeof(ExprNode*));
       node->fn.arg_count = 0;
 
       parser_consume(parser);  
@@ -210,11 +210,11 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
 
       if (parser->cur->type != TOK_ID) {
         REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_IDENTIFIER_AFTER_DOT");
-        free(table_name);
+        xfree(table_name);
         return NULL;
       }
 
-      field_name = strdup(parser->cur->value);
+      field_name = xstrdup(parser->cur->value);
       parser_consume(parser);
     } else {
       field_name = first_ident;
@@ -231,11 +231,11 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
 
     if (field_name) col_index = find_column_index(schema, field_name);
 
-    ExprNode* base = calloc(1, sizeof(ExprNode));
+    ExprNode* base = xcalloc(1, sizeof(ExprNode));
     base->type = EXPR_COLUMN;
     base->column.index = col_index;  
     base->column.table = table_idx; 
-    base->column.col_name = strdup(field_name);
+    base->column.col_name = xstrdup(field_name);
     
     while (parser->cur->type == TOK_LB) {
       parser_consume(parser);
@@ -249,13 +249,13 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
       }
       parser_consume(parser);
 
-      ExprNode* array_node = calloc(1, sizeof(ExprNode));
+      ExprNode* array_node = xcalloc(1, sizeof(ExprNode));
       array_node->type = EXPR_ARRAY_ACCESS;
       array_node->column.index = base->column.index;
       array_node->column.table = base->column.table;
       array_node->column.array_idx = index_expr;
 
-      free(base);  
+      xfree(base);  
       base = array_node;
     }
 
@@ -266,7 +266,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   ColumnValue val;
   if (!parser_parse_value(parser, &val)) return NULL;
 
-  ExprNode* node = calloc(1, sizeof(ExprNode));
+  ExprNode* node = xcalloc(1, sizeof(ExprNode));
   node->type = EXPR_LITERAL;
   node->literal = val;
 
@@ -282,10 +282,10 @@ ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left)
     REPORT_ERROR(parser->lexer, "E_VALID_PATTERN_LIKE");
   }
 
-  ExprNode* node = calloc(1, sizeof(ExprNode));
+  ExprNode* node = xcalloc(1, sizeof(ExprNode));
   node->type = EXPR_LIKE;
   node->like.left = left;
-  node->like.pattern = strdup(parser->cur->value);
+  node->like.pattern = xstrdup(parser->cur->value);
 
   parser_consume(parser);
   return node;
@@ -303,7 +303,7 @@ ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* va
 
   ExprNode* upper = parser_parse_arithmetic(parser, schema);
 
-  ExprNode* node = calloc(1, sizeof(ExprNode));
+  ExprNode* node = xcalloc(1, sizeof(ExprNode));
   node->type = EXPR_BETWEEN;
   node->between.value = value;
   node->between.lower = lower;
@@ -325,7 +325,7 @@ ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) 
 
   while (1) {
     ExprNode* val = parser_parse_arithmetic(parser, schema);
-    values = realloc(values, sizeof(ExprNode*) * (count + 1));
+    values = xrealloc(values, sizeof(ExprNode*) * (count + 1));
     values[count++] = val;
 
     if (parser->cur->type == TOK_COM) {
@@ -340,7 +340,7 @@ ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) 
   }
   parser_consume(parser);
 
-  ExprNode* node = calloc(1, sizeof(ExprNode));
+  ExprNode* node = xcalloc(1, sizeof(ExprNode));
   node->type = EXPR_IN;
   node->in.value = value;
   node->in.list = values;
@@ -380,7 +380,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       break;
     case TOK_L_STRING:
       char temp_str[MAX_IDENTIFIER_LEN] = {0};
-      strncpy(temp_str, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
+      xstrncpy(temp_str, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
       temp_str[MAX_IDENTIFIER_LEN - 1] = '\0'; 
 
       size_t value_len = strlen(parser->cur->value);
@@ -400,13 +400,13 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         array_contents[value_len] = '\0';
 
         size_t count = 0;
-        col_val->array.array_value = calloc(MAX_ARRAY_SIZE, sizeof(ColumnValue));
+        col_val->array.array_value = xcalloc(MAX_ARRAY_SIZE, sizeof(ColumnValue));
 
         uint32_t array_type = -1; 
 
         Lexer* tmp_lexer = lexer_init();
         Parser* tmp_parser = parser_init(tmp_lexer);
-        lexer_set_buffer(tmp_parser->lexer, strdup(array_contents));
+        lexer_set_buffer(tmp_parser->lexer, xstrdup(array_contents));
         tmp_parser->cur = lexer_next_token(tmp_parser->lexer);
         parser_consume(tmp_parser);
 
@@ -421,7 +421,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
 
           ColumnValue element_val;
           if (!parser_parse_value(tmp_parser, &element_val)) {
-            free(col_val->array.array_value);
+            xfree(col_val->array.array_value);
             return false;
           }
 
@@ -440,7 +440,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
           }
         }
 
-        parser_free(tmp_parser);
+        parser_xfree(tmp_parser);
 
         col_val->array.array_size = count;
         col_val->array.array_type = array_type;
@@ -449,7 +449,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         col_val->type = col_val->array.array_type;
       } else if (has_timezone && parse_to_datetime_TZ(temp_str, &dt_tz)) {
         col_val->type = TOK_T_DATETIME_TZ;
-        memcpy(&col_val->datetime_tz_value, &dt_tz, sizeof(DateTime_TZ));
+        xmemcpy(&col_val->datetime_tz_value, &dt_tz, sizeof(DateTime_TZ));
       } else if (parse_to_datetime(temp_str, &dt)) {
         has_time_component = (dt.hour != 0 || dt.minute != 0 || dt.second != 0);
         
@@ -458,7 +458,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         
         if (contains_date_separator && contains_time_separator) {
           col_val->type = TOK_T_DATETIME;
-          memcpy(&col_val->datetime_value, &dt, sizeof(DateTime));
+          xmemcpy(&col_val->datetime_value, &dt, sizeof(DateTime));
         } else if (contains_date_separator) {
           col_val->type = TOK_T_DATE;
           col_val->date_value = encode_date(dt.year, dt.month, dt.day);
@@ -467,7 +467,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
           col_val->time_value = encode_time(dt.hour, dt.minute, dt.second);
         } else {
           col_val->type = TOK_T_STRING;
-          strncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
+          xstrncpy(col_val->str_value, parser->cur->value, MAX_IDENTIFIER_LEN - 1);
           col_val->str_value[MAX_IDENTIFIER_LEN - 1] = '\0';
         }
 
@@ -522,7 +522,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
         }
       } else {
         col_val->type = TOK_T_STRING;
-        col_val->str_value = malloc(strlen(parser->cur->value) + 1);
+        col_val->str_value = xmalloc(strlen(parser->cur->value) + 1);
         strcpy(col_val->str_value, parser->cur->value);
         col_val->str_value[strlen(col_val->str_value)] = '\0';
       }

@@ -5,6 +5,8 @@
 #include <stdlib.h>
 #include <time.h>
 
+#include "utils/xmem.h"
+
 char* uuid() {
   srand(time(NULL));
 
@@ -16,7 +18,7 @@ char* uuid() {
   char uuid_str[37];
   sprintf(uuid_str, "%08x-%04x-%04x-%04x-%04x%08x", num1, num2 >> 16, num2 & 0xFFFF, num3 >> 16, num3 & 0xFFFF, num4);
 
-  return strdup(uuid_str);
+  return xstrdup(uuid_str);
 }
 
 #endif // UUID_H

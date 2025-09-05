@@ -6,6 +6,9 @@
 #include <string.h>
 #include <stdint.h>
 
+#include "utils/xmem.h"
+
+
 #define TOAST_CHUNK_SIZE 2048
 
 typedef struct {

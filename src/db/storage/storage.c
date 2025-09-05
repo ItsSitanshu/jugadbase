@@ -8,12 +8,12 @@ void initialize_buffer_pool(BufferPool* pool, uint8_t idx, char* filename) {
 
   pool->idx = idx;
 
-  memcpy(pool->file, filename, MAX_PATH_LENGTH - 1);
+  xmemcpy(pool->file, filename, MAX_PATH_LENGTH - 1);
   pool->file[MAX_PATH_LENGTH - 1] = '\0';
 } 
 
 Page* page_init(uint32_t pg_n) {
-  Page* page = (Page*)malloc(sizeof(Page));
+  Page* page = (Page*)xmalloc(sizeof(Page));
   if (!page) {
     LOG_ERROR("Failed to allocate memory for page");
     return NULL;
@@ -45,12 +45,12 @@ void read_page(FILE* file, uint64_t page_number, Page* page, TableCatalogEntry t
     fread(&row->row_length, sizeof(row->row_length), 1, file);
 
     fread(&row->null_bitmap_size, sizeof(row->null_bitmap_size), 1, file);
-    row->null_bitmap = malloc(row->null_bitmap_size);
+    row->null_bitmap = xmalloc(row->null_bitmap_size);
     if (row->null_bitmap && row->null_bitmap_size > 0) {
       fread(row->null_bitmap, row->null_bitmap_size, 1, file);
     }
 
-    row->values = calloc(tc.schema->column_count, sizeof(ColumnValue));
+    row->values = xcalloc(tc.schema->column_count, sizeof(ColumnValue));
     row->n_values = tc.schema->column_count;
     for (int j = 0; j < tc.schema->column_count; j++) {
       row->values[j].is_null = (row->null_bitmap[j / 8] >> (j % 8)) & 1;
@@ -79,7 +79,7 @@ void read_array_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_de
 
   col_val->is_array = true;
   col_val->array.array_size = len;
-  col_val->array.array_value = calloc(len, sizeof(ColumnValue));
+  col_val->array.array_value = xcalloc(len, sizeof(ColumnValue));
 
   ColumnDefinition base_def = *col_def;
   base_def.is_array = false;
@@ -184,7 +184,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
 
     case TOK_T_VARCHAR: {
       fread(&str_len, sizeof(uint16_t), 1, file);
-      col_val->str_value = malloc(str_len + 1);
+      col_val->str_value = xmalloc(str_len + 1);
       fread(col_val->str_value, sizeof(char), str_len, file);
       col_val->str_value[str_len] = '\0';
       break;
@@ -196,7 +196,7 @@ void read_column_value(FILE* file, ColumnValue* col_val, ColumnDefinition* col_d
       fread(&is_toast_pointer, sizeof(bool), 1, file);
       if (!is_toast_pointer) {
         fread(&str_len, sizeof(uint16_t), 1, file);
-        col_val->str_value = calloc(str_len + 1, sizeof(char));
+        col_val->str_value = xcalloc(str_len + 1, sizeof(char));
         col_val->str_value[str_len] = '\0';  
         if (!col_val->str_value) {
           perror("malloc failed");
@@ -291,7 +291,7 @@ uint32_t write_array_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Colu
   uint32_t offset = 0;
   uint16_t len = col_val->array.array_size;
 
-  memcpy(buffer + offset, &len, sizeof(uint16_t));
+  xmemcpy(buffer + offset, &len, sizeof(uint16_t));
   offset += sizeof(uint16_t);
 
   ColumnDefinition base_def = *col_def;
@@ -463,32 +463,32 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
     case TOK_T_INT:
     case TOK_T_UINT:
     case TOK_T_SERIAL:
-      memcpy(buffer + offset, &col_val->int_value, sizeof(int64_t));
+      xmemcpy(buffer + offset, &col_val->int_value, sizeof(int64_t));
       offset += sizeof(int64_t);
       break;
 
     case TOK_T_BOOL: {
-      memcpy(buffer + offset, &col_val->bool_value, sizeof(bool));
+      xmemcpy(buffer + offset, &col_val->bool_value, sizeof(bool));
       offset += sizeof(bool);
       break;
     }
 
     case TOK_T_FLOAT:
-      memcpy(buffer + offset, &col_val->float_value, sizeof(float));
+      xmemcpy(buffer + offset, &col_val->float_value, sizeof(float));
       offset += sizeof(float);
       break;
 
     case TOK_T_DOUBLE:
-      memcpy(buffer + offset, &col_val->double_value, sizeof(double));
+      xmemcpy(buffer + offset, &col_val->double_value, sizeof(double));
       offset += sizeof(double);
       break;
 
     case TOK_T_DECIMAL:
-      memcpy(buffer + offset, &col_val->decimal.precision, sizeof(int));
+      xmemcpy(buffer + offset, &col_val->decimal.precision, sizeof(int));
       offset += sizeof(int);
-      memcpy(buffer + offset, &col_val->decimal.scale, sizeof(int));
+      xmemcpy(buffer + offset, &col_val->decimal.scale, sizeof(int));
       offset += sizeof(int);
-      memcpy(buffer + offset, col_val->decimal.decimal_value, MAX_DECIMAL_LEN);
+      xmemcpy(buffer + offset, col_val->decimal.decimal_value, MAX_DECIMAL_LEN);
       offset += MAX_DECIMAL_LEN;
       break;
 
@@ -500,10 +500,10 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
           LOG_ERROR("Error: Invalid UUID format.\n");
           return 0;
         }
-        memcpy(buffer + offset, binary_uuid, 16);
+        xmemcpy(buffer + offset, binary_uuid, 16);
         offset += 16;
       } else if (uuid_len == 16) {
-        memcpy(buffer + offset, col_val->str_value, 16);
+        xmemcpy(buffer + offset, col_val->str_value, 16);
         offset += 16;
       } else {
         LOG_ERROR("Invalid UUID length.\n");
@@ -513,42 +513,42 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
     }
 
     case TOK_T_DATE:
-      memcpy(buffer + offset, &col_val->date_value, sizeof(Date));
+      xmemcpy(buffer + offset, &col_val->date_value, sizeof(Date));
       offset += sizeof(Date);
       break;
 
     case TOK_T_TIME:
-      memcpy(buffer + offset, &col_val->time_value, sizeof(TimeStored));
+      xmemcpy(buffer + offset, &col_val->time_value, sizeof(TimeStored));
       offset += sizeof(TimeStored);
       break;
 
     case TOK_T_TIME_TZ:
-      memcpy(buffer + offset, &col_val->time_tz_value, sizeof(Time_TZ));
+      xmemcpy(buffer + offset, &col_val->time_tz_value, sizeof(Time_TZ));
       offset += sizeof(Time_TZ);
       break;
 
     case TOK_T_DATETIME:
-      memcpy(buffer + offset, &col_val->datetime_value, sizeof(DateTime));
+      xmemcpy(buffer + offset, &col_val->datetime_value, sizeof(DateTime));
       offset += sizeof(DateTime);
       break;
 
     case TOK_T_DATETIME_TZ:
-      memcpy(buffer + offset, &col_val->datetime_tz_value, sizeof(DateTime_TZ));
+      xmemcpy(buffer + offset, &col_val->datetime_tz_value, sizeof(DateTime_TZ));
       offset += sizeof(DateTime_TZ);
       break;
 
     case TOK_T_TIMESTAMP:
-      memcpy(buffer + offset, &col_val->timestamp_value, sizeof(Timestamp));
+      xmemcpy(buffer + offset, &col_val->timestamp_value, sizeof(Timestamp));
       offset += sizeof(Timestamp);
       break;
 
     case TOK_T_TIMESTAMP_TZ:
-      memcpy(buffer + offset, &col_val->timestamp_tz_value, sizeof(Timestamp_TZ));
+      xmemcpy(buffer + offset, &col_val->timestamp_tz_value, sizeof(Timestamp_TZ));
       offset += sizeof(Timestamp_TZ);
       break;
 
     case TOK_T_INTERVAL:
-      memcpy(buffer + offset, &col_val->interval_value, sizeof(Interval));
+      xmemcpy(buffer + offset, &col_val->interval_value, sizeof(Interval));
       offset += sizeof(Interval);
       break;
 
@@ -562,10 +562,10 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
         break;
       }
 
-      memcpy(buffer + offset, &str_len, sizeof(uint16_t));
+      xmemcpy(buffer + offset, &str_len, sizeof(uint16_t));
       offset += sizeof(uint16_t);
 
-      memcpy(buffer + offset, col_val->str_value, str_len);
+      xmemcpy(buffer + offset, col_val->str_value, str_len);
       offset += str_len;
       break;
     }
@@ -574,18 +574,18 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
     case TOK_T_JSON:
     case TOK_T_BLOB: {
       is_toast_pointer = col_val->is_toast;
-      memcpy(buffer + offset, &is_toast_pointer, sizeof(bool));
+      xmemcpy(buffer + offset, &is_toast_pointer, sizeof(bool));
       offset += sizeof(bool);
 
       if (!is_toast_pointer) {
         str_len = (uint16_t)strlen(col_val->str_value);
-        memcpy(buffer + offset, &str_len, sizeof(uint16_t));
+        xmemcpy(buffer + offset, &str_len, sizeof(uint16_t));
         offset += sizeof(uint16_t);
 
-        memcpy(buffer + offset, col_val->str_value, str_len);
+        xmemcpy(buffer + offset, col_val->str_value, str_len);
         offset += str_len;
       } else {
-        memcpy(buffer + offset, &col_val->toast_object, sizeof(uint32_t));
+        xmemcpy(buffer + offset, &col_val->toast_object, sizeof(uint32_t));
         offset += sizeof(uint32_t);
       }
       break;
@@ -664,20 +664,20 @@ uint32_t row_to_buffer(Row* row, BufferPool* pool, TableSchema* schema, uint8_t*
   
   uint32_t offset = 0;
 
-  memcpy(buffer + offset, &row->id.page_id, sizeof(row->id.page_id));
+  xmemcpy(buffer + offset, &row->id.page_id, sizeof(row->id.page_id));
   offset += sizeof(row->id.page_id);
 
-  memcpy(buffer + offset, &row->id.row_id, sizeof(row->id.row_id));
+  xmemcpy(buffer + offset, &row->id.row_id, sizeof(row->id.row_id));
   offset += sizeof(row->id.row_id);
 
-  memcpy(buffer + offset, &row->row_length, sizeof(row->row_length));
+  xmemcpy(buffer + offset, &row->row_length, sizeof(row->row_length));
   offset += sizeof(row->row_length);
 
-  memcpy(buffer + offset, &row->null_bitmap_size, sizeof(row->null_bitmap_size));
+  xmemcpy(buffer + offset, &row->null_bitmap_size, sizeof(row->null_bitmap_size));
   offset += sizeof(row->null_bitmap_size);
 
   if (row->null_bitmap && row->null_bitmap_size > 0) {
-    memcpy(buffer + offset, row->null_bitmap, row->null_bitmap_size);
+    xmemcpy(buffer + offset, row->null_bitmap, row->null_bitmap_size);
     offset += row->null_bitmap_size;
   }
 
@@ -730,7 +730,7 @@ void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
   }
 
   fclose(file);
-  free(lru_page);
+  xfree(lru_page);
 
   for (int i = 1; i < pool->num_pages; i++) {
     pool->pages[i - 1] = pool->pages[i];

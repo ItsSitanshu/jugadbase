@@ -300,15 +300,15 @@ bool parse_to_datetime_TZ(const char* str, DateTime_TZ* out) {
   }
   
   size_t dt_len = tz_part - str;
-  char* dt_str = (char*)malloc(dt_len + 1);
+  char* dt_str = (char*)xmalloc(dt_len + 1);
   if (!dt_str)
     return false;
       
-  strncpy(dt_str, str, dt_len);
+  xstrncpy(dt_str, str, dt_len);
   dt_str[dt_len] = '\0';
   
   bool parse_success = parse_datetime(dt_str, &dt_part);
-  free(dt_str);
+  xfree(dt_str);
   
   if (!parse_success)
     return false;
@@ -946,7 +946,7 @@ char* date_to_string(Date date) {
   int y, m, d;
   
   decode_date(date, &y, &m, &d);
-  char* buffer = malloc(11);  // "YYYY-MM-DD\0"
+  char* buffer = xmalloc(11);  // "YYYY-MM-DD\0"
   if (!buffer) return NULL;
   snprintf(buffer, 11, "%04d-%02d-%02d", y, m, d);
   return buffer;
@@ -955,7 +955,7 @@ char* date_to_string(Date date) {
 char* time_to_string(TimeStored time) {
   int h, m, s;
   decode_time(time, &h, &m, &s);
-  char* buffer = malloc(9);  // "HH:MM:SS\0"
+  char* buffer = xmalloc(9);  // "HH:MM:SS\0"
   if (!buffer) return NULL;
   snprintf(buffer, 9, "%02d:%02d:%02d", h, m, s);
   return buffer;
@@ -965,7 +965,7 @@ char* timestamp_to_string(Timestamp time) {
   __dt decoded_time;
   decode_timestamp(time, &decoded_time);
 
-  char* time_string = (char*)malloc(20 * sizeof(char));
+  char* time_string = (char*)xmalloc(20 * sizeof(char));
 
   if (time_string != NULL) {
     snprintf(time_string, 20, "%04d-%02d-%02d %02d:%02d:%02d", 
@@ -977,7 +977,7 @@ char* timestamp_to_string(Timestamp time) {
 }
 
 char* datetime_to_string(DateTime dt) {
-  char* buffer = malloc(30);  // "YYYY-MM-DD HH:MM:SS\0"
+  char* buffer = xmalloc(30);  // "YYYY-MM-DD HH:MM:SS\0"
   if (!buffer) return NULL;
   snprintf(buffer, 30, "%04d-%02d-%02d %02d:%02d:%02d", dt.year, dt.month, dt.day,
            dt.hour, dt.minute, dt.second);
@@ -998,7 +998,7 @@ char* interval_to_string(Interval* interval) {
   int minutes = total_seconds / SECONDS_PER_MINUTE;
   int seconds = total_seconds % SECONDS_PER_MINUTE;
 
-  char* buffer = malloc(256);
+  char* buffer = xmalloc(256);
   char temp[32] = {0};
   size_t offset = 0;
   
@@ -1044,7 +1044,7 @@ char* time_tz_to_string(Time_TZ tt) {
   int32_t tz_offset;
   decode_time_TZ(tt, &h, &m, &s, &tz_offset);
 
-  char* buffer = malloc(20);  // "HH:MM:SS+/-TZ\0"
+  char* buffer = xmalloc(20);  // "HH:MM:SS+/-TZ\0"
   if (!buffer) return NULL;
 
   int tz_hours = tz_offset / 3600;
@@ -1058,7 +1058,7 @@ char* timestamp_tz_to_string(Timestamp_TZ encoded) {
   __dt dt;
   decode_timestamp_TZ(encoded, &dt);
 
-  char* buffer = malloc(30);  // "YYYY-MM-DD HH:MM:SS+/-TZ\0"
+  char* buffer = xmalloc(30);  // "YYYY-MM-DD HH:MM:SS+/-TZ\0"
   if (!buffer) return NULL;
 
   int tz_offset = get_timezone_offset();

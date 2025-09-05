@@ -7,6 +7,8 @@
 #include <stdbool.h>
 #include <dirent.h>
 
+#include "utils/xmem.h"
+
 #ifdef _WIN32
   #include <windows.h>
   #include <stdio.h>
@@ -99,12 +101,12 @@ static bool is_struct_zeroed(const void* ptr, size_t size) {
     return true;
   }
   
-  void* zeroed_struct = malloc(size);
+  void* zeroed_struct = xmalloc(size);
   memset(zeroed_struct, 0, size);
 
   int result = memcmp(ptr, zeroed_struct, size);
   
-  free(zeroed_struct); 
+  xfree(zeroed_struct); 
   return result == 0;
 }
 

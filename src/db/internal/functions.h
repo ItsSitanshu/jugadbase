@@ -9,6 +9,7 @@
 
 #include "parser/parser.h"
 #include "storage/storage.h"
+#include "utils/xmem.h"
 
 typedef struct Database Database;
 

@@ -32,45 +32,45 @@ void write_update_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
   }
   
   uint32_t total_size = header_size + data_size;
-  uint8_t* wal_buf = malloc(total_size);
+  uint8_t* wal_buf = xmalloc(total_size);
   if (!wal_buf) {
     return; 
   }
   
   uint32_t offset = 0;
-  memcpy(wal_buf + offset, &page_idx, sizeof(uint16_t));
+  xmemcpy(wal_buf + offset, &page_idx, sizeof(uint16_t));
   offset += sizeof(uint16_t);
   
-  memcpy(wal_buf + offset, &row_idx, sizeof(uint16_t));
+  xmemcpy(wal_buf + offset, &row_idx, sizeof(uint16_t));
   offset += sizeof(uint16_t);
   
-  memcpy(wal_buf + offset, &num_columns, sizeof(uint16_t));
+  xmemcpy(wal_buf + offset, &num_columns, sizeof(uint16_t));
   offset += sizeof(uint16_t);
   
   for (int i = 0; i < num_columns; i++) {
     ColumnDefinition* def = &schema->columns[col_indices[i]];
     
-    memcpy(wal_buf + offset, &col_indices[i], sizeof(uint16_t));
+    xmemcpy(wal_buf + offset, &col_indices[i], sizeof(uint16_t));
     offset += sizeof(uint16_t);
     
     uint32_t old_val_size = write_column_value_to_buffer(temp_buf, &old_values[i], def);
-    memcpy(wal_buf + offset, &old_val_size, sizeof(uint32_t));
+    xmemcpy(wal_buf + offset, &old_val_size, sizeof(uint32_t));
     offset += sizeof(uint32_t);
     
-    memcpy(wal_buf + offset, temp_buf, old_val_size);
+    xmemcpy(wal_buf + offset, temp_buf, old_val_size);
     offset += old_val_size;
     
     uint32_t new_val_size = write_column_value_to_buffer(temp_buf, &new_values[i], def);
-    memcpy(wal_buf + offset, &new_val_size, sizeof(uint32_t));
+    xmemcpy(wal_buf + offset, &new_val_size, sizeof(uint32_t));
     offset += sizeof(uint32_t);
     
-    memcpy(wal_buf + offset, temp_buf, new_val_size);
+    xmemcpy(wal_buf + offset, temp_buf, new_val_size);
     offset += new_val_size;
   }
   
   wal_write(wal, WAL_UPDATE, schema_idx, wal_buf, total_size);
   
-  free(wal_buf);
+  xfree(wal_buf);
 }
 
 void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t row_idx, 
@@ -103,40 +103,40 @@ void write_delete_wal(FILE* wal, uint8_t schema_idx, uint16_t page_idx, uint16_t
   }
   
   uint32_t total_size = header_size + data_size;
-  uint8_t* wal_buf = malloc(total_size);
+  uint8_t* wal_buf = xmalloc(total_size);
   if (!wal_buf) {
     return; 
   }
   
   uint32_t offset = 0;
   
-  memcpy(wal_buf + offset, &page_idx, sizeof(uint16_t));
+  xmemcpy(wal_buf + offset, &page_idx, sizeof(uint16_t));
   offset += sizeof(uint16_t);
   
-  memcpy(wal_buf + offset, &row_idx, sizeof(uint16_t));
+  xmemcpy(wal_buf + offset, &row_idx, sizeof(uint16_t));
   offset += sizeof(uint16_t);
   
-  memcpy(wal_buf + offset, &num_columns, sizeof(uint16_t));
+  xmemcpy(wal_buf + offset, &num_columns, sizeof(uint16_t));
   offset += sizeof(uint16_t);
   
-  memcpy(wal_buf + offset, &row->null_bitmap, sizeof(uint16_t));
+  xmemcpy(wal_buf + offset, &row->null_bitmap, sizeof(uint16_t));
   offset += sizeof(uint16_t);
   
   for (uint16_t i = 0; i < num_columns; i++) {
     ColumnDefinition* def = &schema->columns[i];
     
-    memcpy(wal_buf + offset, &i, sizeof(uint16_t));
+    xmemcpy(wal_buf + offset, &i, sizeof(uint16_t));
     offset += sizeof(uint16_t);
     
     uint32_t val_size = write_column_value_to_buffer(temp_buf, &row->values[i], def);
-    memcpy(wal_buf + offset, &val_size, sizeof(uint32_t));
+    xmemcpy(wal_buf + offset, &val_size, sizeof(uint32_t));
     offset += sizeof(uint32_t);
     
-    memcpy(wal_buf + offset, temp_buf, val_size);
+    xmemcpy(wal_buf + offset, temp_buf, val_size);
     offset += val_size;
   }
   
   wal_write(wal, WAL_DELETE, schema_idx, wal_buf, total_size);
   
-  free(wal_buf);
+  xfree(wal_buf);
 }

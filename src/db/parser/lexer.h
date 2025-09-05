@@ -1,9 +1,6 @@
 #ifndef LEXER_H
 #define LEXER_H
 
-#include "parser/token.h"
-#include "utils/bit128.h"
-
 #include <ctype.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -12,6 +9,10 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <stdint.h>
+
+#include "parser/token.h"
+#include "utils/bit128.h"
+#include "utils/xmem.h"
 
 typedef struct Lexer {
   char c; // current charachter
@@ -26,11 +27,11 @@ typedef struct Lexer {
 
 Lexer* lexer_init();
 void lexer_set_buffer(Lexer* lexer, char* buffer);
-void lexer_free(Lexer* lexer);
+void lexer_xfree(Lexer* lexer);
 
 Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type);
 Token* token_clone(Token* src);
-void token_free(Token* token);
+void token_xfree(Token* token);
 
 Token* lexer_next_token(Lexer* lexer);
 

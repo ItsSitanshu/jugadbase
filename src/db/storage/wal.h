@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <time.h>
+#include "utils/xmem.h"
+
 
 typedef enum {
   WAL_INSERT = 1,

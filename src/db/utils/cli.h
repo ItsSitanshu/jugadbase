@@ -7,7 +7,9 @@
 
 #include "kernel/kernel.h"
 
-#include "../utils/log.h"
+#include "utils/log.h"
+#include "utils/xmem.h"
+
 
 void get_short_cwd(char* buffer, size_t size) {
   char cwd[1024];
@@ -29,16 +31,16 @@ void get_short_cwd(char* buffer, size_t size) {
 
 char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   if (result.row_count == 0) {
-    return strdup("(0 rows)\n");
+    return xstrdup("(0 rows)\n");
   }
 
-  size_t* col_widths = calloc(cmd->schema->column_count, sizeof(size_t));
+  size_t* col_widths = xcalloc(cmd->schema->column_count, sizeof(size_t));
   
   for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
     col_widths[c] = strlen(cmd->schema->columns[c].name);
   }
   
-  char** formatted_values = calloc(result.row_count * cmd->schema->column_count, sizeof(char*));
+  char** formatted_values = xcalloc(result.row_count * cmd->schema->column_count, sizeof(char*));
   
   for (uint32_t i = 0; i < result.row_count; i++) {
     Row* row = &result.rows[i];
@@ -52,7 +54,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
       char* buffer;
       format_column_value(buffer, 256, &val);
       
-      formatted_values[i * cmd->schema->column_count + c] = strdup(buffer);
+      formatted_values[i * cmd->schema->column_count + c] = xstrdup(buffer);
       
       size_t len = strlen(buffer);
       if (len > col_widths[c]) {
@@ -70,15 +72,15 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   
   size_t total_size = (total_width + 1) * 2 + (total_width + 1) * result.row_count + 50;
   
-  char* output = malloc(total_size);
+  char* output = xmalloc(total_size);
   if (!output) {
     for (uint32_t i = 0; i < result.row_count * cmd->schema->column_count; i++) {
       if (formatted_values[i] != NULL) {
-        free(formatted_values[i]);
+        xfree(formatted_values[i]);
       }
     }
-    free(formatted_values);
-    free(col_widths);
+    xfree(formatted_values);
+    xfree(col_widths);
     return NULL;
   }
   
@@ -157,11 +159,11 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   
   for (uint32_t i = 0; i < result.row_count * cmd->schema->column_count; i++) {
     if (formatted_values[i] != NULL) {
-      free(formatted_values[i]);
+      xfree(formatted_values[i]);
     }
   }
-  free(formatted_values);
-  free(col_widths);
+  xfree(formatted_values);
+  xfree(col_widths);
   
   return output;
 }
@@ -169,7 +171,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
 void print_text_table(ExecutionResult result, JQLCommand* cmd) {
   char* formatted_table = format_text_table(result, cmd);
   if (formatted_table) {
-    free(formatted_table);
+    xfree(formatted_table);
   } else {
     printf("Error formatting table output\n");
   }
@@ -185,7 +187,7 @@ void print_text_table_to_file(ExecutionResult result, JQLCommand* cmd, const cha
     } else {
       printf("Error opening file: %s\n", filename);
     }
-    free(formatted_table);
+    xfree(formatted_table);
   } else {
     printf("Error formatting table output\n");
   }

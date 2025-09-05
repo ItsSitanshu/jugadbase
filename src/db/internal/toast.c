@@ -45,7 +45,7 @@ char* toast_concat(Database* db, uint32_t toast_id) {
     total_len += strlen(res.exec.rows[i].values[2].str_value);
   }
 
-  char* full_text = malloc(total_len + 1);
+  char* full_text = xmalloc(total_len + 1);
   if (!full_text) return NULL;
 
   full_text[0] = '\0';
@@ -77,10 +77,10 @@ ToastChunks* toast_split_entry(const char* data) {
   size_t length = strlen(data);
   size_t num_chunks = abs((length / (TOAST_CHUNK_SIZE - 1)) + 1);
 
-  ToastChunks* result = malloc(sizeof(ToastChunks));
+  ToastChunks* result = xmalloc(sizeof(ToastChunks));
   if (!result) return NULL;
 
-  result->chunks = malloc(sizeof(char*) * num_chunks);
+  result->chunks = xmalloc(sizeof(char*) * num_chunks);
   result->count = num_chunks;
 
 
@@ -88,15 +88,15 @@ ToastChunks* toast_split_entry(const char* data) {
     size_t start = i * (TOAST_CHUNK_SIZE - 1);
     size_t chunk_len = ((length - start) < (TOAST_CHUNK_SIZE - 1)) ? (length - start) : (TOAST_CHUNK_SIZE - 1);
 
-    result->chunks[i] = malloc(chunk_len + 1); // +1 for null terminator
+    result->chunks[i] = xmalloc(chunk_len + 1); // +1 for null terminator
     if (!result->chunks[i]) {
-      for (size_t j = 0; j < i; ++j) free(result->chunks[j]);
-      free(result->chunks);
-      free(result);
+      for (size_t j = 0; j < i; ++j) xfree(result->chunks[j]);
+      xfree(result->chunks);
+      xfree(result);
       return NULL;
     }
 
-    strncpy(result->chunks[i], data + start, chunk_len);
+    xstrncpy(result->chunks[i], data + start, chunk_len);
     result->chunks[i][chunk_len] = '\0';
   }
 
@@ -106,8 +106,8 @@ ToastChunks* toast_split_entry(const char* data) {
 void toast_free_chunks(ToastChunks* chunks) {
   if (!chunks) return;
   for (size_t i = 0; i < chunks->count; ++i) {
-    free(chunks->chunks[i]);
+    xfree(chunks->chunks[i]);
   }
-  free(chunks->chunks);
-  free(chunks);
+  xfree(chunks->chunks);
+  xfree(chunks);
 }

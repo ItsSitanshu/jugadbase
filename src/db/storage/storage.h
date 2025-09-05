@@ -5,6 +5,8 @@
 #include "storage/fs.h"
 #include "parser/parser.h"
 
+#include "utils/xmem.h"
+
 #define PAGE_SIZE 8192
 #define POOL_SIZE 32
 #define MAX_ROW_BUFFER 8192

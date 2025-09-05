@@ -13,7 +13,7 @@ Result process(Database* db, char* buffer) {
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
 
-  JQLCommand* cmd = malloc(sizeof(JQLCommand));
+  JQLCommand* cmd = xmalloc(sizeof(JQLCommand));
   *cmd = parser_parse(db);
 
   Result result = execute_cmd(db, cmd, true);
@@ -29,7 +29,7 @@ Result process_silent(Database* db, char* buffer) {
   parser_reset(db->parser);
 
 
-  JQLCommand* cmd = malloc(sizeof(JQLCommand));
+  JQLCommand* cmd = xmalloc(sizeof(JQLCommand));
   *cmd = parser_parse(db);
 
   Result result = execute_cmd(db, cmd, false);
@@ -120,7 +120,7 @@ void free_row(Row* row) {
   for (uint32_t i = 0; i < row->n_values; i++) {
     free_column_value(&row->values[i]);
   }
-  free(row->values);
+  xfree(row->values);
 }
 
 void free_execution_result(ExecutionResult* result) {
@@ -129,17 +129,17 @@ void free_execution_result(ExecutionResult* result) {
   if (result->aliases) {
     for (size_t i = 0; i < result->alias_limit; i++) {
       if (result->aliases[i]) {
-        free(result->aliases[i]);
+        xfree(result->aliases[i]);
       }
     }
-    free(result->aliases);
+    xfree(result->aliases);
   }
 
   // if (result->rows && result->alias_limit > 0) {
   //   for (uint32_t i = 0; i < result->row_count; i++) {
   //     free_row(&result->rows[i]);
   //   }
-  //   free(result->rows);
+  //   xfree(result->rows);
   // }
 }
 

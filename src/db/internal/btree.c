@@ -4,7 +4,7 @@
 #include "kernel/kernel.h"
 
 BTree* btree_create(uint8_t key_type) {
-  BTree* tree = (BTree*)malloc(sizeof(BTree));
+  BTree* tree = (BTree*)xmalloc(sizeof(BTree));
 
   tree->btree_order = calculate_btree_order();
   tree->key_type = key_type;
@@ -14,14 +14,14 @@ BTree* btree_create(uint8_t key_type) {
 }
 
 BTreeNode* btree_create_node(bool is_leaf, size_t btree_order) {
-  BTreeNode* node = calloc(1, sizeof(BTreeNode));
+  BTreeNode* node = xcalloc(1, sizeof(BTreeNode));
 
   node->is_leaf = is_leaf;
   node->num_keys = 0;
 
-  node->keys = (void**)calloc(btree_order - 1, sizeof(void*));  
-  node->row_pointers = (RowID*)calloc(btree_order - 1, sizeof(RowID));  
-  node->children = (BTreeNode**)calloc(btree_order, sizeof(BTreeNode*));  
+  node->keys = (void**)xcalloc(btree_order - 1, sizeof(void*));  
+  node->row_pointers = (RowID*)xcalloc(btree_order - 1, sizeof(RowID));  
+  node->children = (BTreeNode**)xcalloc(btree_order, sizeof(BTreeNode*));  
 
   return node;
 }
@@ -65,7 +65,7 @@ bool btree_delete(BTree* tree, void* key) {
     } else {
       tree->root = NULL;
     }
-    free(old_root);
+    xfree(old_root);
   }
 
   return deleted;
@@ -79,7 +79,7 @@ bool delete_from_node(BTreeNode* node, void* key, uint8_t key_type, size_t order
 
   if (idx < node->num_keys && key_compare(key, node->keys[idx], key_type) == 0) {
     if (node->is_leaf) {
-      free(node->keys[idx]);
+      xfree(node->keys[idx]);
       for (int i = idx; i < node->num_keys - 1; i++) {
         node->keys[i] = node->keys[i + 1];
         node->row_pointers[i] = node->row_pointers[i + 1];
@@ -91,8 +91,8 @@ bool delete_from_node(BTreeNode* node, void* key, uint8_t key_type, size_t order
       if (pred->num_keys >= (order + 1) / 2) {
         void* pred_key = btree_get_predecessor(pred, key_type);
         RowID pred_ptr = btree_get_predecessor_ptr(pred);
-        free(node->keys[idx]);
-        node->keys[idx] = malloc(key_size_for_type(key_type));
+        xfree(node->keys[idx]);
+        node->keys[idx] = xmalloc(key_size_for_type(key_type));
         copy_key(node->keys[idx], pred_key, key_type);
         node->row_pointers[idx] = pred_ptr;
         return delete_from_node(pred, pred_key, key_type, order);
@@ -101,8 +101,8 @@ bool delete_from_node(BTreeNode* node, void* key, uint8_t key_type, size_t order
         if (succ->num_keys >= (order + 1) / 2) {
           void* succ_key = btree_get_successor(succ, key_type);
           RowID succ_ptr = btree_get_successor_ptr(succ);
-          free(node->keys[idx]);
-          node->keys[idx] = malloc(key_size_for_type(key_type));
+          xfree(node->keys[idx]);
+          node->keys[idx] = xmalloc(key_size_for_type(key_type));
           copy_key(node->keys[idx], succ_key, key_type);
           node->row_pointers[idx] = succ_ptr;
           return delete_from_node(succ, succ_key, key_type, order);
@@ -189,7 +189,7 @@ void btree_insert_nonfull(BTree* tree, BTreeNode* node, void* key, RowID row_off
       i--;
     }
 
-    void* new_key = malloc(key_size_for_type(tree->key_type));
+    void* new_key = xmalloc(key_size_for_type(tree->key_type));
     if (!new_key) {
       LOG_ERROR("Memory allocation failed in btree_insert_nonfull");
       return;
@@ -283,24 +283,24 @@ void btree_free_node(BTreeNode* node, size_t btree_order) {
   if (node->keys) {
     for (size_t i = 0; i < node->num_keys; i++) {
       if (node->keys[i]) {
-        free(node->keys[i]); 
+        xfree(node->keys[i]); 
       }
     }
-    free(node->keys);
+    xfree(node->keys);
   }
 
-  free(node->row_pointers);
+  xfree(node->row_pointers);
 
-  free(node->children);
+  xfree(node->children);
 
-  free(node);
+  xfree(node);
 }
 
 void btree_destroy(BTree* tree) {
   if (!tree) return;
 
   btree_free_node(tree->root, tree->btree_order);
-  free(tree);
+  xfree(tree);
 }
 
 BTree* load_btree(FILE* file) {
@@ -310,7 +310,7 @@ BTree* load_btree(FILE* file) {
   [4B] - Key Type
   */
 
-  BTree* tree = malloc(sizeof(BTree));
+  BTree* tree = xmalloc(sizeof(BTree));
   fread(&tree->id, sizeof(uint32_t), 1, file);
   fread(&tree->btree_order, sizeof(long), 1, file);
   fread(&tree->key_type, sizeof(int), 1, file);
@@ -321,7 +321,7 @@ BTree* load_btree(FILE* file) {
 }
 
 BTreeNode* load_tree_node(FILE* db_file, uint8_t key_type) {
-  BTreeNode* node = malloc(sizeof(BTreeNode));
+  BTreeNode* node = xmalloc(sizeof(BTreeNode));
   bool is_invalid = false;
 
   eof_fread(&node->is_leaf, sizeof(bool), 1, db_file, &is_invalid);
@@ -334,17 +334,17 @@ BTreeNode* load_tree_node(FILE* db_file, uint8_t key_type) {
 
   int ksize = key_size_for_type(key_type);
 
-  node->keys = malloc(sizeof(void*) * node->num_keys);
+  node->keys = xmalloc(sizeof(void*) * node->num_keys);
   for (int i = 0; i < node->num_keys; i++) {
-    node->keys[i] = malloc(ksize);
+    node->keys[i] = xmalloc(ksize);
     fread(node->keys[i], ksize, 1, db_file);
   }
 
-  node->row_pointers = malloc(sizeof(RowID) * node->num_keys);
+  node->row_pointers = xmalloc(sizeof(RowID) * node->num_keys);
   fread(node->row_pointers, sizeof(RowID), node->num_keys, db_file);
 
   if (!node->is_leaf) {
-    node->children = malloc(sizeof(BTreeNode*) * (node->num_keys + 1));
+    node->children = xmalloc(sizeof(BTreeNode*) * (node->num_keys + 1));
     for (int i = 0; i <= node->num_keys; i++) {
       node->children[i] = load_tree_node(db_file, key_type);
     }
@@ -415,7 +415,7 @@ void* btree_get_predecessor(BTreeNode* node, uint8_t type) {
     current = current->children[current->num_keys];
   }
 
-  void* key_copy = malloc(key_size_for_type(type));
+  void* key_copy = xmalloc(key_size_for_type(type));
   copy_key(key_copy, current->keys[current->num_keys - 1], type);
   return key_copy;
 }
@@ -435,7 +435,7 @@ void* btree_get_successor(BTreeNode* node, uint8_t type) {
     current = current->children[0];
   }
 
-  void* key_copy = malloc(key_size_for_type(type));
+  void* key_copy = xmalloc(key_size_for_type(type));
   copy_key(key_copy, current->keys[0], type);
   return key_copy;
 }
@@ -453,7 +453,7 @@ void btree_merge_children(BTreeNode* parent, int idx, size_t order, uint8_t key_
   BTreeNode* left = parent->children[idx];
   BTreeNode* right = parent->children[idx + 1];
 
-  left->keys[left->num_keys] = malloc(key_size_for_type(key_type));
+  left->keys[left->num_keys] = xmalloc(key_size_for_type(key_type));
   copy_key(left->keys[left->num_keys], parent->keys[idx], key_type);
   left->row_pointers[left->num_keys] = parent->row_pointers[idx];
   left->num_keys++;
@@ -496,7 +496,7 @@ void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type)
       }
     }
 
-    child->keys[0] = malloc(key_size_for_type(key_type));
+    child->keys[0] = xmalloc(key_size_for_type(key_type));
     copy_key(child->keys[0], parent->keys[idx - 1], key_type);
     child->row_pointers[0] = parent->row_pointers[idx - 1];
 
@@ -504,8 +504,8 @@ void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type)
       child->children[0] = left->children[left->num_keys];
     }
 
-    free(parent->keys[idx - 1]);
-    parent->keys[idx - 1] = malloc(key_size_for_type(key_type));
+    xfree(parent->keys[idx - 1]);
+    parent->keys[idx - 1] = xmalloc(key_size_for_type(key_type));
     copy_key(parent->keys[idx - 1], left->keys[left->num_keys - 1], key_type);
     parent->row_pointers[idx - 1] = left->row_pointers[left->num_keys - 1];
 
@@ -515,7 +515,7 @@ void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type)
   } else if (idx < parent->num_keys && parent->children[idx + 1]->num_keys >= (order + 1) / 2) {
     BTreeNode* right = parent->children[idx + 1];
 
-    child->keys[child->num_keys] = malloc(key_size_for_type(key_type));
+    child->keys[child->num_keys] = xmalloc(key_size_for_type(key_type));
     copy_key(child->keys[child->num_keys], parent->keys[idx], key_type);
     child->row_pointers[child->num_keys] = parent->row_pointers[idx];
 
@@ -523,8 +523,8 @@ void btree_rebalance(BTreeNode* parent, int idx, size_t order, uint8_t key_type)
       child->children[child->num_keys + 1] = right->children[0];
     }
 
-    free(parent->keys[idx]);
-    parent->keys[idx] = malloc(key_size_for_type(key_type));
+    xfree(parent->keys[idx]);
+    parent->keys[idx] = xmalloc(key_size_for_type(key_type));
     copy_key(parent->keys[idx], right->keys[0], key_type);
     parent->row_pointers[idx] = right->row_pointers[0];
 
@@ -750,12 +750,12 @@ void copy_key(void* dest, void* src, uint8_t type) {
     case TOK_T_DATETIME:
     case TOK_T_TIMESTAMP:
     case TOK_T_JSON:
-      strncpy((char*)dest, (char*)src, size);
+      xstrncpy((char*)dest, (char*)src, size);
       ((char*)dest)[size - 1] = '\0';
       break;
 
     default:
-      memcpy(dest, src, size);
+      xmemcpy(dest, src, size);
       break;
   }
 }

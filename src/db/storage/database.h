@@ -50,7 +50,7 @@ typedef struct Database {
 } Database;
 
 Database* db_init(char* dir, Database* core);
-void db_free(Database* db);
+void db_xfree(Database* db);
 
 bool process_cmd_no_db(ClusterManager* cm, char* input);
 bool process_cmd_with_db(Database* db, char* input);

@@ -10,6 +10,8 @@
 
 #include "utils/log.h"
 #include "utils/security.h"
+#include "utils/xmem.h"
+
 
 typedef struct {
   int code;

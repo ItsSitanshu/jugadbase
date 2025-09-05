@@ -394,7 +394,7 @@ bool infer_and_cast_value(ColumnValue* col_val, ColumnDefinition* def) {
         char* str = date_to_string(col_val->date_value);
 
         size_t new_size = strlen(str) + 1;
-        col_val->str_value = calloc(1, new_size);
+        col_val->str_value = xcalloc(1, new_size);
         snprintf(col_val->str_value, new_size, "%s", str);
       } else if (target_type == TOK_T_TIMESTAMP) {
         int y, m, d;
@@ -945,11 +945,11 @@ size_t size_from_value(ColumnValue* val, ColumnDefinition* fallback) {
 
 
 char* process_str_arg(const char* check_expr) {
-  if (!check_expr) return strdup("NULL");
+  if (!check_expr) return xstrdup("NULL");
 
   size_t len = strlen(check_expr);
   size_t max_len = len + 4;
-  char* buf = malloc(max_len);
+  char* buf = xmalloc(max_len);
   if (!buf) return NULL;
 
   int j = 0;
@@ -1008,7 +1008,7 @@ void delete_table_entry(Database* db, const char* table_name) {
     
   db->tc[i].is_populated = false;
   
-  free(db->tc[i].schema);
+  xfree(db->tc[i].schema);
   db->tc[i].schema = NULL;
 }
 

@@ -501,7 +501,7 @@ void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, ui
 
     command->has_order_by = true;
     command->order_by_count = 0;
-    command->order_by = calloc(db->tc[idx].schema->column_count, (sizeof(bool) + (2 * sizeof(uint8_t))));
+    command->order_by = xcalloc(db->tc[idx].schema->column_count, (sizeof(bool) + (2 * sizeof(uint8_t))));
 
     while (true) {
       ExprNode* ord_expr = parser_parse_expression(parser, db->tc[idx].schema);
@@ -764,7 +764,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
       case TOK_DEF:
         parser_consume(parser);
 
-        column.default_value = calloc(1, sizeof(ColumnValue));
+        column.default_value = xcalloc(1, sizeof(ColumnValue));
         parser_parse_value(parser, column.default_value);
         column.has_default = true;
 

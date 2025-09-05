@@ -6,7 +6,9 @@
 #include <string.h>
 #include <stdint.h>
   
-#include "../utils/log.h"
+#include "utils/log.h"
+#include "utils/xmem.h"
+
 
 #if defined(_WIN32) || defined(_WIN64)
   #include <direct.h>
@@ -64,6 +66,6 @@ typedef struct {
 } FS;
 
 FS* fs_init(char* root_directory);
-void fs_free(FS* fs);
+void fs_xfree(FS* fs);
 
 #endif // FS_H

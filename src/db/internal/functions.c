@@ -5,11 +5,11 @@ FunctionRegistry global_function_registry = {NULL, 0, 0};
 void register_function(const char* name, BuiltinFunction func) {
   if (global_function_registry.count >= global_function_registry.capacity) {
     global_function_registry.capacity = global_function_registry.capacity == 0 ? 8 : global_function_registry.capacity * 2;
-    global_function_registry.entries = realloc(global_function_registry.entries, global_function_registry.capacity * sizeof(FunctionEntry));
+    global_function_registry.entries = xrealloc(global_function_registry.entries, global_function_registry.capacity * sizeof(FunctionEntry));
   }
 
   global_function_registry.entries[global_function_registry.count++] = (FunctionEntry){
-    .name = strdup(name),
+    .name = xstrdup(name),
     .func = func
   };
 }
@@ -25,9 +25,9 @@ BuiltinFunction find_function(const char* name) {
 
 void free_function_registry() {
   for (size_t i = 0; i < global_function_registry.count; ++i) {
-    free(global_function_registry.entries[i].name);
+    xfree(global_function_registry.entries[i].name);
   }
-  free(global_function_registry.entries);
+  xfree(global_function_registry.entries);
   global_function_registry.entries = NULL;
   global_function_registry.count = 0;
   global_function_registry.capacity = 0;
@@ -318,7 +318,7 @@ ColumnValue fn_substring(ExprNode** args, uint8_t arg_count, Row* row, TableSche
       result.str_value[0] = '\0'; 
     } else {
       len = (start_pos + len > str_len) ? (str_len - start_pos) : len;
-      strncpy(result.str_value, str.str_value + start_pos, len);
+      xstrncpy(result.str_value, str.str_value + start_pos, len);
       result.str_value[len] = '\0';  
     }
 
@@ -417,7 +417,7 @@ ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
     size_t len = end - start + 1;
     len = (len >= MAX_IDENTIFIER_LEN) ? (MAX_IDENTIFIER_LEN - 1) : len;
 
-    strncpy(result.str_value, start, len);
+    xstrncpy(result.str_value, start, len);
     result.str_value[len] = '\0';
 
     result.is_null = false;
@@ -443,7 +443,7 @@ ColumnValue fn_replace(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
     const char* pos = strstr(str.str_value, old_sub.str_value);
 
     if (!pos) {
-      strncpy(result.str_value, str.str_value, MAX_IDENTIFIER_LEN - 1);
+      xstrncpy(result.str_value, str.str_value, MAX_IDENTIFIER_LEN - 1);
       result.str_value[MAX_IDENTIFIER_LEN - 1] = '\0';
     } else {
       size_t prefix_len = pos - str.str_value;

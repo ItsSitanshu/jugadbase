@@ -71,12 +71,12 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
     if (col->is_primary_key) {
       insert_constraint(db, table_id, col->constraint.constraint_name,
         col->constraint.constraint_type, col->constraint.columns, col->constraint.columns_count,
-        strdup(col->constraint.constraint_expr), -1, col->constraint.ref_columns,
+        xstrdup(col->constraint.constraint_expr), -1, col->constraint.ref_columns,
         col->constraint.ref_columns_count, col->constraint.on_delete, col->constraint.on_update);
     } else if (col->is_unique) {
       insert_constraint(db, table_id, col->constraint.constraint_name,
         col->constraint.constraint_type, col->constraint.columns, col->constraint.columns_count,
-        strdup(col->constraint.constraint_expr), -1, col->constraint.ref_columns,
+        xstrdup(col->constraint.constraint_expr), -1, col->constraint.ref_columns,
         col->constraint.ref_columns_count, col->constraint.on_delete, col->constraint.on_update);
     }
     
@@ -85,7 +85,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
 
       insert_constraint(db, table_id, col->constraint.constraint_name,
         col->constraint.constraint_type, col->constraint.columns, col->constraint.columns_count,
-        strdup(col->constraint.constraint_expr), ref_table, col->constraint.ref_columns,
+        xstrdup(col->constraint.constraint_expr), ref_table, col->constraint.ref_columns,
         col->constraint.ref_columns_count, col->constraint.on_delete, col->constraint.on_update);
     }
   }
@@ -383,7 +383,7 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
 
       int64_t constraint_id = insert_constraint(db, table_id, cnstr.constraint_name,
         cnstr.constraint_type, cnstr.columns, cnstr.columns_count,
-        strdup(cnstr.constraint_expr), ref_table, cnstr.ref_columns,
+        xstrdup(cnstr.constraint_expr), ref_table, cnstr.ref_columns,
         cnstr.ref_columns_count, cnstr.on_delete, cnstr.on_update);
       
       if (constraint_id < 0) {
@@ -487,15 +487,15 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
   uint8_t column_count = schema->column_count;
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
 
-  ColumnDefinition* primary_key_cols = calloc(column_count, sizeof(ColumnDefinition));
-  ColumnValue* primary_key_vals = calloc(column_count, sizeof(ColumnValue));
-  RowID* inserted_rows = calloc(cmd->row_count, sizeof(RowID));
+  ColumnDefinition* primary_key_cols = xcalloc(column_count, sizeof(ColumnDefinition));
+  ColumnValue* primary_key_vals = xcalloc(column_count, sizeof(ColumnValue));
+  RowID* inserted_rows = xcalloc(cmd->row_count, sizeof(RowID));
   uint32_t inserted_count = 0;
 
   uint8_t wal_buf[MAX_ROW_BUFFER];
   uint32_t wal_len = 0;
 
-  Row* ret_rows = calloc(cmd->row_count, sizeof(Row));
+  Row* ret_rows = xcalloc(cmd->row_count, sizeof(Row));
   Row* row = NULL;
 
   int64_t table_id = find_table(db, schema->table_name);
@@ -516,9 +516,9 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
         serialize_delete(cmd->schema, inserted_rows[j]);  
       }      
 
-      free(primary_key_cols);
-      free(primary_key_vals);
-      free(inserted_rows);
+      xfree(primary_key_cols);
+      xfree(primary_key_vals);
+      xfree(inserted_rows);
 
       return (ExecutionResult){1, "Insert failed"};
     }
@@ -533,12 +533,12 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
 
   // wal_write(db->wal, WAL_INSERT, schema_idx, wal_buf, wal_len);
   
-  free(primary_key_cols);
-  free(primary_key_vals);
-  free(inserted_rows);
+  xfree(primary_key_cols);
+  xfree(primary_key_vals);
+  xfree(inserted_rows);
 
   if (cmd->ret_col_count <= 0) {
-    free(ret_rows);
+    xfree(ret_rows);
   } 
 
   return (ExecutionResult) {
@@ -559,11 +559,11 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
   uint8_t primary_key_count = 0;
 
-  Row* row = calloc(1, sizeof(Row));
+  Row* row = xcalloc(1, sizeof(Row));
   Row empty_row = {0};
 
   row->n_values = column_count;
-  row->values = (ColumnValue*)calloc(column_count, sizeof(ColumnValue));
+  row->values = (ColumnValue*)xcalloc(column_count, sizeof(ColumnValue));
 
   if (!row->values) {
     return NULL;
@@ -573,9 +573,9 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   row->id.page_id = 0; 
 
   uint8_t null_bitmap_size = (column_count + 7) / 8;
-  uint8_t* null_bitmap = (uint8_t*)malloc(null_bitmap_size);
+  uint8_t* null_bitmap = (uint8_t*)xmalloc(null_bitmap_size);
   if (!null_bitmap) {
-    free(row->values);
+    xfree(row->values);
     return NULL;
   }
   
@@ -622,8 +622,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     row->values[i] = cur;
 
     if (is_struct_zeroed(&cur, sizeof(ColumnValue))) {
-      free(row->values);
-      free(row->null_bitmap);
+      xfree(row->values);
+      xfree(row->null_bitmap);
       return NULL;
     }
 
@@ -670,8 +670,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       void* key = get_column_value_as_pointer(&primary_key_vals[i]);
       RowID res = btree_search(db->tc[schema_idx].btree[idx], key);
       if (!is_struct_zeroed(&res, sizeof(RowID))) {
-        free(row->values);
-        free(row->null_bitmap);
+        xfree(row->values);
+        xfree(row->null_bitmap);
         return NULL;
       }
     }
@@ -680,8 +680,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
   if (!flag_a) {
     // LOG_INFO("========= validating constraints for: %d", table_id);
     if (!validate_all_constraints(db, table_id, row->values, schema->column_count)) {
-      free(row->values);
-      free(row->null_bitmap);
+      xfree(row->values);
+      xfree(row->null_bitmap);
       return NULL;
     } 
   }
@@ -703,8 +703,8 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
       void* key = get_column_value_as_pointer(&primary_key_vals[i]);
     
       if (!btree_insert(db->tc[schema_idx].btree[idx], key, row_id)) {
-        free(row->values);
-        free(row->null_bitmap);
+        xfree(row->values);
+        xfree(row->null_bitmap);
         return NULL;
       }
     }
@@ -730,7 +730,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   BufferPool* pool = &db->lake[schema_idx];
 
   RowID row_start = {0};
-  Row* collected_rows = calloc(100, sizeof(Row));
+  Row* collected_rows = xcalloc(100, sizeof(Row));
   if (!collected_rows) {
     return (ExecutionResult){1, "Memory allocation failed for result rows"};
   }
@@ -767,19 +767,19 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   uint32_t available = (start < total_found) ? (total_found - start) : 0;
   uint32_t out_count = (available < max_out) ? available : max_out;
 
-  Row* result_rows = calloc(out_count, sizeof(Row));
-  char** aliases = malloc(sizeof(char*) * cmd->value_counts[0]);
+  Row* result_rows = xcalloc(out_count, sizeof(Row));
+  char** aliases = xmalloc(sizeof(char*) * cmd->value_counts[0]);
   for (int i = 0; i < cmd->value_counts[0]; i++) {
-    aliases[i] = malloc(256);
+    aliases[i] = xmalloc(256);
   }
   
   if (!result_rows) {
-    free(collected_rows);
+    xfree(collected_rows);
     return (ExecutionResult){1, "Memory allocation failed for limited result rows"};
   }
 
-  bool* is_aggregate_col = calloc(schema->column_count, sizeof(bool));
-  ColumnValue* aggregate_results = calloc(schema->column_count, sizeof(ColumnValue));
+  bool* is_aggregate_col = xcalloc(schema->column_count, sizeof(bool));
+  ColumnValue* aggregate_results = xcalloc(schema->column_count, sizeof(ColumnValue));
 
   for (int j = 0; j < schema->column_count; j++) {
     ExprNode* expr = cmd->sel_columns[j].expr;
@@ -797,13 +797,13 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     
     memset(dst, 0, sizeof(Row));
     dst->id = src->id;
-    dst->values = calloc(schema->column_count, sizeof(ColumnValue));
+    dst->values = xcalloc(schema->column_count, sizeof(ColumnValue));
     dst->n_values = schema->column_count;
     if (!dst->values) {
-      free(collected_rows);
-      free(result_rows);
-      free(is_aggregate_col);
-      free(aggregate_results);
+      xfree(collected_rows);
+      xfree(result_rows);
+      xfree(is_aggregate_col);
+      xfree(aggregate_results);
     }
         
   
@@ -818,18 +818,18 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       ColumnValue val = {0};
 
       if (cmd->sel_columns[j].alias) {
-        aliases[j] = strdup(cmd->sel_columns[j].alias);
+        aliases[j] = xstrdup(cmd->sel_columns[j].alias);
       } else if (expr->type == EXPR_ARRAY_ACCESS) {
         int base_idx = expr->column.index;
         int array_idx = expr->column.array_idx->literal.int_value;
         const char* base_name = cmd->schema->columns[base_idx].name;
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "%s[%d]", base_name, array_idx);
-        aliases[j] = strdup(buffer);
+        aliases[j] = xstrdup(buffer);
       } else if (expr->type == EXPR_FUNCTION) {
-        aliases[j] = strdup(expr->fn.name);
+        aliases[j] = xstrdup(expr->fn.name);
       } else {
-        aliases[j] = strdup(cmd->schema->columns[expr->column.index].name);
+        aliases[j] = xstrdup(cmd->schema->columns[expr->column.index].name);
       }
       
       if (!expr) {
@@ -846,9 +846,9 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     }
   }
 
-  free(is_aggregate_col);
-  free(aggregate_results);
-  free(collected_rows);
+  xfree(is_aggregate_col);
+  xfree(aggregate_results);
+  xfree(collected_rows);
 
   return (ExecutionResult){
     .code = 0,
@@ -896,8 +896,8 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
       }
     }
 
-    old_fk = malloc(sizeof(FKConstraintValues) * fk_count);
-    new_fk = malloc(sizeof(FKConstraintValues) * fk_count);
+    old_fk = xmalloc(sizeof(FKConstraintValues) * fk_count);
+    new_fk = xmalloc(sizeof(FKConstraintValues) * fk_count);
     if (!old_fk || !new_fk) {
       goto cleanup;
     }
@@ -908,7 +908,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
     }
   }
 
-  RowSet update_set = {malloc(sizeof(RowID) * 4096), 0, 4096};
+  RowSet update_set = {xmalloc(sizeof(RowID) * 4096), 0, 4096};
   if (!update_set.rows) {
     goto cleanup;
   }
@@ -943,9 +943,9 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
 cleanup:
   if (old_fk) cleanup_fk_constraints(old_fk, fk_count);
   if (new_fk) cleanup_fk_constraints(new_fk, fk_count);
-  free(old_fk);
-  free(new_fk);
-  free(update_set.rows);
+  xfree(old_fk);
+  xfree(new_fk);
+  xfree(update_set.rows);
   return result.code == 0 ? result : (result.code ? result : (ExecutionResult){1, "OOM or error in cleanup"});
 }
 
@@ -978,19 +978,19 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
     }
   }
 
-  RowSet delete_set = {malloc(sizeof(RowID) * 4096), 0, 4096};
-  FKConstraintValues* fk_constraints = malloc(sizeof(FKConstraintValues) * fk_count);
+  RowSet delete_set = {xmalloc(sizeof(RowID) * 4096), 0, 4096};
+  FKConstraintValues* fk_constraints = xmalloc(sizeof(FKConstraintValues) * fk_count);
 
   if (!delete_set.rows || !fk_constraints) {
-    free(delete_set.rows); 
-    free(fk_constraints);
+    xfree(delete_set.rows); 
+    xfree(fk_constraints);
     return (ExecutionResult){1, "OOM"};
   }
 
   if (!init_fk_constraints(fk_constraints, referencing_fks, fk_count)) {
     cleanup_fk_constraints(fk_constraints, fk_count);
-    free(fk_constraints);
-    free(delete_set.rows);
+    xfree(fk_constraints);
+    xfree(delete_set.rows);
     return (ExecutionResult){1, "OOM"};
   }
 
@@ -998,8 +998,8 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
                                                    &delete_set, fk_constraints);
   if (result.code != 0) {
     cleanup_fk_constraints(fk_constraints, fk_count);
-    free(fk_constraints);
-    free(delete_set.rows);
+    xfree(fk_constraints);
+    xfree(delete_set.rows);
     return result;
   }
 
@@ -1010,8 +1010,8 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
     
     if (!handle_on_delete_constraints(db, fk, &fk_constraints[fk_idx])) {
       cleanup_fk_constraints(fk_constraints, fk_count);
-      free(fk_constraints);
-      free(delete_set.rows);
+      xfree(fk_constraints);
+      xfree(delete_set.rows);
       return (ExecutionResult){1, "DELETE restricted by foreign constraint"};
     }
   }
@@ -1019,8 +1019,8 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
   result = perform_deletes(db, schema, &delete_set);
 
   cleanup_fk_constraints(fk_constraints, fk_count);
-  free(fk_constraints);
-  free(delete_set.rows);
+  xfree(fk_constraints);
+  xfree(delete_set.rows);
 
   return result;
 }

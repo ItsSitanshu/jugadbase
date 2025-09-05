@@ -4,13 +4,13 @@
 #include "parser/parser.h"
 
 TableSchema* jb_tables_schema() {
-  TableSchema* schema = malloc(sizeof(TableSchema));
+  TableSchema* schema = xmalloc(sizeof(TableSchema));
   strcpy(schema->table_name, "jb_tables");
 
   schema->column_count = 5;
   schema->not_null_count = 1;
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
 
   ColumnDefinition* cols = schema->columns;
 
@@ -28,7 +28,7 @@ TableSchema* jb_tables_schema() {
   strcpy(cols[3].name, "owner");
   cols[3].type = TOK_T_TEXT;
   cols[3].has_default = true;
-  cols[3].default_value = calloc(1, sizeof(ColumnValue));
+  cols[3].default_value = xcalloc(1, sizeof(ColumnValue));
   cols[3].default_value->type = TOK_T_TEXT;
   cols[3].default_value->str_value = "sudo";
 
@@ -39,13 +39,13 @@ TableSchema* jb_tables_schema() {
 }
 
 TableSchema* jb_sequences_schema() {
-  TableSchema* schema = malloc(sizeof(TableSchema));
+  TableSchema* schema = xmalloc(sizeof(TableSchema));
   strcpy(schema->table_name, "jb_sequences");
 
   schema->column_count = 7;
   schema->not_null_count = 0;
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   ColumnDefinition* cols = schema->columns;
 
   strcpy(cols[0].name, "id");
@@ -74,13 +74,13 @@ TableSchema* jb_sequences_schema() {
 }
 
 TableSchema* jb_attribute_schema() {
-  TableSchema* schema = malloc(sizeof(TableSchema));
+  TableSchema* schema = xmalloc(sizeof(TableSchema));
   strcpy(schema->table_name, "jb_attribute");
 
   schema->column_count = 9;
   schema->not_null_count = 0;
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   ColumnDefinition* cols = schema->columns;
 
   strcpy(cols[0].name, "id");
@@ -115,13 +115,13 @@ TableSchema* jb_attribute_schema() {
 }
 
 TableSchema* jb_attrdef_schema() {
-  TableSchema* schema = malloc(sizeof(TableSchema));
+  TableSchema* schema = xmalloc(sizeof(TableSchema));
   strcpy(schema->table_name, "jb_attrdef");
 
   schema->column_count = 5;
   schema->not_null_count = 3;
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   ColumnDefinition* cols = schema->columns;
 
   strcpy(cols[0].name, "id");
@@ -182,7 +182,7 @@ bool load_jb_attrdef_hardcoded(Database* db) {
     return false;
   }
 
-  TableSchema* schema = calloc(1, sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
     return false;
@@ -191,27 +191,27 @@ bool load_jb_attrdef_hardcoded(Database* db) {
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
-    free(schema);
+    xfree(schema);
     return false;
   }
   schema->table_name[table_name_length] = '\0';
 
   if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read column count.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   if (!schema->columns) {
     LOG_ERROR("Memory allocation failed for columns.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
@@ -252,8 +252,8 @@ bool load_jb_attrdef_hardcoded(Database* db) {
   return true;
 
 cleanup:
-  free(schema->columns);
-  free(schema);
+  xfree(schema->columns);
+  xfree(schema);
   return false;
 }
 
@@ -294,7 +294,7 @@ bool load_jb_sequences_hardcoded(Database* db) {
     return false;
   }
 
-  TableSchema* schema = calloc(1, sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
     return false;
@@ -303,27 +303,27 @@ bool load_jb_sequences_hardcoded(Database* db) {
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
-    free(schema);
+    xfree(schema);
     return false;
   }
   schema->table_name[table_name_length] = '\0';
 
   if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read column count.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   if (!schema->columns) {
     LOG_ERROR("Memory allocation failed for columns.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
@@ -364,8 +364,8 @@ bool load_jb_sequences_hardcoded(Database* db) {
   return true;
 
 cleanup:
-  free(schema->columns);
-  free(schema);
+  xfree(schema->columns);
+  xfree(schema);
   return false;
 }
 
@@ -410,7 +410,7 @@ bool load_jb_attributes_hardcoded(Database* db) {
     return false;
   }
 
-  TableSchema* schema = calloc(1, sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
     return false;
@@ -419,28 +419,28 @@ bool load_jb_attributes_hardcoded(Database* db) {
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
-    free(schema);
+    xfree(schema);
     return false;
   }
   schema->table_name[table_name_length] = '\0';
 
   if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read column count.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   
   if (!schema->columns) {
     LOG_ERROR("Memory allocation failed for columns.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
@@ -486,8 +486,8 @@ bool load_jb_attributes_hardcoded(Database* db) {
   return true;
 
 cleanup:
-  free(schema->columns);
-  free(schema);
+  xfree(schema->columns);
+  xfree(schema);
   return false;
 }
 
@@ -527,7 +527,7 @@ bool load_jb_tables_hardcoded(Database* db) {
     return false;
   }
 
-  TableSchema* schema = calloc(1, sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
     return false;
@@ -536,27 +536,27 @@ bool load_jb_tables_hardcoded(Database* db) {
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
-    free(schema);
+    xfree(schema);
     return false;
   }
   schema->table_name[table_name_length] = '\0';
 
   if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read column count.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   if (!schema->columns) {
     LOG_ERROR("Memory allocation failed for columns.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
@@ -599,8 +599,8 @@ bool load_jb_tables_hardcoded(Database* db) {
   return true;
 
 cleanup:
-  free(schema->columns);
-  free(schema);
+  xfree(schema->columns);
+  xfree(schema);
   return false;
 }
 

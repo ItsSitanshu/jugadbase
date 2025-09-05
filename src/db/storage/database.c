@@ -8,7 +8,7 @@
 #include "utils/security.h"
 
 Database* db_init(char* dir, Database* core) {
-  Database* db = (Database*)malloc(sizeof(Database));
+  Database* db = (Database*)xmalloc(sizeof(Database));
   if (!db) {
     LOG_FATAL("Failed to allocate memory for database.");
     return NULL;
@@ -19,34 +19,34 @@ Database* db_init(char* dir, Database* core) {
   db->lexer = lexer_init();
   if (!db->lexer) {
     LOG_FATAL("Failed to initialize lexer.");
-    free(db);
+    xfree(db);
     return NULL;
   }
 
   db->parser = parser_init(db->lexer);
   if (!db->parser) {
     LOG_FATAL("Failed to initialize parser.");
-    lexer_free(db->lexer);
-    free(db);
+    lexer_xfree(db->lexer);
+    xfree(db);
     return NULL;
   }
 
-  db->uuid = strdup(dir);
+  db->uuid = xstrdup(dir);
   if (!db->uuid) {
     LOG_FATAL("Failed to generate UUID.");
-    parser_free(db->parser);
-    lexer_free(db->lexer);
-    free(db);
+    parser_xfree(db->parser);
+    lexer_xfree(db->lexer);
+    xfree(db);
     return NULL;
   }
 
   db->fs = fs_init(dir);
   if (!db->fs) {
     LOG_FATAL("Failed to initialize file system.");
-    free(db->uuid);
-    parser_free(db->parser);
-    lexer_free(db->lexer);
-    free(db);
+    xfree(db->uuid);
+    parser_xfree(db->parser);
+    lexer_xfree(db->lexer);
+    xfree(db);
     return NULL;
   }
 
@@ -79,7 +79,7 @@ Database* db_init(char* dir, Database* core) {
   return db;
 }
 
-void db_free(Database* db) {
+void db_xfree(Database* db) {
   if (!db || db == NULL) return;
 
   io_close(db->tc_reader);
@@ -116,9 +116,9 @@ void db_free(Database* db) {
     free_table_schema(schema);
   }
 
-  parser_free(db->parser);
-  fs_free(db->fs);
-  free(db->uuid);
+  parser_xfree(db->parser);
+  fs_xfree(db->fs);
+  xfree(db->uuid);
 }
 
 bool process_cmd_no_db(ClusterManager* cm, char* input) {
@@ -150,7 +150,7 @@ bool process_cmd_no_db(ClusterManager* cm, char* input) {
     return true;
   } else if (strcmp(input, ".quit") == 0 || tolower(input[0]) == 'q') {
     LOG_INFO("Exiting...");
-    cluster_manager_free(cm);
+    cluster_manager_xfree(cm);
     exit(0);
     return true;
   } else if (strcmp(input, "clear") == 0) {
@@ -247,7 +247,7 @@ void process_file(Database* db, char* filename, bool show) {
     return;
   }
 
-  char* buffer = malloc(file_size + 1);
+  char* buffer = xmalloc(file_size + 1);
   if (!buffer) {
     LOG_ERROR("Memory allocation failed for buffer");
     fclose(file);
@@ -257,7 +257,7 @@ void process_file(Database* db, char* filename, bool show) {
   size_t bytes_read = fread(buffer, 1, file_size, file);
   if (bytes_read != file_size) {
     LOG_ERROR("Error reading file: expected %ld bytes but read %zu bytes", file_size, bytes_read);
-    free(buffer);
+    xfree(buffer);
     fclose(file);
     return;
   }
@@ -276,7 +276,7 @@ void process_file(Database* db, char* filename, bool show) {
     cmd = parser_parse(db);
   }
 
-  free(buffer);
+  xfree(buffer);
   fclose(file);
 }
 
@@ -519,7 +519,7 @@ bool load_schema_tc(Database* db, char* table_name) {
   io_read(db->tc_reader, &initial_offset, sizeof(uint32_t));
 
   FILE* io = db->tc_reader;
-  TableSchema* schema = malloc(sizeof(TableSchema));
+  TableSchema* schema = xmalloc(sizeof(TableSchema));
   memset(schema, 0, sizeof(TableSchema));
 
   if (!schema) {
@@ -534,27 +534,27 @@ bool load_schema_tc(Database* db, char* table_name) {
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
-    free(schema);
+    xfree(schema);
     return false;
   }
   schema->table_name[table_name_length] = '\0';
 
   if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read column count.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   if (!schema->columns) {
     LOG_ERROR("Memory allocation failed for columns.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
@@ -566,15 +566,15 @@ bool load_schema_tc(Database* db, char* table_name) {
     uint8_t col_name_length;
     if (io_read(io, &col_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
       LOG_ERROR("Failed to read column name length.");
-      free(schema->columns);
-      free(schema);
+      xfree(schema->columns);
+      xfree(schema);
       return false;
     }
 
     if (io_read(io, col->name, col_name_length) != col_name_length) {
       LOG_ERROR("Failed to read column name.");
-      free(schema->columns);
-      free(schema);
+      xfree(schema->columns);
+      xfree(schema);
       return false;
     }
     col->name[col_name_length] = '\0';
@@ -582,8 +582,8 @@ bool load_schema_tc(Database* db, char* table_name) {
     Attribute* attr = load_attribute(db, table_id, col->name);
     if (!attr) {
       LOG_ERROR("Failed to read load attribute.");
-      free(schema->columns);
-      free(schema);
+      xfree(schema->columns);
+      xfree(schema);
       return false;
     }
     col->is_not_null = !attr->is_nullable;
@@ -624,7 +624,7 @@ bool load_schema_tc(Database* db, char* table_name) {
 
       bool valid_conversion = infer_and_cast_value(&cur, col);
 
-      col->default_value = calloc(1, sizeof(ColumnValue));
+      col->default_value = xcalloc(1, sizeof(ColumnValue));
       if (!col->default_value) {
         LOG_FATAL("Memory allocation failed for default value.\n");
       }
@@ -766,7 +766,7 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
     return false;
   }
 
-  TableSchema* schema = calloc(1, sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   if (!schema) {
     LOG_ERROR("Memory allocation failed for schema.");
     return false;
@@ -775,27 +775,27 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
   uint8_t table_name_length;
   if (io_read(io, &table_name_length, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read table name length.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
   if (io_read(io, schema->table_name, table_name_length) != table_name_length) {
     LOG_ERROR("Failed to read table name.");
-    free(schema);
+    xfree(schema);
     return false;
   }
   // sprintf(schema->table_name, "%s", table_name);
 
   if (io_read(io, &schema->column_count, sizeof(uint8_t)) != sizeof(uint8_t)) {
     LOG_ERROR("Failed to read column count.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
-  schema->columns = calloc(schema->column_count, sizeof(ColumnDefinition));
+  schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   if (!schema->columns) {
     LOG_ERROR("Memory allocation failed for columns.");
-    free(schema);
+    xfree(schema);
     return false;
   }
 
@@ -865,7 +865,7 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
         return NULL;
       }
 
-      col->default_value = calloc(1, sizeof(ColumnValue));
+      col->default_value = xcalloc(1, sizeof(ColumnValue));
       if (!col->default_value) {
         LOG_FATAL("Memory allocation failed for default value.\n");
       }
@@ -879,8 +879,8 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
   return true;
 
 cleanup:
-  free(schema->columns);
-  free(schema);
+  xfree(schema->columns);
+  xfree(schema);
   return false;
 }
 
@@ -970,7 +970,7 @@ void load_lake(Database* db) {
 
       fclose(file);
 
-      memcpy(db->lake[idx].file, file_path, MAX_PATH_LENGTH - 1);
+      xmemcpy(db->lake[idx].file, file_path, MAX_PATH_LENGTH - 1);
       db->lake[idx].file[MAX_PATH_LENGTH - 1] = '\0';
       db->lake[idx].idx = idx; 
     }

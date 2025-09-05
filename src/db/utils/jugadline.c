@@ -36,14 +36,14 @@ void add_to_history(CommandHistory *history, const char *cmd) {
   }
   
   if (history->size < MAX_HISTORY) {
-    history->history[history->size] = strdup(cmd);
+    history->history[history->size] = xstrdup(cmd);
     history->size++;
   } else {
-    free(history->history[0]);
+    xfree(history->history[0]);
     for (int i = 1; i < MAX_HISTORY; i++) {
       history->history[i - 1] = history->history[i];
     }
-    history->history[MAX_HISTORY - 1] = strdup(cmd);
+    history->history[MAX_HISTORY - 1] = xstrdup(cmd);
   }
 }
 
@@ -80,7 +80,7 @@ char* find_word_start(char *cmd, int cursor_pos) {
 }
 
 char* get_path_prefix(char *cmd, int cursor_pos) {
-  char *result = malloc(MAX_PATH_LENGTH);
+  char *result = xmalloc(MAX_PATH_LENGTH);
   if (!result) return NULL;
   
   int word_start = 0;
@@ -107,7 +107,7 @@ char* get_path_prefix(char *cmd, int cursor_pos) {
   if (len == 0) {
     strcpy(result, "/");
   } else {
-    strncpy(result, &cmd[word_start], len);
+    xstrncpy(result, &cmd[word_start], len);
     result[len] = '\0';
   }
   
@@ -115,7 +115,7 @@ char* get_path_prefix(char *cmd, int cursor_pos) {
 }
 
 char* get_partial_name(char *cmd, int cursor_pos) {
-  char *result = malloc(MAX_PATH_LENGTH);
+  char *result = xmalloc(MAX_PATH_LENGTH);
   if (!result) return NULL;
   
   int path_start = cursor_pos - 1;
@@ -133,7 +133,7 @@ char* get_partial_name(char *cmd, int cursor_pos) {
   
   int partial_start = last_slash + 1;
   int len = cursor_pos - partial_start;
-  strncpy(result, &cmd[partial_start], len);
+  xstrncpy(result, &cmd[partial_start], len);
   result[len] = '\0';
   
   return result;
@@ -151,7 +151,7 @@ int find_completions(const char *dir_path, const char *partial, char **completio
   
   while ((entry = readdir(dir)) != NULL && count < MAX_COMPLETIONS) {
     if (strncmp(entry->d_name, partial, strlen(partial)) == 0) {
-      completions[count] = malloc(strlen(entry->d_name) + 2);
+      completions[count] = xmalloc(strlen(entry->d_name) + 2);
       if (completions[count]) {
         strcpy(completions[count], entry->d_name);
         
@@ -185,8 +185,8 @@ void handle_tab_completion(char *cmd, int *cursor_pos, int *cmd_len, const char 
   int completion_count = find_completions(dir_path, partial, completions);
   
   if (completion_count == 0) {
-    free(dir_path);
-    free(partial);
+    xfree(dir_path);
+    xfree(partial);
     return;
   }
   
@@ -196,17 +196,17 @@ void handle_tab_completion(char *cmd, int *cursor_pos, int *cmd_len, const char 
     int chars_to_add = strlen(completions[0]) - strlen(partial);
     if (*cmd_len + chars_to_add >= MAX_CMD_LENGTH) {
       printf("\nCommand too long for completion");
-      free(dir_path);
-      free(partial);
-      free(completions[0]);
+      xfree(dir_path);
+      xfree(partial);
+      xfree(completions[0]);
       return;
     }
     
-    memmove(&cmd[word_start + strlen(completions[0])], 
+    xmemmove(&cmd[word_start + strlen(completions[0])], 
             &cmd[*cursor_pos], 
             *cmd_len - *cursor_pos + 1);
     
-    memcpy(&cmd[word_start], completions[0], strlen(completions[0]));
+    xmemcpy(&cmd[word_start], completions[0], strlen(completions[0]));
     *cursor_pos = word_start + strlen(completions[0]);
     *cmd_len = *cmd_len + chars_to_add;
     
@@ -247,15 +247,15 @@ void handle_tab_completion(char *cmd, int *cursor_pos, int *cmd_len, const char 
   }
   
   for (int i = 0; i < completion_count; i++) {
-    free(completions[i]);
+    xfree(completions[i]);
   }
   
-  free(dir_path);
-  free(partial);
+  xfree(dir_path);
+  xfree(partial);
 }
 
 char* jugadline(CommandHistory *history, char* prefix) {
-  char *cmd = calloc(MAX_CMD_LENGTH, sizeof(char));
+  char *cmd = xcalloc(MAX_CMD_LENGTH, sizeof(char));
   if (cmd == NULL) {
     return NULL;
   }
@@ -275,7 +275,7 @@ char* jugadline(CommandHistory *history, char* prefix) {
     
     if (ch == 127 || ch == 8) { // Backspace
       if (cursor_pos > 0) {
-        memmove(&cmd[cursor_pos-1], &cmd[cursor_pos], cmd_len - cursor_pos + 1);
+        xmemmove(&cmd[cursor_pos-1], &cmd[cursor_pos], cmd_len - cursor_pos + 1);
         cursor_pos--;
         cmd_len--;
         
@@ -306,11 +306,11 @@ char* jugadline(CommandHistory *history, char* prefix) {
         } else if (ch == 65) { // Up arrow
           if (history_pos > 0 && history->size > 0) {
             if (history_pos == history->size && cmd_len > 0) {
-              temp_cmd = strdup(cmd);
+              temp_cmd = xstrdup(cmd);
             }
             
             history_pos--;
-            strncpy(cmd, history->history[history_pos], MAX_CMD_LENGTH - 1);
+            xstrncpy(cmd, history->history[history_pos], MAX_CMD_LENGTH - 1);
             cmd_len = strlen(cmd);
             cursor_pos = cmd_len;
             redraw_command_line(prefix, cmd, cursor_pos);
@@ -318,14 +318,14 @@ char* jugadline(CommandHistory *history, char* prefix) {
         } else if (ch == 66) { // Down arrow
           if (history_pos < history->size - 1) {
             history_pos++;
-            strncpy(cmd, history->history[history_pos], MAX_CMD_LENGTH - 1);
+            xstrncpy(cmd, history->history[history_pos], MAX_CMD_LENGTH - 1);
             cmd_len = strlen(cmd);
             cursor_pos = cmd_len;
             redraw_command_line(prefix, cmd, cursor_pos);
           } else if (history_pos == history->size - 1) {
             history_pos = history->size;
             if (temp_cmd) {
-              strncpy(cmd, temp_cmd, MAX_CMD_LENGTH - 1);
+              xstrncpy(cmd, temp_cmd, MAX_CMD_LENGTH - 1);
               cmd_len = strlen(cmd);
               cursor_pos = cmd_len;
               redraw_command_line(prefix, cmd, cursor_pos);
@@ -346,13 +346,13 @@ char* jugadline(CommandHistory *history, char* prefix) {
       }
       
       if (temp_cmd) {
-        free(temp_cmd);
+        xfree(temp_cmd);
       }
       
       return cmd;
     } else { // Regular character
       if (cmd_len < MAX_CMD_LENGTH - 1) {
-        memmove(&cmd[cursor_pos+1], &cmd[cursor_pos], cmd_len - cursor_pos + 1);
+        xmemmove(&cmd[cursor_pos+1], &cmd[cursor_pos], cmd_len - cursor_pos + 1);
         cmd[cursor_pos] = ch;
         cursor_pos++;
         cmd_len++;
@@ -407,7 +407,7 @@ char* get_hidden_input() {
 
   printf("\n");
 
-  char* input_copy = strdup(input);
+  char* input_copy = xstrdup(input);
   if (!input_copy) {
     LOG_ERROR("strdup failed");
     return NULL;

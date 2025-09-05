@@ -5,6 +5,8 @@
 #include <stdbool.h>
 #include <time.h>
 
+#include "utils/xmem.h"
+
 #define JUGADBASE_EPOCH_YEAR 2000
 #define JUGADBASE_DATE_EPOCH 730120
 

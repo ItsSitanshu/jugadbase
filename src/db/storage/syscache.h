@@ -6,6 +6,8 @@
 
 #include "uthash.h"  
 #include "kernel/kernel.h"  
+#include "utils/xmem.h"
+
 
 typedef struct ConstraintCacheEntry {
   Constraint constraint;

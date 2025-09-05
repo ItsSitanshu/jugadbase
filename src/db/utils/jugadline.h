@@ -5,6 +5,8 @@
 #define MAX_CMD_LENGTH 1024
 #define MAX_COMPLETIONS 100
 
+#include "utils/xmem.h"
+
 typedef struct {
   char *history[MAX_HISTORY];
   int current;

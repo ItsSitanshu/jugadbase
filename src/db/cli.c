@@ -57,7 +57,7 @@ int main(int argc, char* argv[]) {
     input = jugadline(&history, prompt);
 
     if (!input || strlen(input) == 0) {
-      free(input);
+      xfree(input);
       continue;
     }
     
@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
       }
     }
 
-    free(input);
+    xfree(input);
   }
 
   if (config->output_mode == OUTPUT_MEMORY && config->memory_buffer) {
@@ -93,7 +93,7 @@ int main(int argc, char* argv[]) {
   cleanup_setup(&setup);
   
   for (int i = 0; i < history.size; i++) {
-    free(history.history[i]);
+    xfree(history.history[i]);
   }
   
   return 0;

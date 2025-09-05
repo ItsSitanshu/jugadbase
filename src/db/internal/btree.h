@@ -1,10 +1,11 @@
 #ifndef BTREE_H
 #define BTREE_H
 
+#include <stdint.h>
+
 #include "utils/io.h"
 #include "parser/token.h"
-
-#include <stdint.h>
+#include "utils/xmem.h"
 
 #define MAX_KEYS_PER_NODE 1000
 #define BTREE_LIFETIME_THRESHOLD 10

@@ -27,7 +27,7 @@ ClusterManager* cluster_manager_init(char* root_dir) {
     return NULL;
   }
   
-  ClusterManager* manager = (ClusterManager*)malloc(sizeof(ClusterManager));
+  ClusterManager* manager = (ClusterManager*)xmalloc(sizeof(ClusterManager));
   if (!manager) {
     LOG_ERROR("Failed to allocate memory for cluster manager");
     return NULL;
@@ -46,7 +46,7 @@ ClusterManager* cluster_manager_init(char* root_dir) {
     if (config_file) {
       if (fread(manager, sizeof(ClusterManager), 1, config_file) != 1) {
         LOG_ERROR("Failed to read cluster configuration");
-        free(manager);
+        xfree(manager);
         fclose(config_file);
         return NULL;
       }
@@ -86,7 +86,7 @@ bool cluster_manager_save(ClusterManager* manager) {
   snprintf(config_path, sizeof(config_path), "%s/%s", manager->path, CONFIG_FILE);
   
   ClusterManager temp_manager;
-  memcpy(&temp_manager, manager, sizeof(ClusterManager));
+  xmemcpy(&temp_manager, manager, sizeof(ClusterManager));
   
   for (int i = 0; i < temp_manager.cluster_count; i++) {
     DbCluster* cluster = &temp_manager.clusters[i];
@@ -112,7 +112,7 @@ bool cluster_manager_save(ClusterManager* manager) {
   return true;
 }
 
-void cluster_manager_free(ClusterManager* manager) {
+void cluster_manager_xfree(ClusterManager* manager) {
   if (!manager) return;
 
   cluster_manager_save(manager);
@@ -120,11 +120,11 @@ void cluster_manager_free(ClusterManager* manager) {
   for (int i = 0; i < manager->cluster_count; i++) {
     DbCluster* cluster = &manager->clusters[i];
     for (int j = 0; j < cluster->db_count; j++) {
-      db_free(cluster->databases[j]);
+      db_xfree(cluster->databases[j]);
     }
   }
 
-  free(manager->clusters); 
+  xfree(manager->clusters); 
 }
 
 
@@ -157,7 +157,7 @@ bool cluster_create(ClusterManager* manager, char* name) {
   int idx = manager->cluster_count;
   DbCluster* cluster = &manager->clusters[idx];
   
-  strncpy(cluster->name, name, MAX_CLUSTER_NAME - 1);
+  xstrncpy(cluster->name, name, MAX_CLUSTER_NAME - 1);
   cluster->name[MAX_CLUSTER_NAME - 1] = '\0';
   cluster->db_count = 0;
   cluster->active_db = -1;
@@ -176,7 +176,7 @@ bool cluster_create(ClusterManager* manager, char* name) {
     
   if (!cluster_add_db(manager, 0, "core")) {
     fprintf(stderr, "Failed to add jb.core database to cluster\n");
-    cluster_manager_free(manager);
+    cluster_manager_xfree(manager);
     return 1;
   }
 
@@ -212,7 +212,7 @@ bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path) {
   
   char full_path[512] = {0};
   if (db_path[0] == '/') {
-    strncpy(full_path, db_path, sizeof(full_path) - 1);
+    xstrncpy(full_path, db_path, sizeof(full_path) - 1);
   } else {
     snprintf(full_path, sizeof(full_path), "%s/%s/%s", manager->path, cluster->name, db_path);
   }
@@ -222,13 +222,13 @@ bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path) {
   Database* db = db_init(full_path, core);
   if (!db) {
     LOG_ERROR("Failed to initialize database at '%s'", full_path);
-    db_free(db);
+    db_xfree(db);
     return false;
   }
 
   int db_idx = cluster->db_count;
   cluster->databases[db_idx] = db;
-  strncpy(cluster->db_paths[db_idx], full_path, 255);
+  xstrncpy(cluster->db_paths[db_idx], full_path, 255);
   cluster->db_paths[db_idx][255] = '\0';
   cluster->db_count++;
   
@@ -357,7 +357,7 @@ Result cluster_list(ClusterManager* manager) {
   }
   
   result.code = 0;
-  result.message = strdup(buffer);
+  result.message = xstrdup(buffer);
 
   return (Result){result, NULL};
 }
@@ -474,7 +474,7 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
     if (arg2[0] != '\0') {
       snprintf(full_cmd, sizeof(full_cmd), "%s %s", arg1, arg2);
     } else {
-      strncpy(full_cmd, arg1, sizeof(full_cmd) - 1);
+      xstrncpy(full_cmd, arg1, sizeof(full_cmd) - 1);
     }
     
     Result result = cluster_execute_all(manager, full_cmd);
@@ -506,7 +506,7 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
     printf("Password: ");
     char* password = get_hidden_input();
     Role* role = login_role(meta_db, arg1, password);
-    free(password);
+    xfree(password);
 
     if (!role) {
       LOG_ERROR("Login failed: invalid username or password");
@@ -538,7 +538,7 @@ bool process_cluster_cmd(ClusterManager* manager, Database** current_db, char* i
     char* password = get_hidden_input();
 
     int status = register_role(meta_db, arg1, password);
-    free(password);
+    xfree(password);
 
     if (status == -2) {
       LOG_ERROR("User/role '%s' already exists", arg1);

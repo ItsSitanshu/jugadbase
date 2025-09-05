@@ -4,6 +4,8 @@
 #include <stdbool.h>
 #include "storage/cluster.h"
 
+#include "utils/xmem.h"
+
 typedef enum OutputMode {
   OUTPUT_CONSOLE,
   OUTPUT_FILE,

@@ -4,6 +4,8 @@
 #include <sodium.h>
 #include <string.h> 
 
+#include "utils/xmem.h"
+
 static unsigned int hash_fnv1a(const char* table_name, int MAX) {
   const unsigned int FNV_OFFSET_BASIS = 2166136261u;
   const unsigned int FNV_PRIME = 16777619u;

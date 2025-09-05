@@ -9,6 +9,8 @@
 #include <sys/stat.h>
 #include <stdarg.h>
 
+#include "xmem.h"
+
 #ifdef _WIN32
   #include <windows.h>
 #else
@@ -100,7 +102,7 @@ static void log_transaction(const char* filename, const char* fmt, ...) {
 
 static char* tolower_copy(const char* s) {
   size_t len = strlen(s);
-  char* lower = malloc(len + 1);
+  char* lower = xmalloc(len + 1);
   if (!lower) return NULL;
   for (size_t i = 0; i < len; ++i) {
     lower[i] = tolower((unsigned char)s[i]);

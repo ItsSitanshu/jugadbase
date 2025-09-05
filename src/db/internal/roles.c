@@ -30,9 +30,9 @@ Role* get_role_by_name(Database* db, const char* name) {
 
   ExecutionResult* rs = &(res.exec);
 
-  Role* r = malloc(sizeof(Role));
+  Role* r = xmalloc(sizeof(Role));
   r->id = rs->rows[0].values[0].int_value;
-  r->name = strdup(rs->rows[0].values[1].str_value);
+  r->name = xstrdup(rs->rows[0].values[1].str_value);
   r->is_superuser = rs->rows[0].values[2].bool_value;
   r->can_create_db = rs->rows[0].values[3].bool_value;
   r->can_create_user = rs->rows[0].values[4].bool_value;

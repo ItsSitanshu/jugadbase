@@ -162,7 +162,7 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
     return NULL;
   }
 
-  Attribute* attr = calloc(1, sizeof(Attribute));
+  Attribute* attr = xcalloc(1, sizeof(Attribute));
   Row result = res.exec.rows[0];
   attr->data_type = result.values[0].int_value;
   attr->ordinal_position = result.values[1].int_value;
@@ -218,7 +218,7 @@ void check_and_concat_toast(Database* db, ColumnValue* value) {
   char* result = toast_concat(db, value->toast_object);
 
   if (result) {
-    value->str_value = strdup(result);
+    value->str_value = xstrdup(result);
     value->is_toast = false;
   }
 }

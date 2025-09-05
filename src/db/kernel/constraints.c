@@ -4,10 +4,10 @@
 
 bool init_fk_constraints(FKConstraintValues* fk_constraints, Constraint* referencing_fks, int count) {
   for (int i = 0; i < count; i++) {
-    fk_constraints[i].values = malloc(sizeof(ColumnValue) * 256 * referencing_fks[i].ref_column_count);
+    fk_constraints[i].values = xmalloc(sizeof(ColumnValue) * 256 * referencing_fks[i].ref_column_count);
     if (!fk_constraints[i].values) {
       for (int j = 0; j < i; j++) {
-        free(fk_constraints[j].values);
+        xfree(fk_constraints[j].values);
       }
       return false;
     }
@@ -20,7 +20,7 @@ bool init_fk_constraints(FKConstraintValues* fk_constraints, Constraint* referen
 
 void cleanup_fk_constraints(FKConstraintValues* fk_constraints, int count) {
   for (int i = 0; i < count; i++) {
-    free(fk_constraints[i].values);
+    xfree(fk_constraints[i].values);
   }
 }
 
@@ -29,20 +29,20 @@ void free_constraint(Constraint* constraint) {
 
   if (constraint->columns) {
     for (int i = 0; i < constraint->column_count; i++) {
-      free(constraint->columns[i]);
+      xfree(constraint->columns[i]);
     }
-    free(constraint->columns);
+    xfree(constraint->columns);
   }
 
   if (constraint->ref_columns) {
     for (int i = 0; i < constraint->ref_column_count; i++) {
-      free(constraint->ref_columns[i]);
+      xfree(constraint->ref_columns[i]);
     }
-    free(constraint->ref_columns);
+    xfree(constraint->ref_columns);
   }
 
-  free(constraint->name);
-  free(constraint->check_expr);
+  xfree(constraint->name);
+  xfree(constraint->check_expr);
 }
 
 int64_t insert_constraint(Database* db, int64_t table_id, char* name, int constraint_type,
@@ -232,7 +232,7 @@ Constraint* get_fk_constr_ref_table(Database* db, int64_t table_id, int* out_cou
     return NULL;
   }
 
-  Constraint* constraints = malloc(sizeof(Constraint) * count);
+  Constraint* constraints = xmalloc(sizeof(Constraint) * count);
   if (!constraints) {
     *out_count = 0;
     return NULL;
@@ -255,9 +255,9 @@ char** parse_text_array(const char* text_array_str, int* count) {
     return NULL;
   }
 
-  char* str_copy = strdup(text_array_str);
+  char* str_copy = xstrdup(text_array_str);
   if (str_copy[0] == '{') {
-    memmove(str_copy, str_copy + 1, strlen(str_copy));
+    xmemmove(str_copy, str_copy + 1, strlen(str_copy));
   }
 
   char* end = str_copy + strlen(str_copy) - 1;
@@ -274,11 +274,11 @@ char** parse_text_array(const char* text_array_str, int* count) {
   }
 
   if (*count == 0) {
-    free(str_copy);
+    xfree(str_copy);
     return NULL;
   }
 
-  char** result = calloc((*count) + 1, sizeof(char*));
+  char** result = xcalloc((*count) + 1, sizeof(char*));
   char* token = strtok(str_copy, ",");
   int i = 0;
 
@@ -288,11 +288,11 @@ char** parse_text_array(const char* text_array_str, int* count) {
     while (end_trim > token && *end_trim == ' ') {
       *end_trim-- = '\0';
     }
-    result[i++] = strdup(token);
+    result[i++] = xstrdup(token);
     token = strtok(NULL, ",");
   }
 
-  free(str_copy);
+  xfree(str_copy);
   return result;
 }
 
@@ -305,9 +305,9 @@ Constraint parse_constraint_from_row(Row* row) {
   constraint.table_id = row->values[1].int_value;
   constraint.columns = stringify_column_array(&row->values[2], &out_count);
   constraint.column_count = out_count;
-  constraint.name = strdup(row->values[3].str_value);
+  constraint.name = xstrdup(row->values[3].str_value);
   constraint.constraint_type = (ConstraintType)row->values[4].int_value;
-  constraint.check_expr = row->values[5].str_value ? strdup(row->values[5].str_value) : NULL;
+  constraint.check_expr = row->values[5].str_value ? xstrdup(row->values[5].str_value) : NULL;
   constraint.ref_table_id = row->values[6].int_value;
   constraint.ref_columns = stringify_column_array(&row->values[7], &ref_out_count);
   constraint.ref_column_count = ref_out_count;
@@ -515,16 +515,16 @@ ExecutionResult collect_fk_tuples_delete(Database* db, TableSchema* schema, JQLC
 
       for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
         Constraint* fk = &referencing_fks[fk_idx];
-        ColumnValue* key_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
+        ColumnValue* key_tuple = xmalloc(sizeof(ColumnValue) * fk->ref_column_count);
         if (!key_tuple) return (ExecutionResult){1, "Out of memory"};
 
         if (extract_fk_tuple(row, schema, fk, key_tuple)) {
           if (!store_fk_tuple(&fk_constraints[fk_idx], key_tuple, fk, schema)) {
-            free(key_tuple);
+            xfree(key_tuple);
             return (ExecutionResult){1, "Out of memory"};
           }
         }
-        free(key_tuple);
+        xfree(key_tuple);
       }
     }
   }
@@ -552,18 +552,18 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
 
       for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
         Constraint* fk = &referencing_fks[fk_idx];
-        ColumnValue* old_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
-        ColumnValue* new_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
+        ColumnValue* old_tuple = xmalloc(sizeof(ColumnValue) * fk->ref_column_count);
+        ColumnValue* new_tuple = xmalloc(sizeof(ColumnValue) * fk->ref_column_count);
 
         if (!old_tuple || !new_tuple) {
-          free(old_tuple);
-          free(new_tuple);
+          xfree(old_tuple);
+          xfree(new_tuple);
           return (ExecutionResult){1, "Out of memory"};
         }
 
         if (!extract_fk_tuple(row, schema, fk, old_tuple)) {
-          free(old_tuple);
-          free(new_tuple);
+          xfree(old_tuple);
+          xfree(new_tuple);
           continue;
         }
 
@@ -578,8 +578,8 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
               ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
 
               if (!infer_and_cast_value(&eval, &schema->columns[schema_col_idx])) {
-                free(old_tuple);
-                free(new_tuple);
+                xfree(old_tuple);
+                xfree(new_tuple);
                 return (ExecutionResult){1, "Invalid type casting in FK update"};
               }
 
@@ -597,13 +597,13 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
 
         if (!store_fk_tuple(&old_fk[fk_idx], old_tuple, fk, schema) ||
             !store_fk_tuple(&new_fk[fk_idx], new_tuple, fk, schema)) {
-          free(old_tuple);
-          free(new_tuple);
+          xfree(old_tuple);
+          xfree(new_tuple);
           return (ExecutionResult){1, "Out of memory"};
         }
 
-        free(old_tuple);
-        free(new_tuple);
+        xfree(old_tuple);
+        xfree(new_tuple);
       }
     }
   }
@@ -929,15 +929,15 @@ ExecutionResult perform_updates(Database* db, TableSchema* schema, JQLCommand* c
 
     int max_updates = cmd->value_counts[0];
     UpdateData upd = {
-        .cols = malloc(sizeof(uint16_t) * max_updates),
-        .old_vals = malloc(sizeof(ColumnValue) * max_updates),
-        .new_vals = malloc(sizeof(ColumnValue) * max_updates),
+        .cols = xmalloc(sizeof(uint16_t) * max_updates),
+        .old_vals = xmalloc(sizeof(ColumnValue) * max_updates),
+        .new_vals = xmalloc(sizeof(ColumnValue) * max_updates),
         .count = 0};
 
     if (!upd.cols || !upd.old_vals || !upd.new_vals) {
-      free(upd.cols);
-      free(upd.old_vals);
-      free(upd.new_vals);
+      xfree(upd.cols);
+      xfree(upd.old_vals);
+      xfree(upd.new_vals);
       return (ExecutionResult){1, "Out of memory"};
     }
 
@@ -947,9 +947,9 @@ ExecutionResult perform_updates(Database* db, TableSchema* schema, JQLCommand* c
       ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, schema, db, schema_idx);
 
       if (!infer_and_cast_value(&eval, &schema->columns[col_index])) {
-        free(upd.cols);
-        free(upd.old_vals);
-        free(upd.new_vals);
+        xfree(upd.cols);
+        xfree(upd.old_vals);
+        xfree(upd.new_vals);
         return (ExecutionResult){-1, "Invalid conversion whilst trying to update row"};
       }
 
@@ -971,18 +971,18 @@ ExecutionResult perform_updates(Database* db, TableSchema* schema, JQLCommand* c
         row->values[upd.cols[u]] = upd.new_vals[u];
       }
       if (cmd->bitmap) {
-        row->null_bitmap = (uint8_t*)malloc(null_bitmap_size);
-        memcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
+        row->null_bitmap = (uint8_t*)xmalloc(null_bitmap_size);
+        xmemcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
       } else {
-        row->null_bitmap = (uint8_t*)calloc(null_bitmap_size, 1);
+        row->null_bitmap = (uint8_t*)xcalloc(null_bitmap_size, 1);
       }
       rows_updated++;
       page->is_dirty = true;
     }
 
-    free(upd.cols);
-    free(upd.old_vals);
-    free(upd.new_vals);
+    xfree(upd.cols);
+    xfree(upd.old_vals);
+    xfree(upd.new_vals);
   }
 
   return (ExecutionResult){0, "Update executed successfully", .row_count = rows_updated};
@@ -992,7 +992,7 @@ ExecutionResult perform_updates(Database* db, TableSchema* schema, JQLCommand* c
 bool expand_row_set(RowSet* set) {
   if (set->count < set->capacity) return true;
   set->capacity <<= 1;
-  RowID* new_rows = realloc(set->rows, sizeof(RowID) * set->capacity);
+  RowID* new_rows = xrealloc(set->rows, sizeof(RowID) * set->capacity);
   if (!new_rows) return false;
   set->rows = new_rows;
   return true;
@@ -1001,7 +1001,7 @@ bool expand_row_set(RowSet* set) {
 bool expand_fk_constraint(FKConstraintValues* fk_constraint, int ref_col_count) {
   if (fk_constraint->count < fk_constraint->capacity) return true;
   fk_constraint->capacity <<= 1;
-  ColumnValue* new_vals = realloc(fk_constraint->values, sizeof(ColumnValue) * fk_constraint->capacity * ref_col_count);
+  ColumnValue* new_vals = xrealloc(fk_constraint->values, sizeof(ColumnValue) * fk_constraint->capacity * ref_col_count);
   if (!new_vals) return false;
   fk_constraint->values = new_vals;
   return true;

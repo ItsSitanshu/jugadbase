@@ -9,6 +9,7 @@
 #include "internal/datetime.h"
 
 #include "utils/security.h"
+#include "utils/xmem.h"
 
 #define MAX_COLUMNS 256
 #define MAX_OPERATIONS 128
@@ -528,7 +529,7 @@ char* str_column_value(ColumnValue* val);
 char** stringify_column_array(ColumnValue* array_val, int* out_count);
 void format_column_value(char* out, size_t out_size, ColumnValue* val);
 
-void parser_free(Parser* parser);
+void parser_xfree(Parser* parser);
 
 void free_expr_node(ExprNode* node);
 void free_column_value(ColumnValue* val);

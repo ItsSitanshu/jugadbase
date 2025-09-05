@@ -52,7 +52,7 @@ void wal_replay(const char* filename) {
   if (!file) return;
 
   WALRecordHeader header;
-  void* payload = malloc(1024); 
+  void* payload = xmalloc(1024); 
 
   printf("Replaying WAL: %s\n", filename);
   while (wal_read(file, &header, payload)) {
@@ -60,6 +60,6 @@ void wal_replay(const char* filename) {
               header.lsn, header.txid, header.action, header.table_id, header.payload_size);
   }
 
-  free(payload);
+  xfree(payload);
   wal_close(file);
 }

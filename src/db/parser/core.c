@@ -2,7 +2,7 @@
 #include "storage/database.h"
 
 Parser* parser_init(Lexer* lexer) {
-  Parser* parser = malloc(sizeof(Parser));
+  Parser* parser = xmalloc(sizeof(Parser));
   
   parser->lexer = lexer;
   parser->cur = NULL;
@@ -15,13 +15,13 @@ void parser_reset(Parser* parser) {
 }
 
 JQLCommand* jql_command_init(JQLCommandType type) {
-  JQLCommand* cmd = malloc(sizeof(JQLCommand));
+  JQLCommand* cmd = xmalloc(sizeof(JQLCommand));
   if (!cmd) return NULL;
 
   cmd->type = type;
-  cmd->schema = malloc(sizeof(TableSchema));
+  cmd->schema = xmalloc(sizeof(TableSchema));
   if (!cmd->schema) {
-    free(cmd);
+    xfree(cmd);
     return NULL;
   }
 
@@ -72,11 +72,11 @@ JQLCommand parser_expect_nc(Parser* parser, int expected, char* error_msg) {
 
 void parser_consume(Parser* parser) {
   if (parser->cur->type == TOK_EOF) {
-    token_free(parser->cur);
+    token_xfree(parser->cur);
     return;
   }
 
-  token_free(parser->cur);
+  token_xfree(parser->cur);
 
   parser->cur = lexer_next_token(parser->lexer);
 }
@@ -89,8 +89,8 @@ ParserState parser_save_state(Parser* parser) {
   state.lexer_column = parser->lexer->cc;
 
   state.buffer_size = parser->lexer->buf_size;
-  state.buffer_copy = malloc(state.buffer_size);
-  memcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
+  state.buffer_copy = xmalloc(state.buffer_size);
+  xmemcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
 
   state.current_token = token_clone(parser->cur);
 
@@ -102,20 +102,20 @@ void parser_restore_state(Parser* parser, ParserState state) {
   parser->lexer->cl = state.lexer_line;
     parser->lexer->cc = state.lexer_column;
 
-  free(parser->lexer->buf);
+  xfree(parser->lexer->buf);
 
   parser->lexer->buf_size = state.buffer_size;
-  parser->lexer->buf = malloc(state.buffer_size);
-  memcpy(parser->lexer->buf, state.buffer_copy, state.buffer_size);
+  parser->lexer->buf = xmalloc(state.buffer_size);
+  xmemcpy(parser->lexer->buf, state.buffer_copy, state.buffer_size);
 
   parser->lexer->c = (parser->lexer->i < parser->lexer->buf_size) ?
                      parser->lexer->buf[parser->lexer->i] : '\0';
 
-  if (parser->cur) token_free(parser->cur);
+  if (parser->cur) token_xfree(parser->cur);
   parser->cur = token_clone(state.current_token);
 
-  token_free(state.current_token);
-  free(state.buffer_copy);
+  token_xfree(state.current_token);
+  xfree(state.buffer_copy);
 }
 
 Token* parser_peek_ahead(Parser* parser, int offset) {
@@ -316,7 +316,7 @@ void print_column_value(ColumnValue* val) {
           printf("\"%s\"", s);
         } else {
         char preview[12]; 
-          memcpy(preview, s, 8);
+          xmemcpy(preview, s, 8);
           strcpy(preview + 8, ".");
           printf("\"%s +%zu\"", preview, len - 8);
         }
@@ -351,7 +351,7 @@ char* str_column_value(ColumnValue* val) {
 
     offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%ld", val->array.array_size);
 
-    return strdup(buffer);
+    return xstrdup(buffer);
   }
 
   char buffer[256];
@@ -432,7 +432,7 @@ char* str_column_value(ColumnValue* val) {
 
     case TOK_T_INTERVAL: {
       const char* s = interval_to_string(&val->interval_value);
-      return strdup(s);
+      return xstrdup(s);
     }
 
     case TOK_T_TEXT:
@@ -453,7 +453,7 @@ char* str_column_value(ColumnValue* val) {
       break;
   }
 
-  return strdup(buffer);
+  return xstrdup(buffer);
 }
 
 char** stringify_column_array(ColumnValue* array_val, int* out_count) {
@@ -463,7 +463,7 @@ char** stringify_column_array(ColumnValue* array_val, int* out_count) {
   }
 
   size_t n = array_val->array.array_size;
-  char** result = calloc(n + 1, sizeof(char*));
+  char** result = xcalloc(n + 1, sizeof(char*));
   if (!result) {
     if (out_count) *out_count = 0;
     return NULL;
@@ -484,19 +484,19 @@ char** stringify_column_array(ColumnValue* array_val, int* out_count) {
       size_t len = strlen(str);
       if (len >= 2 && ((str[0] == '\'' && str[len - 1] == '\'') || (str[0] == '\"' && str[len - 1] == '\"'))) {
         size_t new_len = len - 2;
-        result[i] = malloc(new_len + 1);
+        result[i] = xmalloc(new_len + 1);
         if (result[i]) {
-          strncpy(result[i], str + 1, new_len);
+          xstrncpy(result[i], str + 1, new_len);
           result[i][new_len] = '\0';
         }
       } else {
-        result[i] = strdup(str);
+        result[i] = xstrdup(str);
       }
     } else {
-      result[i] = strdup(str);
+      result[i] = xstrdup(str);
     }
 
-    if (str != NULL && strcmp(str, "NULL") != 0) free(str);
+    if (str != NULL && strcmp(str, "NULL") != 0) xfree(str);
   }
 
   if (out_count) *out_count = n;
@@ -608,7 +608,7 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val) {
     // //       snprintf(out, out_size, "\"%s\"", s);
     // //     } else {
     // //       char preview[12];
-    // //       memcpy(preview, s, 8);
+    // //       xmemcpy(preview, s, 8);
     // //       strcpy(preview + 8, "...");
     // //       snprintf(out, out_size, "\"%s (%zu chars)\"]", preview, len - 8);
     // //     }
@@ -622,12 +622,12 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val) {
   }
 }
 
-void parser_free(Parser* parser) {
+void parser_xfree(Parser* parser) {
   if (!parser) {
     return;
   }
 
-  lexer_free(parser->lexer);
+  lexer_xfree(parser->lexer);
 
   parser = NULL;
 }
@@ -662,16 +662,16 @@ void free_expr_node(ExprNode* node) {
 
     case EXPR_FUNCTION:
       if (node->fn.type == NOT_AGG) break; 
-      if (node->fn.name) free(node->fn.name);
+      if (node->fn.name) xfree(node->fn.name);
       for (uint8_t i = 0; i < node->fn.arg_count; i++) {
         free_expr_node(node->fn.args[i]);
       }
-      free(node->fn.args);
+      xfree(node->fn.args);
       break;
 
     case EXPR_LIKE:
       free_expr_node(node->like.left);
-      if (node->like.pattern) free(node->like.pattern);
+      if (node->like.pattern) xfree(node->like.pattern);
       break;
 
     case EXPR_BETWEEN:
@@ -685,7 +685,7 @@ void free_expr_node(ExprNode* node) {
       for (size_t i = 0; i < node->in.count; i++) {
         free_expr_node(node->in.list[i]);
       }
-      free(node->in.list);
+      xfree(node->in.list);
       break;
 
     case EXPR_LOGICAL_NOT:
@@ -711,9 +711,9 @@ void free_column_value(ColumnValue* val) {
     for (uint16_t i = 0; i < val->array.array_size; i++) {
       free_column_value(&val->array.array_value[i]);
     }
-    free(val->array.array_value);
+    xfree(val->array.array_value);
   } else if (val->str_value) {
-    free(val->str_value);
+    xfree(val->str_value);
   } 
 }
 
@@ -722,7 +722,7 @@ void free_column_definition(ColumnDefinition* col_def) {
 
   // if (col_def->has_default) {
   //   free_column_value(col_def->default_value);
-  //   free(col_def->default_value);
+  //   xfree(col_def->default_value);
   // }
 }
 
@@ -738,7 +738,7 @@ void free_table_schema(TableSchema* schema) {
     // free_column_definition(col_def);
   }
 
-  free(schema->columns);
+  xfree(schema->columns);
   schema->columns = NULL;
 
   schema->column_count = 0;
@@ -750,7 +750,7 @@ void free_table_schema(TableSchema* schema) {
 void free_jql_command(JQLCommand* cmd) {
   if (!cmd) return;
 
-  // if (cmd->bitmap) free(cmd->bitmap);
+  // if (cmd->bitmap) xfree(cmd->bitmap);
 
   if (cmd->has_where) {
     free_expr_node(cmd->where);
@@ -762,41 +762,41 @@ void free_jql_command(JQLCommand* cmd) {
   //       // for (uint8_t j = 0; j < MAX_COLUMNS; j++) {
   //       //   if (cmd->values[i][j]) free_expr_node(cmd->values[i][j]);
   //       // }
-  //       // free(cmd->values[i]);
+  //       // xfree(cmd->values[i]);
   //     }
   //   }
-  //   free(cmd->values);
+  //   xfree(cmd->values);
   // }
 
   // if (cmd->returning_columns) {
   //   for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
-  //     if (cmd->returning_columns[i]) free(cmd->returning_columns[i]);
+  //     if (cmd->returning_columns[i]) xfree(cmd->returning_columns[i]);
   //   }
-  //   free(cmd->returning_columns);
+  //   xfree(cmd->returning_columns);
   // }
 
   // if (cmd->columns) {
   //   for (uint8_t i = 0; i < cmd->col_count; i++) {
-  //     // if (cmd->columns[i]) free(cmd->columns[i]);
+  //     // if (cmd->columns[i]) xfree(cmd->columns[i]);
   //   }
-  //   free(cmd->columns);
+  //   xfree(cmd->columns);
   // }
 
   if (cmd->sel_columns) {
     for (uint8_t i = 0; i < MAX_COLUMNS; i++) {
       if (i >= cmd->col_count) break;
-      if (cmd->sel_columns[i].alias) free(cmd->sel_columns[i].alias);
+      if (cmd->sel_columns[i].alias) xfree(cmd->sel_columns[i].alias);
       if (cmd->sel_columns[i].expr) free_expr_node(cmd->sel_columns[i].expr);
-      // free(&cmd->sel_columns[i]);
+      // xfree(&cmd->sel_columns[i]);
     }
-    free(cmd->sel_columns);
+    xfree(cmd->sel_columns);
   }
 
   if (cmd->update_columns) {
     for (uint8_t i = 0; i < cmd->col_count; i++) {
       free_expr_node(cmd->update_columns[i].array_idx);
     }
-    free(cmd->update_columns);
+    xfree(cmd->update_columns);
   }
 
   if (cmd->where) {
@@ -804,7 +804,7 @@ void free_jql_command(JQLCommand* cmd) {
   }
 
   if (cmd->order_by) {
-    free(cmd->order_by);
+    xfree(cmd->order_by);
   }
 }
 
@@ -814,7 +814,7 @@ SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16
   uint16_t new_cap = (*capacity == 0) ? 8 : (*capacity * 2);
   if (new_cap < needed) new_cap = needed;
 
-  SchemaRef* new_arr = realloc(schemas, new_cap * sizeof(SchemaRef));
+  SchemaRef* new_arr = xrealloc(schemas, new_cap * sizeof(SchemaRef));
   
   if (!new_arr) {
     fprintf(stderr, "OOM expanding schema refs\n");
@@ -846,6 +846,6 @@ void set_schema_alias(SchemaRef* ref, const char* alias) {
     REPORT_ERROR("Why the fuck would you keep need an alias > %d chars, trimmed", MAX_ALIAS_LEN - 1);
   }
 
-  strncpy(ref->alias, alias, MAX_ALIAS_LEN - 1);
+  xstrncpy(ref->alias, alias, MAX_ALIAS_LEN - 1);
   ref->alias[MAX_ALIAS_LEN - 1] = '\0';
 }

@@ -3,6 +3,8 @@
 
 #include <stdbool.h>
 
+#include "utils/xmem.h"
+
 typedef struct Database Database;
 typedef struct ClusterManager ClusterManager;
 

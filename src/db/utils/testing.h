@@ -3,6 +3,8 @@
 #include "utils/setup.h"
 #include "storage/database.h"
 
+#include "utils/xmem.h"
+
 #define INIT_TEST(db_var)                                                  \
   char path[MAX_PATH_LENGTH];                                                \
   char* argv[2];                                                            \
@@ -12,7 +14,7 @@
     const char* __filename = strrchr(__file, '/');                           \
     __filename = (__filename) ? __filename + 1 : __file;                     \
     char __basename[128];                                                   \
-    strncpy(__basename, __filename, sizeof(__basename));                    \
+    xstrncpy(__basename, __filename, sizeof(__basename));                    \
     __basename[sizeof(__basename) - 1] = '\0';                               \
     char* __dot = strrchr(__basename, '.');                                  \
     if (__dot) {                                                             \

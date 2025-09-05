@@ -36,7 +36,7 @@ uint8_t KWCHAR_TYPE_MAP[NO_OF_KEYWORDS] = {
 };
 
 Lexer* lexer_init() {
-  Lexer* lexer = calloc(1, sizeof(Lexer));
+  Lexer* lexer = xcalloc(1, sizeof(Lexer));
   if (!lexer) {
     exit(EXIT_FAILURE);
   }
@@ -55,10 +55,10 @@ void lexer_set_buffer(Lexer* lexer, char* buffer) {
   if (!lexer) return;
 
   if (lexer->buf) {
-    free(lexer->buf);
+    xfree(lexer->buf);
   }
 
-  lexer->buf = strdup(buffer);
+  lexer->buf = xstrdup(buffer);
   if (!lexer->buf) {
     exit(EXIT_FAILURE);
   }
@@ -71,14 +71,14 @@ void lexer_set_buffer(Lexer* lexer, char* buffer) {
   lexer->cl = 1;
 }
 
-void lexer_free(Lexer* lexer) {
+void lexer_xfree(Lexer* lexer) {
   if (!lexer) {
     return;
     exit(EXIT_FAILURE);
   }
 
-  free(lexer->buf);
-  free(lexer);
+  xfree(lexer->buf);
+  xfree(lexer);
 
   lexer = NULL;
 }
@@ -89,7 +89,7 @@ Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type) {
   return: pointer to a propperly initalized token struct
   */
 
-  Token* token = calloc(1, sizeof(Token));
+  Token* token = xcalloc(1, sizeof(Token));
 
   if (!token) {
     exit(EXIT_FAILURE);
@@ -99,7 +99,7 @@ Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type) {
   token->col = lexer->cc;
   token->line = lexer->cl;
 
-  token->value = strdup(value);
+  token->value = xstrdup(value);
 
   return (Token*)token;
 }
@@ -107,7 +107,7 @@ Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type) {
 Token* token_clone(Token* src) {
   if (!src) return NULL;
 
-  Token* copy = malloc(sizeof(Token));
+  Token* copy = xmalloc(sizeof(Token));
   if (!copy) return NULL;
 
   copy->line = src->line;
@@ -115,7 +115,7 @@ Token* token_clone(Token* src) {
   copy->type = src->type;
 
   if (src->value) {
-    copy->value = strdup(src->value); 
+    copy->value = xstrdup(src->value); 
   } else {
     copy->value = NULL;
   }
@@ -124,7 +124,7 @@ Token* token_clone(Token* src) {
 
 }
 
-void token_free(Token* token) {
+void token_xfree(Token* token) {
   /*
   De-initializes provided token
   */
@@ -133,8 +133,8 @@ void token_free(Token* token) {
     return;
   }
 
-  free(token->value);
-  free(token);
+  xfree(token->value);
+  xfree(token);
 }
 
 Token* lexer_next_token(Lexer* lexer) {
@@ -280,7 +280,7 @@ bool lexer_handle_comments(Lexer* lexer) {
       lexer_advance(lexer, 1);
     }
     lexer_advance(lexer, 1);
-    free(peek);
+    xfree(peek);
     return true;
   }
 
@@ -290,11 +290,11 @@ bool lexer_handle_comments(Lexer* lexer) {
       lexer_advance(lexer, 1);
     }
     lexer_advance(lexer, 2);
-    free(peek);
+    xfree(peek);
     return true;
   }
 
-  free(peek);
+  xfree(peek);
   return false;
 }
 
@@ -304,14 +304,14 @@ Token* lexer_handle_alpha(Lexer* lexer) {
   return: identifiers and keywords
   */
 
-  char* buf = calloc(1, sizeof(char));
+  char* buf = xcalloc(1, sizeof(char));
   if (!buf) {
     exit(EXIT_FAILURE);
   }
 
   while (isalnum(lexer->c) || lexer->c == '_') {
     size_t len = strlen(buf);
-    buf = realloc(buf, (len + 2) * sizeof(char));
+    buf = xrealloc(buf, (len + 2) * sizeof(char));
     
     if (!buf) {
       exit(EXIT_FAILURE);
@@ -320,10 +320,10 @@ Token* lexer_handle_alpha(Lexer* lexer) {
     if (len > MAX_IDENTIFIER_LEN) {
       REPORT_ERROR(lexer, "E_SHORTER_LENIDEN", MAX_IDENTIFIER_LEN);
       lexer_handle_error(lexer);
-      free(buf);
+      xfree(buf);
 
       Token* token = lexer_next_token(lexer);
-      if (token) token_free(token); 
+      if (token) token_xfree(token); 
 
       return lexer_next_token(lexer); 
     }
@@ -335,20 +335,20 @@ Token* lexer_handle_alpha(Lexer* lexer) {
 
   if (strlen(buf) > MAX_KEYWORD_LEN) {
     Token* token = lexer_token_init(lexer, buf, TOK_ID);
-    free(buf);
+    xfree(buf);
     return token;
   }
 
   for (uint8_t i = 0; i < NO_OF_KEYWORDS; i++) {
     if (strcmp(KEYWORDS[i], buf) == 0) {
       Token* token = lexer_token_init(lexer, buf, KWCHAR_TYPE_MAP[i]);
-      free(buf);
+      xfree(buf);
       return token;
     }
   }
 
   Token* token = lexer_token_init(lexer, buf, TOK_ID);
-  free(buf);
+  xfree(buf);
   return token;
 }
 
@@ -361,7 +361,7 @@ Token* lexer_handle_numeric(Lexer* lexer, bool is_negative) {
   
   int type = TOK_ERR;
   __uint8_t npre_decimal = 0;
-  char* buf = calloc(2, sizeof(char));
+  char* buf = xcalloc(2, sizeof(char));
 
   if (!buf) {
     perror("Failed to allocate memory for buffer");
@@ -378,11 +378,11 @@ Token* lexer_handle_numeric(Lexer* lexer, bool is_negative) {
 
   if (lexer->c == '.') {
     size_t new_size = strlen(buf) + 2;
-    char* new_buf = realloc(buf, new_size * sizeof(char));
+    char* new_buf = xrealloc(buf, new_size * sizeof(char));
     
     if (!new_buf) {
         perror("Failed to reallocate memory for buffer");
-        free(buf);
+        xfree(buf);
         exit(EXIT_FAILURE);
     }
     buf = new_buf;
@@ -400,12 +400,12 @@ Token* lexer_handle_numeric(Lexer* lexer, bool is_negative) {
   if (type == TOK_ERR) {
     REPORT_ERROR(lexer, "U_NUM_LIT_TYPE");
     lexer_handle_error(lexer);
-    free(buf);
+    xfree(buf);
     return lexer_next_token(lexer);
   }
 
   Token* token = lexer_token_init(lexer, buf, type);
-  free(buf);
+  xfree(buf);
   return token;
 }
 
@@ -505,7 +505,7 @@ void lexer_process_digits(Lexer* lexer, char** buf, bool has_decimal) {
   while (isdigit(lexer->c) ||
       ((lexer->c == 'f' || lexer->c == 'F' || lexer->c == 'd' || lexer->c == 'D') && has_decimal == true)) {
     size_t len = strlen(*buf);
-    *buf = realloc(*buf, (len + 2) * sizeof(char));
+    *buf = xrealloc(*buf, (len + 2) * sizeof(char));
 
     if (!*buf) {
         exit(EXIT_FAILURE);
@@ -523,11 +523,11 @@ void lexer_process_digits(Lexer* lexer, char** buf, bool has_decimal) {
       lexer_advance(lexer, 1);
       lexer_process_digits(lexer, buf, has_decimal);
     } else {
-      free(*buf);
+      xfree(*buf);
       lexer_handle_error(lexer);
     }
   } else if (lexer->c == '.' && has_decimal) {
-    free(*buf);
+    xfree(*buf);
     lexer_handle_error(lexer);
   }
 }
@@ -609,7 +609,7 @@ Token* lexer_process_minus_op(Lexer* lexer, char next_char) {
 Token* lexer_process_single_quote(Lexer* lexer) {
   lexer_advance(lexer, 1);
 
-  char* value = calloc(1, sizeof(char));
+  char* value = xcalloc(1, sizeof(char));
   if (!value) exit(EXIT_FAILURE);
 
   while (lexer->c != '\0') {
@@ -619,7 +619,7 @@ Token* lexer_process_single_quote(Lexer* lexer) {
         lexer_advance(lexer, 1);
 
         size_t len = strlen(value);
-        value = realloc(value, len + 2);
+        value = xrealloc(value, len + 2);
         if (!value) exit(EXIT_FAILURE);
         value[len] = '\'';
         value[len + 1] = '\0';
@@ -627,13 +627,13 @@ Token* lexer_process_single_quote(Lexer* lexer) {
       } else {
         lexer_advance(lexer, 1);
         Token* token = lexer_token_init(lexer, value, TOK_L_STRING);
-        free(value);
+        xfree(value);
         return token;
       }
     }
 
     size_t len = strlen(value);
-    value = realloc(value, len + 2);
+    value = xrealloc(value, len + 2);
     if (!value) exit(EXIT_FAILURE);
     value[len] = lexer->c;
     value[len + 1] = '\0';
@@ -642,14 +642,14 @@ Token* lexer_process_single_quote(Lexer* lexer) {
 
   REPORT_ERROR(lexer, "E_STRING_TERMINATOR");
   lexer_handle_error(lexer);
-  free(value);
+  xfree(value);
   return lexer_next_token(lexer);
 }
 
 Token* lexer_process_double_quote(Lexer* lexer) {
   lexer_advance(lexer, 1);
 
-  char* value = calloc(1, sizeof(char));
+  char* value = xcalloc(1, sizeof(char));
   if (!value) exit(EXIT_FAILURE);
 
   while (lexer->c != '\0') {
@@ -659,7 +659,7 @@ Token* lexer_process_double_quote(Lexer* lexer) {
         lexer_advance(lexer, 1);
 
         size_t len = strlen(value);
-        value = realloc(value, len + 2);
+        value = xrealloc(value, len + 2);
         if (!value) exit(EXIT_FAILURE);
         value[len] = '"';
         value[len + 1] = '\0';
@@ -667,13 +667,13 @@ Token* lexer_process_double_quote(Lexer* lexer) {
       } else {
         lexer_advance(lexer, 1);
         Token* token = lexer_token_init(lexer, value, TOK_L_STRING);
-        free(value);
+        xfree(value);
         return token;
       }
     }
 
     size_t len = strlen(value);
-    value = realloc(value, len + 2);
+    value = xrealloc(value, len + 2);
     if (!value) exit(EXIT_FAILURE);
     value[len] = lexer->c;
     value[len + 1] = '\0';
@@ -682,7 +682,7 @@ Token* lexer_process_double_quote(Lexer* lexer) {
 
   REPORT_ERROR(lexer, "E_STRING_TERMINATOR");
   lexer_handle_error(lexer);
-  free(value);
+  xfree(value);
   return lexer_next_token(lexer);
 }
 
@@ -722,13 +722,13 @@ char* lexer_get_reference(Lexer* lexer) {
   }
 
   size_t line_length = line_end - line_start;
-  char* line_content = malloc(line_length + 1);
+  char* line_content = xmalloc(line_length + 1);
   if (!line_content) {
     perror("malloc failed");
     exit(EXIT_FAILURE);
   }
 
-  memcpy(line_content, lexer->buf + line_start, line_length);
+  xmemcpy(line_content, lexer->buf + line_start, line_length);
   line_content[line_length] = '\0';
 
   return line_content;
@@ -745,7 +745,7 @@ void lexer_report_error(Lexer* lexer, char* error_code, ...) {
       va_list args;
       va_start(args, error_code);
 
-      char* final_content = malloc(
+      char* final_content = xmalloc(
         (strlen(templates[i].content) + sizeof(args)) * sizeof(char)
       );
 
@@ -758,7 +758,7 @@ void lexer_report_error(Lexer* lexer, char* error_code, ...) {
       char* refrence = lexer_get_reference(lexer);
 
       printf("%d:%d > %s\n\t%d | %s\n", lexer->cl, lexer->cc, final_content, lexer->cl, refrence);
-      free(final_content);
+      xfree(final_content);
       return;
     }
   }
