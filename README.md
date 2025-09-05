@@ -62,10 +62,10 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - ~~Implement constraint cache for efficiency~~  
 - FIX BUG: Multiple inserts statements in same file when large contents are present
 - ~Implement a basic permission check layer~
+- Implement table_a.row_x.attr = table_b.row_y.attr comparisons
 - Implement `DROP` to remove tables
 - Implement `JOIN` operations  
 - Implement composite primary keys
-- Implement row_x.attr = row_y.attr comparisons
 - Implement TOAST for large arrays
 - Support transactions (`BEGIN`, `COMMIT`, `ROLLBACK`)  
 - Implement `apply_wal()` for recovery
@@ -83,6 +83,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - Implement triggers  
 - Add replication and sharding for scalability  
 - Add support for database-specific file management, including backing up and restoring individual files
+- Maintain a table-registry instead of hard coding MAX_TABLES and a hash map 
 - Beta version documentation
 - Benchmark query execution speed  
 - Implement functions for dynamic types (DATETIME/JSON/BLOB/TEXT)

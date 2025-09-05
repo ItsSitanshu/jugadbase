@@ -224,6 +224,11 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   while (parser->cur->type != TOK_FRM && parser->cur->type != TOK_EOF) {
     parser_consume(parser);
   }
+
+  if (parser->cur->type == TOK_SC) {
+    REPORT_ERROR(parser->lexer, "SYE_E_MISSING_FROM");
+    return command;
+  }
   
   if (parser->cur->type != TOK_FRM) return command;
   
@@ -237,8 +242,37 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   command.schema = calloc(1, sizeof(TableSchema));
   strcpy(command.schema->table_name, parser->cur->value);
   
+  command.sel_columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
+
+  while (true) {
+    ExprNode* expr = parser_parse_expression(parser, schema);
+    if (!expr) {
+      REPORT_ERROR(parser->lexer, "E_INVALID_COLUMN_EXPR");
+      return command;
+    }
+
+    char* alias = NULL;
+    if (parser->cur->type == TOK_AS) {
+      parser_consume(parser);
+      if (parser->cur->type != TOK_ID) {
+        REPORT_ERROR(parser->lexer, "E_IDEN_AF_ALIAS_KW");
+        free_expr_node(expr);
+        return command;
+      }
+      alias = strdup(parser->cur->value);
+      parser_consume(parser);
+    }
+    
+    SelectColumn* col = &command.sel_columns[column_count++];
+    col->expr = expr;
+    col->alias = alias;
+    col->type = (expr->type == EXPR_FUNCTION) ? expr->fn.type : -1;
+    
+    if (parser->cur->type != TOK_COM) break;
+    parser_consume(parser);
+  }
+
   parser_restore_state(parser, state);
-  
 
   command.sel_columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
   int column_count = 0;
@@ -298,6 +332,8 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   parse_offset_clause(parser, &command);
 
   command.is_invalid = false;
+
+  LOG_INFO("Parsed SELECT command successfully");
   return command;
 }
 
@@ -342,7 +378,7 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
     
     parser_expect(parser, TOK_EQ, "SYE_E_EXPECTED_EQUAL_IN_SET");
     
-    ExprNode* value = parser_parse_expression(parser, command.schema);
+  ExprNode* value = parser_parse_expression(parser, command.schema);
     if (!value) {
       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUE_IN_SET");
       free_expr_node(expr);

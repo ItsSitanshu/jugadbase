@@ -39,6 +39,9 @@ ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db) {
 ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
+
+  LOG_DEBUG("!!> idx: %d, col_name: %s, table: %d",
+           expr->column.index, expr->column.col_name, expr->column.table);
   
   result.column.index = expr->column.index;
   
@@ -522,13 +525,15 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, D
   if (!expr) {
     return result;
   }
-  
+
+  LOG_DEBUG("Evaluating expression of type: %d", expr->type);
+
   if (is_struct_zeroed(row, sizeof(Row)) && 
       !(expr->type == EXPR_LITERAL || expr->type == EXPR_FUNCTION || expr->type == EXPR_BINARY_OP)) {
     LOG_WARN("Query expects literals or functions, not logical comparisons. Query not processed.");
     return result;
   }
-  
+
   switch (expr->type) {
     case EXPR_LITERAL:
       return evaluate_literal_expression(expr, db);

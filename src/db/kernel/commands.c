@@ -790,6 +790,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     }
   }
 
+
   for (uint32_t i = 0; i < out_count; i++) {
     Row* src = &collected_rows[start + i];
     Row* dst = &result_rows[i];
@@ -803,7 +804,6 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       free(result_rows);
       free(is_aggregate_col);
       free(aggregate_results);
-      return (ExecutionResult){1, "Memory allocation failed for projected values"};
     }
         
   

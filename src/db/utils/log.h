@@ -27,6 +27,15 @@ extern int* verbosity_level;
 
 #define MAX_LOG_PATH 256
 
+static inline int is_god_mode(void) {
+  static int cached = -1;  
+  if (cached == -1) {
+    const char *val = getenv("JUGADBASE_GOD_MODE");
+    cached = (val != NULL && strcmp(val, "1") == 0);
+  }
+  return cached;
+}
+
 static inline int get_verbosity() { return *verbosity_level; }
 
 static void get_current_time_with_ms(char* time_str, size_t size) {

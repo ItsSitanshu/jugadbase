@@ -68,10 +68,11 @@ Database* db_init(char* dir, Database* core) {
   if (!load_initial_schema(db)) {
     LOG_FATAL("Failed to read schema");
   }
+
   load_lake(db);
   LOG_INFO("Successfully loaded %lu table(s) from catalog", db->table_count);
 
-  load_constr_syscache(db);
+  load_constr_syscache(db);  
 
   register_builtin_functions();
 
@@ -227,13 +228,13 @@ void process_file(Database* db, char* filename, bool show) {
     return;
   }
 
-  if (db->current_role == NULL && (!db->is_core)) {
+  if (!is_god_mode() && db->current_role == NULL && !db->is_core) {
     LOG_ERROR("No active role. Please login first.");
     return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
   } 
 
   if (!db->is_core) {
-    LOG_DEBUG("Current role: %s", db->current_role->name);
+    // LOG_DEBUG("Current role: %s", db->current_role->name);
   }
 
   fseek(file, 0, SEEK_END); 

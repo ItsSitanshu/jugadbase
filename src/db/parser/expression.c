@@ -159,18 +159,18 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
   }
 
   if (parser->cur->type == TOK_ID) {
-    char* ident = strdup(parser->cur->value);
+    char* first_ident = strdup(parser->cur->value);
     parser_consume(parser);
 
     if (parser->cur->type == TOK_LP) {
       ExprNode* node = calloc(1, sizeof(ExprNode));
       node->type = EXPR_FUNCTION;
-      node->fn.name = ident;
-      node->fn.type = get_aggregate_type(ident); 
+      node->fn.name = first_ident;
+      node->fn.type = get_aggregate_type(first_ident);
       node->fn.args = calloc(MAX_FN_ARGS, sizeof(ExprNode*));
       node->fn.arg_count = 0;
 
-      parser_consume(parser); 
+      parser_consume(parser);  
 
       if (parser->cur->type != TOK_RP) {
         while (true) {
@@ -192,26 +192,51 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
         }
       }
 
-
       if (parser->cur->type != TOK_RP) {
         REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
         return NULL;
       }
 
-      parser_consume(parser); // consume ')'
+      parser_consume(parser);  
       return node;
     }
 
-    int col_index = find_column_index(schema, ident);
-    if (col_index == -1) {
-      REPORT_ERROR(parser->lexer, "SYE_E_UNKNOWN_COLUMN", ident);
-      return NULL;
+    char* table_name = NULL;
+    char* field_name = NULL;
+
+    if (parser->cur->type == TOK_DOT) {
+      table_name = first_ident;
+      parser_consume(parser);
+
+      if (parser->cur->type != TOK_ID) {
+        REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_IDENTIFIER_AFTER_DOT");
+        free(table_name);
+        return NULL;
+      }
+
+      field_name = strdup(parser->cur->value);
+      parser_consume(parser);
+    } else {
+      field_name = first_ident;
     }
+
+    int col_index = -1;
+    int table_idx = -1;
+    
+    if (table_name) {
+      table_idx = hash_fnv1a(table_name, MAX_TABLES);
+      LOG_INFO("table_idx evaluated from %s = %d", table_name, table_idx);
+    } 
+
+
+    if (field_name) col_index = find_column_index(schema, field_name);
 
     ExprNode* base = calloc(1, sizeof(ExprNode));
     base->type = EXPR_COLUMN;
-    base->column.index = col_index;
-
+    base->column.index = col_index;  
+    base->column.table = table_idx; 
+    base->column.col_name = strdup(field_name);
+    
     while (parser->cur->type == TOK_LB) {
       parser_consume(parser);
 
@@ -224,11 +249,17 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
       }
       parser_consume(parser);
 
-      base->type = EXPR_ARRAY_ACCESS;
-      base->column.index = base->column.index;
-      base->column.array_idx = index_expr;
+      ExprNode* array_node = calloc(1, sizeof(ExprNode));
+      array_node->type = EXPR_ARRAY_ACCESS;
+      array_node->column.index = base->column.index;
+      array_node->column.table = base->column.table;
+      array_node->column.array_idx = index_expr;
+
+      free(base);  
+      base = array_node;
     }
 
+    LOG_INFO("Parsed [iden]: table_idx=%d, col_index=%d, col_name=%s", base->column.table, base->column.index, base->column.col_name ? base->column.col_name : "NULL");
     return base;
   }
 
@@ -241,6 +272,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
 
   return node;
 }
+
 
 
 ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left) {

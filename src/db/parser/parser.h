@@ -84,6 +84,7 @@ typedef struct ColumnValue {
     Interval interval_value;
     ArrayValue array;
     struct cv__Column {
+      uint32_t table_id;
       uint16_t index;
       int16_t array_idx;
     } column;
@@ -141,7 +142,9 @@ typedef struct ExprNode {
   union {
     ColumnValue literal;
     struct column {
-      uint16_t index;
+      int32_t index;
+      char* col_name;
+      int table;
       ExprNode* array_idx;
     } column;
     
