@@ -18,6 +18,7 @@
 #define MAX_JSON_SIZE 512
 #define MAX_VARCHAR_SIZE 255
 #define MAX_FN_ARGS 40
+#define MAX_ALIAS_LEN 64
 #define MAX_LIKE_PATTERNS 32
 #define MAX_ARRAY_SIZE 2048
 
@@ -342,9 +343,17 @@ typedef struct AlterTableCommand {
   bool is_invalid;
 } AlterTableCommand;
 
+typedef struct SchemaRef {
+  TableSchema* ptr;                
+  char alias[MAX_ALIAS_LEN];
+} SchemaRef;
+
 typedef struct {
   JQLCommandType type;
-  TableSchema* schema;
+  
+  SchemaRef* schemas;
+  uint16_t schema_count;
+
   char* schema_name;
 
   uint8_t* bitmap;
@@ -526,6 +535,10 @@ void free_column_value(ColumnValue* val);
 void free_column_definition(ColumnDefinition* col_def);
 void free_table_schema(TableSchema* schema);
 void free_jql_command(JQLCommand* cmd);
+
+SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16_t needed);
+SchemaRef* find_schema(JQLCommand* cmd, const char* key);
+void set_schema_alias(SchemaRef* ref, const char* alias);
 
 #endif // JQL_PARSER_CORE_H
 

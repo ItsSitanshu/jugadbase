@@ -217,59 +217,53 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
 JQLCommand parser_parse_select(Parser* parser, Database* db) {
   JQLCommand command;
   jql_command_plain_init(&command, CMD_SELECT);
-  
+
   parser_consume(parser);
-  
   ParserState state = parser_save_state(parser);
+
   while (parser->cur->type != TOK_FRM && parser->cur->type != TOK_EOF) {
     parser_consume(parser);
   }
 
-  if (parser->cur->type == TOK_SC) {
+  if (parser->cur->type != TOK_FRM) {
     REPORT_ERROR(parser->lexer, "SYE_E_MISSING_FROM");
     return command;
   }
-  
-  if (parser->cur->type != TOK_FRM) return command;
-  
   parser_consume(parser);
-  parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
-  
-  // LOG_DEBUG("Parsing SELECT for table: %s", parser->cur->value);
-  TableSchema* schema = get_validated_table(db, parser->cur->value);
-  if (!schema) return command;
-  
-  command.schema = calloc(1, sizeof(TableSchema));
-  strcpy(command.schema->table_name, parser->cur->value);
-  
-  command.sel_columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
+
+  uint16_t cap = 4;
+  command.schemas = calloc(cap, sizeof(SchemaRef));
+  command.schema_count = 0;
 
   while (true) {
-    ExprNode* expr = parser_parse_expression(parser, schema);
-    if (!expr) {
-      REPORT_ERROR(parser->lexer, "E_INVALID_COLUMN_EXPR");
+    if (parser->cur->type != TOK_ID) {
+      REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
       return command;
     }
 
-    char* alias = NULL;
-    if (parser->cur->type == TOK_AS) {
-      parser_consume(parser);
-      if (parser->cur->type != TOK_ID) {
-        REPORT_ERROR(parser->lexer, "E_IDEN_AF_ALIAS_KW");
-        free_expr_node(expr);
-        return command;
-      }
-      alias = strdup(parser->cur->value);
+    TableSchema* schema_ptr = get_validated_table(db, parser->cur->value);
+    if (!schema_ptr) {
+      REPORT_ERROR(parser->lexer, "Table '%s' does not exist", parser->cur->value);
+      return command;
+    }
+
+    command.schemas = ensure_schema_capacity(command.schemas, &cap, command.schema_count + 1);
+    SchemaRef* ref = &command.schemas[command.schema_count++];
+    ref->schema = schema_ptr;
+    set_schema_alias(ref, schema_ptr->table_name);
+
+    parser_consume(parser);
+
+    if (parser->cur->type == TOK_ID) {
+      set_schema_alias(ref, parser->cur->value);
       parser_consume(parser);
     }
-    
-    SelectColumn* col = &command.sel_columns[column_count++];
-    col->expr = expr;
-    col->alias = alias;
-    col->type = (expr->type == EXPR_FUNCTION) ? expr->fn.type : -1;
-    
-    if (parser->cur->type != TOK_COM) break;
-    parser_consume(parser);
+
+    if (parser->cur->type == TOK_COM) {
+      parser_consume(parser);
+      continue;
+    }
+    break;
   }
 
   parser_restore_state(parser, state);
@@ -318,10 +312,10 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
     }
   }
   
-  parser_expect(parser, TOK_FRM, "SYE_E_MISSING_FROM");
-  parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
-  
-  parser_consume(parser);
+  LOG_DEBUG("Skipping past %d characthers parsed earlier", __consume_n);
+  for (uint16_t i = 0; i < __consume_n; i++){
+    parser_consume(parser);
+  }
 
   command.value_counts[0] = column_count;
   

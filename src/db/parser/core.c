@@ -807,3 +807,45 @@ void free_jql_command(JQLCommand* cmd) {
     free(cmd->order_by);
   }
 }
+
+SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16_t needed) {
+  if (needed < *capacity) return schemas;
+
+  uint16_t new_cap = (*capacity == 0) ? 8 : (*capacity * 2);
+  if (new_cap < needed) new_cap = needed;
+
+  SchemaRef* new_arr = realloc(schemas, new_cap * sizeof(SchemaRef));
+  
+  if (!new_arr) {
+    fprintf(stderr, "OOM expanding schema refs\n");
+    exit(EXIT_FAILURE);
+  }
+
+  memset(new_arr + *capacity, 0, (new_cap - *capacity) * sizeof(SchemaRef));
+  *capacity = new_cap;
+  return new_arr;
+}
+
+SchemaRef* find_schema(JQLCommand* cmd, const char* key) {
+  for (uint16_t i = 0; i < cmd->schema_count; i++) {
+    if (strncmp(cmd->schemas[i].alias, key, MAX_ALIAS_LEN) == 0 ||
+      strncmp(cmd->schemas[i].schema->table_name, key, MAX_ALIAS_LEN) == 0) {
+      return &cmd->schemas[i];
+    }
+  }
+  return NULL;
+}
+
+void set_schema_alias(SchemaRef* ref, const char* alias) {
+  if (!alias) {
+    ref->alias[0] = '\0';
+    return;
+  }
+
+  if (strlen(alias) >= MAX_ALIAS_LEN) {
+    REPORT_ERROR("Why the fuck would you keep need an alias > %d chars, trimmed", MAX_ALIAS_LEN - 1);
+  }
+
+  strncpy(ref->alias, alias, MAX_ALIAS_LEN - 1);
+  ref->alias[MAX_ALIAS_LEN - 1] = '\0';
+}
