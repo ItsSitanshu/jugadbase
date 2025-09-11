@@ -61,6 +61,7 @@ typedef enum TokenType {
   TOK_GT,       // >
   TOK_LE,       // <=
   TOK_GE,       // >=
+  TOK_BANG,     // !
   TOK_NE,       // !=
   TOK_ADD,      // +
   TOK_SUB,      // -f

@@ -56,7 +56,7 @@ typedef struct ExecutionOrder {
 
 typedef struct ArrayValue { 
   ColumnValue* array_value;
-  uint16_t array_size;
+  uint64_t array_size;
   uint16_t array_type;
 } ArrayValue;
 

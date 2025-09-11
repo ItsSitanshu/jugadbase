@@ -523,7 +523,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
       } else {
         col_val->type = TOK_T_STRING;
         col_val->str_value = xmalloc(strlen(parser->cur->value) + 1);
-        strcpy(col_val->str_value, parser->cur->value);
+        xstrcpy(col_val->str_value, parser->cur->value);
         col_val->str_value[strlen(col_val->str_value)] = '\0';
       }
       break;

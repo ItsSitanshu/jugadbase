@@ -99,13 +99,13 @@ char* get_path_prefix(char *cmd, int cursor_pos) {
   }
   
   if (last_slash == -1) {
-    strcpy(result, ".");
+    xstrcpy(result, ".");
     return result;
   }
   
   int len = last_slash - word_start;
   if (len == 0) {
-    strcpy(result, "/");
+    xstrcpy(result, "/");
   } else {
     xstrncpy(result, &cmd[word_start], len);
     result[len] = '\0';
@@ -153,7 +153,7 @@ int find_completions(const char *dir_path, const char *partial, char **completio
     if (strncmp(entry->d_name, partial, strlen(partial)) == 0) {
       completions[count] = xmalloc(strlen(entry->d_name) + 2);
       if (completions[count]) {
-        strcpy(completions[count], entry->d_name);
+        xstrcpy(completions[count], entry->d_name);
         
         char full_path[MAX_PATH_LENGTH];
         if (strcmp(dir_path, "/") == 0) {

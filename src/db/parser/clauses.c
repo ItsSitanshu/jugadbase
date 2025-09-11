@@ -7,7 +7,7 @@ bool parse_alter_add_column(Parser* parser, AlterTableCommand* cmd) {
     return false;
   }
   cmd->operation = ALTER_ADD_COLUMN;
-  strcpy(cmd->add_column.column_name, parser->cur->value);
+  xstrcpy(cmd->add_column.column_name, parser->cur->value);
   parser_consume(parser);
 
   if (!is_valid_data_type(parser)) {
@@ -36,7 +36,7 @@ bool parse_alter_add_column(Parser* parser, AlterTableCommand* cmd) {
       return false;
     }
 
-    strcpy(cmd->add_column.default_expr, parser->cur->value);
+    xstrcpy(cmd->add_column.default_expr, parser->cur->value);
     cmd->add_column.has_default = true;
     parser_consume(parser);
   }
@@ -50,7 +50,7 @@ bool parse_alter_drop_column(Parser* parser, AlterTableCommand* cmd) {
     return false;
   }
   cmd->operation = ALTER_DROP_COLUMN;
-  strcpy(cmd->column.column_name, parser->cur->value);
+  xstrcpy(cmd->column.column_name, parser->cur->value);
   parser_consume(parser);
   return true;
 }
@@ -60,7 +60,7 @@ bool parse_alter_rename_column(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected column name to rename");
     return false;
   }
-  strcpy(cmd->column.column_name, parser->cur->value);
+  xstrcpy(cmd->column.column_name, parser->cur->value);
   parser_consume(parser);
 
   if (parser->cur->type != TOK_TO) {
@@ -73,7 +73,7 @@ bool parse_alter_rename_column(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected new column name");
     return false;
   }
-  strcpy(cmd->column.new_column_name, parser->cur->value);
+  xstrcpy(cmd->column.new_column_name, parser->cur->value);
   cmd->operation = ALTER_RENAME_COLUMN;
   parser_consume(parser);
 
@@ -86,7 +86,7 @@ bool parse_alter_alter_column(Parser* parser, AlterTableCommand* cmd) {
     return false;
   }
 
-  strcpy(cmd->column.column_name, parser->cur->value);
+  xstrcpy(cmd->column.column_name, parser->cur->value);
   parser_consume(parser);
 
   if (is_valid_data_type(parser)) {
@@ -100,7 +100,7 @@ bool parse_alter_alter_column(Parser* parser, AlterTableCommand* cmd) {
       parser_consume(parser);
       cmd->operation = ALTER_SET_DEFAULT;
 
-      strcpy(cmd->column.default_expr, parser->cur->value);
+      xstrcpy(cmd->column.default_expr, parser->cur->value);
       ColumnValue val;
       if (!parser_parse_value(parser, &val)) {
         REPORT_ERROR(parser->lexer, "Expected a proper default value after the `DEFAULT` keyword");
@@ -145,7 +145,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected constraint name after ADD CONSTRAINT");
     return false;
   }
-  strcpy(cmd->constraint.constraint_name, parser->cur->value);
+  xstrcpy(cmd->constraint.constraint_name, parser->cur->value);
   parser_consume(parser);
 
   if (parser->cur->type == TOK_PK) {
@@ -164,7 +164,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         REPORT_ERROR(parser->lexer, "Too many columns in constraint");
         return false;
       }
-      strcpy(cmd->constraint.columns[i++], parser->cur->value);
+      xstrcpy(cmd->constraint.columns[i++], parser->cur->value);
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
@@ -196,7 +196,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         return false;
       }
 
-      strcpy(cmd->constraint.columns[i], parser->cur->value);
+      xstrcpy(cmd->constraint.columns[i], parser->cur->value);
       parser_consume(parser);
       i += 1;
 
@@ -229,7 +229,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         REPORT_ERROR(parser->lexer, "Too many columns in FK constraint");
         return false;
       }
-      strcpy(cmd->constraint.columns[i++], parser->cur->value);
+      xstrcpy(cmd->constraint.columns[i++], parser->cur->value);
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
@@ -253,7 +253,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
       REPORT_ERROR(parser->lexer, "Expected foreign table name");
       return false;
     }
-    strcpy(cmd->constraint.ref_table, parser->cur->value);
+    xstrcpy(cmd->constraint.ref_table, parser->cur->value);
     parser_consume(parser);
 
     if (parser->cur->type != TOK_LP) {
@@ -269,7 +269,7 @@ bool parse_alter_add_constraint(Parser* parser, AlterTableCommand* cmd) {
         return false;
       }
 
-      strcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
+      xstrcpy(cmd->constraint.ref_columns[i++], parser->cur->value);
       parser_consume(parser);
       if (parser->cur->type == TOK_COM) parser_consume(parser);
       else break;
@@ -371,7 +371,7 @@ bool parse_alter_drop_constraint(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected constraint name after DROP CONSTRAINT");
     return false;
   }
-  strcpy(cmd->constraint.constraint_name, parser->cur->value);
+  xstrcpy(cmd->constraint.constraint_name, parser->cur->value);
   cmd->operation = ALTER_DROP_CONSTRAINT;
   parser_consume(parser);
   return true;
@@ -382,7 +382,7 @@ bool parse_alter_rename_constraint(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected constraint name after RENAME CONSTRAINT");
     return false;
   }
-  strcpy(cmd->constraint.constraint_name, parser->cur->value);
+  xstrcpy(cmd->constraint.constraint_name, parser->cur->value);
   parser_consume(parser);
 
   if (parser->cur->type != TOK_TO) {
@@ -396,7 +396,7 @@ bool parse_alter_rename_constraint(Parser* parser, AlterTableCommand* cmd) {
     return false;
   }
 
-  strcpy(cmd->constraint.constraint_expr, parser->cur->value);
+  xstrcpy(cmd->constraint.constraint_expr, parser->cur->value);
   cmd->operation = ALTER_RENAME_CONSTRAINT;
   parser_consume(parser);
 
@@ -414,7 +414,7 @@ bool parse_alter_rename_table(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected new table name");
     return false;
   }
-  strcpy(cmd->rename_table.new_table_name, parser->cur->value);
+  xstrcpy(cmd->rename_table.new_table_name, parser->cur->value);
   cmd->operation = ALTER_RENAME_TABLE;
   parser_consume(parser);
 
@@ -432,7 +432,7 @@ bool parse_alter_set_owner(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected new owner identifier");
     return false;
   }
-  strcpy(cmd->set_owner.new_owner, parser->cur->value);
+  xstrcpy(cmd->set_owner.new_owner, parser->cur->value);
   cmd->operation = ALTER_SET_OWNER;
   parser_consume(parser);
 
@@ -444,7 +444,7 @@ bool parse_alter_set_tablespace(Parser* parser, AlterTableCommand* cmd) {
     REPORT_ERROR(parser->lexer, "Expected tablespace name");
     return false;
   }
-  strcpy(cmd->set_tablespace.new_tablespace, parser->cur->value);
+  xstrcpy(cmd->set_tablespace.new_tablespace, parser->cur->value);
   cmd->operation = ALTER_SET_TABLESPACE;
   parser_consume(parser);
   return true;
@@ -541,7 +541,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   ColumnDefinition column;
   memset(&column, 0, sizeof(ColumnDefinition));
 
-  strcpy(column.name, parser->cur->value);
+  xstrcpy(column.name, parser->cur->value);
   parser_consume(parser);
 
   if (!is_valid_data_type(parser)) {
@@ -627,6 +627,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
 
   memset(&column.constraint, 0, sizeof(column.constraint));
 
+  TableSchema* schema = command->schemas[0].ptr;
 
   while (parser->cur->type != TOK_COM && parser->cur->type != TOK_RP) {
     switch (parser->cur->type) {
@@ -637,16 +638,16 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         column.is_not_null = true;
 
         column.constraint.constraint_type = CONSTRAINT_PRIMARY_KEY;  
-        strcpy(column.constraint.columns[0], column.name);
+        xstrcpy(column.constraint.columns[0], column.name);
         column.constraint.columns_count = 1;
 
-        sprintf(column.constraint.constraint_name, "%s_%s_pk", command->schema->table_name, column.name);
+        sprintf(column.constraint.constraint_name, "%s_%s_pk", schema->table_name, column.name);
 
         parser_consume(parser);
         break;
       }
       case TOK_FK: {
-        sprintf(column.constraint.constraint_name, "%s_%s_fk", command->schema->table_name, column.name);
+        sprintf(column.constraint.constraint_name, "%s_%s_fk", schema->table_name, column.name);
 
         column.constraint.constraint_type = CONSTRAINT_FOREIGN_KEY;
         column.has_constraints = true;
@@ -664,7 +665,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
           REPORT_ERROR(parser->lexer, "SYE_E_FK_TBL");
           return false;
         }
-        strcpy(column.constraint.ref_table, parser->cur->value);
+        xstrcpy(column.constraint.ref_table, parser->cur->value);
         parser_consume(parser);
 
         if (parser->cur->type != TOK_LP) {
@@ -678,10 +679,10 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
           return false;
         }
 
-        strcpy(column.constraint.columns[0], column.name); 
+        xstrcpy(column.constraint.columns[0], column.name); 
         column.constraint.columns_count = 1;
 
-        strcpy(column.constraint.ref_columns[0], parser->cur->value); 
+        xstrcpy(column.constraint.ref_columns[0], parser->cur->value); 
         column.constraint.ref_columns_count = 1;
 
         parser_consume(parser);
@@ -740,10 +741,16 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
         column.is_unique = true;
 
         column.constraint.constraint_type = CONSTRAINT_UNIQUE;
-        strcpy(column.constraint.columns[0], column.name);
+        xstrcpy(column.constraint.columns[0], column.name);
         column.constraint.columns_count = 1;
 
-        sprintf(column.constraint.constraint_name, "%s_%s_unq", command->schema->table_name, column.name);
+        size_t max_part_len = (MAX_IDENTIFIER_LEN - 4) / 2; // leave space for '_' + '_pk'
+
+        snprintf(column.constraint.constraint_name,
+         MAX_IDENTIFIER_LEN,
+         "%.*s_%.*s_pk",
+         (int)max_part_len, schema->table_name,
+         (int)max_part_len, column.name);
 
         parser_consume(parser);
         break;
@@ -798,8 +805,9 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
 
   }
 
-  command->schema->columns[command->schema->column_count] = column;
-  command->schema->column_count += 1;
+  schema->columns[schema->column_count] = column;
+  schema->column_count += 1;
+
 
   return true;
 }

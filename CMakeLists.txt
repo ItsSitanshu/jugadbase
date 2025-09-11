@@ -51,7 +51,7 @@ set(UTILS_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/log.c
 )
 
-add_library(jugadbase STATIC ${DB_SOURCES} ${UTILS_SOURCES})
+add_library(jugadbase STATIC ${UTILS_SOURCES} ${DB_SOURCES})
 
 target_include_directories(jugadbase PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db

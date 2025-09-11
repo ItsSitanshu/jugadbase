@@ -56,7 +56,7 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
   JQLCommand command;
   jql_command_plain_init(&command, CMD_CREATE);
   
-  command.schema = xcalloc(1, sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   parser_consume(parser);
 
   if (parser->cur->type == TOK_CI_A) {
@@ -75,20 +75,20 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
   }
 
   parser_expect_nc(parser, TOK_ID, "SYE_E_TNAFTA");
-  strcpy(command.schema->table_name, parser->cur->value);
+  xstrcpy(schema->table_name, parser->cur->value);
   parser_consume(parser);
 
-  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+  uint32_t idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   if (!is_struct_zeroed(&db->tc[idx], sizeof(TableCatalogEntry))) {
     if (!if_not_exists) {
-      LOG_ERROR("Table `%s` already exists", command.schema->table_name);
+      LOG_ERROR("Table `%s` already exists", schema->table_name);
     }
     return command;
   }
 
   parser_expect(parser, TOK_LP, "SYE_E_PRNAFDYNA");
-  command.schema->column_count = 0;
-  command.schema->columns = xcalloc(MAX_COLUMNS, sizeof(ColumnDefinition));
+  schema->column_count = 0;
+  schema->columns = xcalloc(MAX_COLUMNS, sizeof(ColumnDefinition));
 
   while (parser->cur->type != TOK_RP && parser->cur->type != TOK_EOF) {
     if (!parser_parse_column_definition(parser, &command)) return command;
@@ -103,6 +103,11 @@ JQLCommand parser_parse_create_table(Parser* parser, Database* db) {
 
   parser_expect(parser, TOK_RP, "SYE_E_CPR");
   command.is_invalid = false;
+
+  command.schema_count = 1;
+  command.schemas->ptr = schema;
+  command.schemas->alias[0] = '\0';
+
   return command;
 }
 
@@ -120,8 +125,8 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   parser_expect(parser, TOK_INTO, "SYE_E_MISSING_INTO");
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
 
-  command.schema = get_table_schema(db, parser->cur->value);
-  if (!command.schema) {
+  TableSchema* schema = get_table_schema(db, parser->cur->value);
+  if (!schema) {
     LOG_ERROR("! Table '%s' doesn't exist", parser->cur->value);
     return command;
   }
@@ -146,10 +151,10 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
     
     parser_expect(parser, TOK_RP, "SYE_E_EXPECTED_RP");
   } else {
-    for (int i = 0; i < command.schema->column_count; i++) {
-      command.columns[i] = xstrdup(command.schema->columns[i].name);
+    for (int i = 0; i < schema->column_count; i++) {
+      command.columns[i] = xstrdup(schema->columns[i].name);
     }
-    command.col_count = command.schema->column_count;
+    command.col_count = schema->column_count;
   }
 
   parser_expect(parser, TOK_VAL, "SYE_E_MISSING_VALUES");
@@ -157,17 +162,17 @@ JQLCommand parser_parse_insert(Parser *parser, Database* db) {
   command.values = xcalloc(MAX_OPERATIONS, sizeof(ExprNode*));
 
   while (parser->cur->type == TOK_LP) {
-    ExprNode** row = xcalloc(command.schema->column_count, sizeof(ExprNode*));
+    ExprNode** row = xcalloc(schema->column_count, sizeof(ExprNode*));
     parser_consume(parser);
 
     for (int i = 0; i < command.col_count; i++) {
-      int row_idx = find_column_index(command.schema, command.columns[i]);
+      int row_idx = find_column_index(schema, command.columns[i]);
       if (row_idx < 0) {
         LOG_DEBUG("Invalid column index for '%s'", command.columns[i]);
         return command;
       }
       
-      row[row_idx] = parser_parse_expression(parser, command.schema);
+      row[row_idx] = parser_parse_expression(parser, schema);
       if (!row[row_idx]) return command;
 
       if (i < command.col_count - 1) {
@@ -231,12 +236,13 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   }
   parser_consume(parser);
 
-  uint16_t cap = 4;
-  command.schemas = xcalloc(cap, sizeof(SchemaRef));
-  command.schema_count = 0;
+  uint16_t cap = 10;
+
+  SchemaRef* special_ref = NULL;
+  int special_index = -1;
 
   while (true) {
-    if (parser->cur->type != TOK_ID) {
+    if (parser->cur->type != TOK_ID && parser->cur->type != TOK_BANG) {
       REPORT_ERROR(parser->lexer, "SYE_E_MISSING_TABLE_NAME");
       return command;
     }
@@ -249,14 +255,37 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
 
     command.schemas = ensure_schema_capacity(command.schemas, &cap, command.schema_count + 1);
     SchemaRef* ref = &command.schemas[command.schema_count++];
-    ref->schema = schema_ptr;
-    set_schema_alias(ref, schema_ptr->table_name);
+    ref->ptr = schema_ptr;
 
-    parser_consume(parser);
+    bool is_special = true;
 
-    if (parser->cur->type == TOK_ID) {
+    if (parser->cur->type == TOK_BANG) {
+      is_special = true;
+      parser_consume(parser); 
+      if (parser->cur->type != TOK_ID) {
+        REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_TABLE_NAME_AFTER_BANG");
+        return command;
+      }
       set_schema_alias(ref, parser->cur->value);
       parser_consume(parser);
+    } else {
+      parser_consume(parser);
+      if (parser->cur->type == TOK_ID) {
+        set_schema_alias(ref, parser->cur->value);
+        parser_consume(parser);
+      } else {
+        set_schema_alias(ref, schema_ptr->table_name);
+      }
+    }
+
+    if (is_special) {
+      if (!special_ref) {
+        special_ref = ref;
+        special_index = command.schema_count - 1;
+      } else {
+        REPORT_ERROR(parser->lexer, "Only one primary !table allowed");
+        return command;
+      }
     }
 
     if (parser->cur->type == TOK_COM) {
@@ -266,19 +295,25 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
     break;
   }
 
+  if (special_ref && special_index != 0) {
+    SchemaRef temp = command.schemas[0];
+    command.schemas[0] = *special_ref;
+    command.schemas[special_index] = temp;
+  }
+
   parser_restore_state(parser, state);
 
   command.sel_columns = xcalloc(MAX_COLUMNS, sizeof(SelectColumn));
   int column_count = 0;
   
   if (parser->cur->type == TOK_MUL) {
-    for (int i = 0; i < schema->column_count; i++) {
+    for (int i = 0; i < command.schemas[0].ptr->column_count; i++) {
       ExprNode* expr = xmalloc(sizeof(ExprNode));
       expr->type = EXPR_COLUMN;
       expr->column.index = i;
       command.sel_columns[i].expr = expr;
     }
-    column_count = schema->column_count;
+    column_count = command.schemas[0].ptr->column_count;
     parser_consume(parser);
   } else {
     command.sel_columns = xcalloc(MAX_COLUMNS, sizeof(SelectColumn));
@@ -311,19 +346,21 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
       parser_consume(parser);
     }
   }
-  
-  LOG_DEBUG("Skipping past %d characthers parsed earlier", __consume_n);
-  for (uint16_t i = 0; i < __consume_n; i++){
-    parser_consume(parser);
-  }
 
   command.value_counts[0] = column_count;
   
-  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
-  parse_where_clause(parser, db, &command, idx);
-  parse_order_by_clause(parser, db, &command, idx);
-  parse_limit_clause(parser, &command);
-  parse_offset_clause(parser, &command);
+  while (parser->cur->type != TOK_WR && parser->cur->type != TOK_ODR &&
+        parser->cur->type != TOK_LIM && parser->cur->type != TOK_OFF) {
+    parser_consume(parser);
+    if (parser->cur->type == TOK_EOF) return command; 
+  }
+
+  
+  // uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+  // parse_where_clause(parser, db, &command, idx);
+  // parse_order_by_clause(parser, db, &command, idx);
+  // parse_limit_clause(parser, &command);
+  // parse_offset_clause(parser, &command);
 
   command.is_invalid = false;
 
@@ -345,26 +382,26 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
   
   uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
-  command.schema = db->tc[idx].schema;
+  TableSchema* schema = db->tc[idx].schema;
   
-  if (is_struct_zeroed(command.schema, sizeof(TableSchema))) return command;
+  if (is_struct_zeroed(schema, sizeof(TableSchema))) return command;
   
   parser_consume(parser);
   parser_expect(parser, TOK_SET, "SYE_E_EXPECTED_SET");
   
-  command.update_columns = xcalloc(command.schema->column_count, sizeof(UpdateColumn));
+  command.update_columns = xcalloc(schema->column_count, sizeof(UpdateColumn));
   command.values = xcalloc(1, sizeof(ExprNode*));
-  command.values[0] = xcalloc(command.schema->column_count, sizeof(ExprNode));
+  command.values[0] = xcalloc(schema->column_count, sizeof(ExprNode));
   command.row_count = 1;
   
-  uint8_t null_bitmap_size = (command.schema->column_count + 7) / 8;
+  uint8_t null_bitmap_size = (schema->column_count + 7) / 8;
   command.bitmap = xcalloc(1, null_bitmap_size);
   if (!command.bitmap) return command;
   
   uint8_t value_count = 0;
   
   while (parser->cur->type == TOK_ID) {
-    ExprNode* expr = parser_parse_primary(parser, command.schema);
+    ExprNode* expr = parser_parse_primary(parser, schema);
     if (!expr || !(expr->type == EXPR_COLUMN || expr->type == EXPR_ARRAY_ACCESS)) {
       REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_EQUAL_IN_SET");
       return command;
@@ -372,7 +409,7 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
     
     parser_expect(parser, TOK_EQ, "SYE_E_EXPECTED_EQUAL_IN_SET");
     
-  ExprNode* value = parser_parse_expression(parser, command.schema);
+  ExprNode* value = parser_parse_expression(parser, schema);
     if (!value) {
       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUE_IN_SET");
       free_expr_node(expr);
@@ -384,7 +421,7 @@ JQLCommand parser_parse_update(Parser* parser, Database* db) {
     update_col->array_idx = (expr->type == EXPR_ARRAY_ACCESS) ? expr->column.array_idx : NULL;
     command.values[0][value_count] = value;
     
-    if (command.schema->columns[update_col->index].is_not_null /* && value->is_null */) {
+    if (schema->columns[update_col->index].is_not_null /* && value->is_null */) {
       LOG_ERROR("Column is NOT NULL but attempted to set NULL");
       free_expr_node(expr);
       return command;
@@ -412,16 +449,17 @@ JQLCommand parser_parse_delete(Parser* parser, Database* db) {
   parser_expect(parser, TOK_FRM, "SYE_E_EXPECTED_FROM");
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
 
-  command.schema = xmalloc(sizeof(TableSchema));
-  strcpy(command.schema->table_name, parser->cur->value);
+  TableSchema* schema = xmalloc(sizeof(TableSchema));
+  xstrcpy(schema->table_name, parser->cur->value);
   
-  if (!get_validated_table(db, command.schema->table_name)) return command;
+  if (!get_validated_table(db, schema->table_name)) return command;
   
   parser_consume(parser);
   
-  uint32_t idx = hash_fnv1a(command.schema->table_name, MAX_TABLES);
+  uint32_t idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   parse_where_clause(parser, db, &command, idx);
 
+  command.schemas[0].ptr = schema;
   command.is_invalid = false;
   return command;
 }
@@ -436,7 +474,7 @@ JQLCommand parser_parse_alter_table(Parser* parser, Database* db) {
   parser_expect(parser, TOK_TBL, "Expected TABLE keyword after ALTER");
   parser_expect_nc(parser, TOK_ID, "Expected table name after ALTER TABLE");
   
-  strcpy(alter_cmd->table_name, parser->cur->value);
+  xstrcpy(alter_cmd->table_name, parser->cur->value);
   parser_consume(parser);
 
   TokenType primary = parser->cur->type;
@@ -481,11 +519,9 @@ JQLCommand parser_parse_drop_table(Parser* parser, Database* db) {
     return command;
   }
 
-  command.schema = xmalloc(sizeof(TableSchema));
-  strcpy(command.schema->table_name, table_name);
-
   parser_consume(parser); 
 
+  command.schemas[0].ptr = schema;
   command.is_invalid = false;
   return command;
 }

@@ -86,8 +86,8 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
       printf("Row %u [%u.%u]: ", i + 1, row->id.page_id, row->id.row_id);
 
       uint8_t alias_count = 0;
-      for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
-        ColumnDefinition col = cmd->schema->columns[c];
+      for (uint8_t c = 0; c < cmd->schemas[0].ptr->column_count; c++) {
+        ColumnDefinition col = cmd->schemas[0].ptr->columns[c];
         ColumnValue val = row->values[c];
 
         // LOG_DEBUG("%d : alias: %s norm: %s", c, result.exec.aliases[alias_count], col.name);

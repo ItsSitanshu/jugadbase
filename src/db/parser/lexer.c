@@ -434,7 +434,7 @@ Token* lexer_handle_1char(Lexer* lexer) {
       break;
     case '!':
       return lexer_process_pos_singlechar(lexer, next_char,
-        '=', TOK_ERR, TOK_NE);
+        '=', TOK_BANG, TOK_NE);
       break;
     case '&':
       return lexer_process_pos_singlechar(lexer, next_char,

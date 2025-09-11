@@ -804,7 +804,7 @@ bool set_default_on_delete(Database* db, int64_t referencing_table_id, char** re
     int col_idx = find_column_index(ref_schema, ref_columns[i]);
     char set_part[128];
     if (col_idx >= 0 && ref_schema->columns[col_idx].default_value) {
-      snprintf(set_part, sizeof(set_part), "%s = %s", ref_columns[i], ref_schema->columns[col_idx].default_value);
+      snprintf(set_part, sizeof(set_part), "%s = %s", ref_columns[i], str_column_value(ref_schema->columns[col_idx].default_value));
     } else {
       snprintf(set_part, sizeof(set_part), "%s = NULL", ref_columns[i]);
     }

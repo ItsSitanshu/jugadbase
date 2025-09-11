@@ -6,7 +6,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   }
 
   FILE* tca_io = db->tc_appender;
-  TableSchema* schema = cmd->schema;
+  TableSchema* schema = cmd->schemas[0].ptr;
 
   int64_t table_id = insert_table(db, schema->table_name);
   if (table_id == -1) { 
@@ -186,7 +186,7 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
       }
       
       ColumnDefinition* new_col = &schema->columns[schema->column_count];
-      strcpy(new_col->name, alter_cmd->add_column.column_name);
+      xstrcpy(new_col->name, alter_cmd->add_column.column_name);
       new_col->type = alter_cmd->add_column.data_type;
       new_col->is_not_null = alter_cmd->add_column.not_null;
       new_col->has_default = alter_cmd->add_column.has_default;
@@ -447,7 +447,7 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
         }
       }
       
-      strcpy(schema->table_name, alter_cmd->rename_table.new_table_name);
+      xstrcpy(schema->table_name, alter_cmd->rename_table.new_table_name);
       result.code = 0;
       result.message = "Table renamed successfully";
       break;
@@ -475,11 +475,11 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
 }
 
 ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schema) {
+  if (!db || !cmd || !cmd->schemas[0].ptr) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
   if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
   load_btree_cluster(db, schema->table_name);
@@ -513,7 +513,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
 
     if (!row) {
       for (uint32_t j = 0; j < inserted_count; j++) {
-        serialize_delete(cmd->schema, inserted_rows[j]);  
+        serialize_delete(schema, inserted_rows[j]);  
       }      
 
       xfree(primary_key_cols);
@@ -714,11 +714,11 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 }
 
 ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schema) {
+  if (!db || !cmd || !cmd->schemas[0].ptr) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
@@ -862,11 +862,11 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
 }
 
 ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schema) {
+  if (!db || !cmd || !cmd->schemas[0].ptr) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
@@ -951,17 +951,16 @@ cleanup:
 
 
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schema) {
+  if (!db || !cmd || !cmd->schemas[0].ptr) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schema->table_name);
+  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
   load_btree_cluster(db, schema->table_name);
-  cmd->schema = schema;
 
   int64_t table_id = find_table(db, schema->table_name);
   if (table_id == -1) {
@@ -1026,11 +1025,11 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
 }
 
 ExecutionResult execute_drop_table(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schema || !cmd->schema->table_name) {
+  if (!db || !cmd || !cmd->schemas[0].ptr) {
     return (ExecutionResult){1, "Invalid DROP TABLE command or context"};
   }
 
-  const char* table_name = cmd->schema->table_name;
+  const char* table_name = cmd->schemas[0].ptr->table_name;
 
   if (!get_validated_table(db, table_name)) {
     return (ExecutionResult){1, "Table does not exist"};

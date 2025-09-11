@@ -5,7 +5,7 @@
 
 TableSchema* jb_tables_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  strcpy(schema->table_name, "jb_tables");
+  xstrcpy(schema->table_name, "jb_tables");
 
   schema->column_count = 5;
   schema->not_null_count = 1;
@@ -14,25 +14,25 @@ TableSchema* jb_tables_schema() {
 
   ColumnDefinition* cols = schema->columns;
 
-  strcpy(cols[0].name, "id");
+  xstrcpy(cols[0].name, "id");
   cols[0].type = TOK_T_SERIAL;
   cols[0].has_sequence = true;
 
-  strcpy(cols[1].name, "name");
+  xstrcpy(cols[1].name, "name");
   cols[1].type = TOK_T_TEXT;
   cols[1].is_not_null = true;
 
-  strcpy(cols[2].name, "database_name");
+  xstrcpy(cols[2].name, "database_name");
   cols[2].type = TOK_T_TEXT;
 
-  strcpy(cols[3].name, "owner");
+  xstrcpy(cols[3].name, "owner");
   cols[3].type = TOK_T_TEXT;
   cols[3].has_default = true;
   cols[3].default_value = xcalloc(1, sizeof(ColumnValue));
   cols[3].default_value->type = TOK_T_TEXT;
   cols[3].default_value->str_value = "sudo";
 
-  strcpy(cols[4].name, "created_at");
+  xstrcpy(cols[4].name, "created_at");
   cols[4].type = TOK_T_TIMESTAMP;
 
   return schema;
@@ -40,7 +40,7 @@ TableSchema* jb_tables_schema() {
 
 TableSchema* jb_sequences_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  strcpy(schema->table_name, "jb_sequences");
+  xstrcpy(schema->table_name, "jb_sequences");
 
   schema->column_count = 7;
   schema->not_null_count = 0;
@@ -48,26 +48,26 @@ TableSchema* jb_sequences_schema() {
   schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   ColumnDefinition* cols = schema->columns;
 
-  strcpy(cols[0].name, "id");
+  xstrcpy(cols[0].name, "id");
   cols[0].type = TOK_T_SERIAL;
   cols[0].has_sequence = true;
 
-  strcpy(cols[1].name, "name");
+  xstrcpy(cols[1].name, "name");
   cols[1].type = TOK_T_TEXT;
 
-  strcpy(cols[2].name, "current_value");
+  xstrcpy(cols[2].name, "current_value");
   cols[2].type = TOK_T_INT;
 
-  strcpy(cols[3].name, "increment_by");
+  xstrcpy(cols[3].name, "increment_by");
   cols[3].type = TOK_T_INT;
 
-  strcpy(cols[4].name, "min_value");
+  xstrcpy(cols[4].name, "min_value");
   cols[4].type = TOK_T_INT;
 
-  strcpy(cols[5].name, "max_value");
+  xstrcpy(cols[5].name, "max_value");
   cols[5].type = TOK_T_INT;
 
-  strcpy(cols[6].name, "cycle");
+  xstrcpy(cols[6].name, "cycle");
   cols[6].type = TOK_T_BOOL;
 
   return schema;
@@ -75,7 +75,7 @@ TableSchema* jb_sequences_schema() {
 
 TableSchema* jb_attribute_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  strcpy(schema->table_name, "jb_attribute");
+  xstrcpy(schema->table_name, "jb_attribute");
 
   schema->column_count = 9;
   schema->not_null_count = 0;
@@ -83,32 +83,32 @@ TableSchema* jb_attribute_schema() {
   schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   ColumnDefinition* cols = schema->columns;
 
-  strcpy(cols[0].name, "id");
+  xstrcpy(cols[0].name, "id");
   cols[0].type = TOK_T_SERIAL;
   cols[0].has_sequence = true;
 
-  strcpy(cols[1].name, "table_id");
+  xstrcpy(cols[1].name, "table_id");
   cols[1].type = TOK_T_INT;
 
-  strcpy(cols[2].name, "column_name");
+  xstrcpy(cols[2].name, "column_name");
   cols[2].type = TOK_T_TEXT;
 
-  strcpy(cols[3].name, "data_type");
+  xstrcpy(cols[3].name, "data_type");
   cols[3].type = TOK_T_INT;
 
-  strcpy(cols[4].name, "ordinal_position");
+  xstrcpy(cols[4].name, "ordinal_position");
   cols[4].type = TOK_T_INT;
 
-  strcpy(cols[5].name, "is_nullable");
+  xstrcpy(cols[5].name, "is_nullable");
   cols[5].type = TOK_T_BOOL;
 
-  strcpy(cols[6].name, "has_default");
+  xstrcpy(cols[6].name, "has_default");
   cols[6].type = TOK_T_BOOL;
 
-  strcpy(cols[7].name, "has_constraints");
+  xstrcpy(cols[7].name, "has_constraints");
   cols[7].type = TOK_T_BOOL;
 
-  strcpy(cols[8].name, "created_at");
+  xstrcpy(cols[8].name, "created_at");
   cols[8].type = TOK_T_TIMESTAMP;
 
   return schema;
@@ -116,7 +116,7 @@ TableSchema* jb_attribute_schema() {
 
 TableSchema* jb_attrdef_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  strcpy(schema->table_name, "jb_attrdef");
+  xstrcpy(schema->table_name, "jb_attrdef");
 
   schema->column_count = 5;
   schema->not_null_count = 3;
@@ -124,23 +124,23 @@ TableSchema* jb_attrdef_schema() {
   schema->columns = xcalloc(schema->column_count, sizeof(ColumnDefinition));
   ColumnDefinition* cols = schema->columns;
 
-  strcpy(cols[0].name, "id");
+  xstrcpy(cols[0].name, "id");
   cols[0].type = TOK_T_SERIAL;
   cols[0].has_sequence = true;
 
-  strcpy(cols[1].name, "table_id");
+  xstrcpy(cols[1].name, "table_id");
   cols[1].type = TOK_T_INT;
   cols[1].is_not_null = true;
 
-  strcpy(cols[2].name, "column_name");
+  xstrcpy(cols[2].name, "column_name");
   cols[2].type = TOK_T_TEXT;
   cols[2].is_not_null = true;
 
-  strcpy(cols[3].name, "default_expr");
+  xstrcpy(cols[3].name, "default_expr");
   cols[3].type = TOK_T_TEXT;
   cols[3].is_not_null = true;
 
-  strcpy(cols[4].name, "created_at");
+  xstrcpy(cols[4].name, "created_at");
   cols[4].type = TOK_T_TIMESTAMP;
 
   return schema;

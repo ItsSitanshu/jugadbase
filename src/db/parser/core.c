@@ -19,15 +19,9 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   if (!cmd) return NULL;
 
   cmd->type = type;
-  cmd->schema = xmalloc(sizeof(TableSchema));
-  if (!cmd->schema) {
-    xfree(cmd);
-    return NULL;
-  }
 
-  cmd->schema->column_count = 0;
-  cmd->schema->columns = NULL;
-  memset(cmd->schema->table_name, 0, MAX_IDENTIFIER_LEN);
+  cmd->schemas = xcalloc(10, sizeof(SchemaRef));
+  cmd->schema_count = 0;
 
   cmd->row_count = 0;
   cmd->values = NULL;
@@ -212,7 +206,7 @@ void print_column_value(ColumnValue* val) {
       offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%s", elem_str);
     }
       
-    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%ld", val->array.array_size);
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset, "%lu", val->array.array_size);
 
     printf("arr<%s>[%s]", get_token_type(val->type), buffer);
     return;
@@ -317,7 +311,7 @@ void print_column_value(ColumnValue* val) {
         } else {
         char preview[12]; 
           xmemcpy(preview, s, 8);
-          strcpy(preview + 8, ".");
+          xstrcpy(preview + 8, ".");
           printf("\"%s +%zu\"", preview, len - 8);
         }
 
@@ -609,7 +603,7 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val) {
     // //     } else {
     // //       char preview[12];
     // //       xmemcpy(preview, s, 8);
-    // //       strcpy(preview + 8, "...");
+    // //       xstrcpy(preview + 8, "...");
     // //       snprintf(out, out_size, "\"%s (%zu chars)\"]", preview, len - 8);
     // //     }
     // //   }
@@ -829,7 +823,7 @@ SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16
 SchemaRef* find_schema(JQLCommand* cmd, const char* key) {
   for (uint16_t i = 0; i < cmd->schema_count; i++) {
     if (strncmp(cmd->schemas[i].alias, key, MAX_ALIAS_LEN) == 0 ||
-      strncmp(cmd->schemas[i].schema->table_name, key, MAX_ALIAS_LEN) == 0) {
+      strncmp(cmd->schemas[i].ptr->table_name, key, MAX_ALIAS_LEN) == 0) {
       return &cmd->schemas[i];
     }
   }

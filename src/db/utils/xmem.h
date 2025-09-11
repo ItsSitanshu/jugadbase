@@ -14,7 +14,7 @@ typedef struct {
   size_t memcpy_count;
   size_t memmove_count;
   size_t strdup_count;
-  size_t strncpy_count;
+  size_t strcpy_count;
 
   size_t bytes_allocated;  // total allocated bytes
   size_t bytes_freed;      // total freed bytes
@@ -30,6 +30,7 @@ static MemStats mem_stats = {0};
 #define xmemmove(d,s,n)  __xmemmove(d,s,n, __FILE__, __LINE__)
 #define xstrdup(s)       __xstrdup(s, __FILE__, __LINE__)
 #define xstrncpy(d,s,n)  __xstrncpy(d,s,n, __FILE__, __LINE__)
+#define xstrcpy(d,s)     __xstrcpy(d,s, __FILE__, __LINE__)
 
 static inline void* __xmalloc(size_t sz, const char* file, int line) {
   void* p = malloc(sz);
@@ -83,13 +84,21 @@ static inline char* __xstrdup(const char* s, const char* file, int line) {
 
 static inline char* __xstrncpy(char* dest, const char* src, size_t n, const char* file, int line) {
   if (!dest || !src) LOG_FATAL("strncpy NULL pointer at %s:%d", file, line);
-  mem_stats.strncpy_count++;
+  mem_stats.strcpy_count++;
   if (n > 0) {
     strncpy(dest, src, n);
     dest[n-1] = '\0';
   }
   return dest;
 }
+
+
+static inline char* __xstrcpy(char* dest, const char* src, const char* file, int line) {
+  if (!dest || !src) LOG_FATAL("strcpy NULL pointer at %s:%d", file, line);
+  mem_stats.strcpy_count++;  
+  return strcpy(dest, src);
+}
+
 
 
 static inline void xmem_report(void) {
@@ -113,7 +122,7 @@ static inline void xmem_report(void) {
     mem_stats.memcpy_count,
     mem_stats.memmove_count,
     mem_stats.strdup_count,
-    mem_stats.strncpy_count,
+    mem_stats.strcpy_count,
     mem_stats.bytes_allocated,
     mem_stats.bytes_freed
   );
