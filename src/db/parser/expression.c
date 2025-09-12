@@ -200,8 +200,8 @@ ExprNode* parser_parse_primary(Parser* parser, JQLCommand* cmd) {
     char* table_name = NULL;
     char* field_name = NULL;
 
-    LOG_DEBUG("Parsing column reference starting with '%s'", first_ident);
-    LOG_DEBUG("CUR tok %s of type", parser->cur->value, parser->cur->type);
+    // LOG_DEBUG("Parsing column reference starting with '%s'", first_ident);
+    // LOG_DEBUG("CUR tok %s of type", parser->cur->value, parser->cur->type);
     
     if (parser->cur->type == TOK_DOT) {
       table_name = first_ident;

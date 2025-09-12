@@ -36,52 +36,67 @@ ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db) {
   return *value;
 }
 
-ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db) {
+ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
 
-  LOG_DEBUG("!!> idx: %d, col_name: %s, table: %d",
-           expr->column.index, expr->column.col_name, expr->column.table);
+  TableSchema* schema = db->tc[expr->column.table].schema;
+  if (!schema) {
+    LOG_ERROR("Schema not found for table index %d", expr->column.table);
+    return result;
+  }
+
+  result.column.index = find_column_index(schema, expr->column.col_name);
+  result.column.table_id = find_table(db, schema->table_name);
+  result.column.array_idx = -1;
   
-  result.column.index = expr->column.index;
-  
-  if (!row || expr->column.index >= schema->column_count) {
+  if (!row || result.column.index >= schema->column_count) {
     LOG_ERROR("Invalid column access: index %d, schema column count %d", 
-              expr->column.index, schema->column_count);
-    result.type = (expr->column.index < schema->column_count) ? 
-                 schema->columns[expr->column.index].type : TOK_NL;
+              result.column.index, schema->column_count);
+    result.type = (result.column.index < schema->column_count) ? 
+                 schema->columns[result.column.index].type : TOK_NL;
     return result;
   }
   
-  ColumnValue col = row->values[expr->column.index];
+  ColumnValue col = row->values[result.column.index];
   
   if (col.is_toast) {
     check_and_concat_toast(db, &col);
   }
+
+  LOG_INFO("evaluated literal col (%s) -> (%s) > idx: %d, table: %d",
+          expr->column.col_name, str_column_value(&col), result.column.index,  expr->column.table);
   
   return col;
 }
 
-ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                             Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnValue result = {0};
   
   if (!expr || expr->type != EXPR_ARRAY_ACCESS) {
     LOG_ERROR("Invalid array access expression");
     return result;
   }
+
+  TableSchema* schema = db->tc[expr->column.table].schema;
+  if (!schema) {
+    LOG_ERROR("Schema not found for table index %d", expr->column.table);
+    return result;
+  }
+
+  result.column.index = find_column_index(schema, expr->column.col_name);
   
-  if (expr->column.index >= schema->column_count) {
-    LOG_ERROR("Column index %d out of bounds", expr->column.index);
+  if (result.column.index >= schema->column_count) {
+    LOG_ERROR("Column index %d out of bounds", result.column.index);
     return result;
   }
   
-  if (!schema->columns[expr->column.index].is_array) {
+  if (!schema->columns[result.column.index].is_array) {
     LOG_ERROR("Attempted to index into non-array type");
     return result;
   }
   
-  ColumnValue array_index = evaluate_expression(expr->column.array_idx, row, schema, db, schema_idx);
+  ColumnValue array_index = evaluate_expression(expr->column.array_idx, row, db);
   
   if (array_index.type != TOK_T_INT && array_index.type != TOK_T_UINT) {
     LOG_ERROR("Array index must be an integer");
@@ -89,24 +104,23 @@ ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, TableSche
   }
   
   int idx = array_index.int_value;
-  int array_size = row->values[expr->column.index].array.array_size;
+  int array_size = row->values[result.column.index].array.array_size;
   
   if (idx < 0 || idx >= array_size) {
     LOG_DEBUG("Array index out of bounds: %d (size: %d)", idx, array_size);
     return result;
   }
   
-  result = row->values[expr->column.index].array.array_value[idx];
+  result = row->values[result.column.index].array.array_value[idx];
   return result;
 }
 
-ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                         Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnValue result;
   ColumnDefinition defn;
   memset(&result, 0, sizeof(ColumnValue));
   
-  ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, schema, db, schema_idx, &defn);
+  ColumnValue operand = resolve_expr_value(expr->arth_unary.expr, row, db, &defn);
   result.type = defn.type;
   
   switch (expr->arth_unary.op) {
@@ -132,14 +146,13 @@ ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* 
   return result;
 }
 
-ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                          Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnValue result;
   ColumnDefinition defn;
   memset(&result, 0, sizeof(ColumnValue));
   
-  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &defn);
-  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &defn);
+  ColumnValue left = resolve_expr_value(expr->binary.left, row, db, &defn);
+  ColumnValue right = resolve_expr_value(expr->binary.right, row, db, &defn);
   
   if (left.is_null || right.is_null) {
     result.is_null = true;
@@ -336,23 +349,30 @@ ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int
   return result;
 }
 
-ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                          Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnDefinition defn;
   
-  ColumnValue left = resolve_expr_value(expr->binary.left, row, schema, db, schema_idx, &defn);
-  ColumnValue right = resolve_expr_value(expr->binary.right, row, schema, db, schema_idx, &defn);
+  ColumnValue left = resolve_expr_value(expr->binary.left, row, db, &defn);
+  ColumnValue right = resolve_expr_value(expr->binary.right, row, db, &defn);
   
+  TableSchema* schema = db->tc[expr->binary.left->column.table].schema;
+  if (!schema) {
+    LOG_ERROR("Schema not found for table index %d", expr->column.table);
+    return create_bool_column_value(false, true);
+  }
+
+  int index = find_column_index(schema, expr->column.col_name);
+
   if (expr->binary.op == TOK_EQ &&
       expr->binary.left->type == EXPR_COLUMN &&
       expr->binary.right->type == EXPR_LITERAL &&
-      expr->binary.left->column.index < schema->column_count &&
-      schema->columns[expr->binary.left->column.index].is_primary_key && 
+      index < schema->column_count &&
+      schema->columns[index].is_primary_key && 
       db && row) {
       
     void* key = get_column_value_as_pointer(&right);
-    uint8_t btree_idx = hash_fnv1a(schema->columns[expr->binary.left->column.index].name, MAX_COLUMNS);
-    RowID rid = btree_search(db->tc[schema_idx].btree[btree_idx], key);
+    uint8_t btree_idx = hash_fnv1a(schema->columns[index].name, MAX_COLUMNS);
+    RowID rid = btree_search(db->tc[expr->binary.left->column.table].btree[btree_idx], key);
     
     bool match = (!is_struct_zeroed(&rid, sizeof(RowID)) &&
                   row->id.page_id == rid.page_id &&
@@ -397,11 +417,10 @@ ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema
   return create_bool_column_value(result_value, is_null);
 }
 
-ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                    Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnDefinition defn;
   
-  ColumnValue left = resolve_expr_value(expr->like.left, row, schema, db, schema_idx, &defn);
+  ColumnValue left = resolve_expr_value(expr->like.left, row, db, &defn);
   
   if (left.type != TOK_T_VARCHAR || left.str_value == NULL) {
     LOG_ERROR("LIKE can only be applied to VARCHAR values");
@@ -412,13 +431,12 @@ ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* sche
   return create_bool_column_value(result, left.is_null);
 }
 
-ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                       Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnDefinition defn;
   
-  ColumnValue value = resolve_expr_value(expr->between.value, row, schema, db, schema_idx, &defn);
-  ColumnValue lower = resolve_expr_value(expr->between.lower, row, schema, db, schema_idx, &defn);
-  ColumnValue upper = resolve_expr_value(expr->between.upper, row, schema, db, schema_idx, &defn);
+  ColumnValue value = resolve_expr_value(expr->between.value, row, db, &defn);
+  ColumnValue lower = resolve_expr_value(expr->between.lower, row, db, &defn);
+  ColumnValue upper = resolve_expr_value(expr->between.upper, row, db, &defn);
   
   bool valid_conversion = infer_and_cast_va(3,
     (__c){&lower, TOK_T_DOUBLE},
@@ -438,14 +456,13 @@ ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* s
   return create_bool_column_value(result, is_null);
 }
 
-ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                  Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnDefinition defn;
   
-  ColumnValue value = resolve_expr_value(expr->in.value, row, schema, db, schema_idx, &defn);
+  ColumnValue value = resolve_expr_value(expr->in.value, row, db, &defn);
   
   for (size_t i = 0; i < expr->in.count; ++i) {
-    ColumnValue val = resolve_expr_value(expr->in.list[i], row, schema, db, schema_idx, &defn);
+    ColumnValue val = resolve_expr_value(expr->in.list[i], row, db, &defn);
     
     bool match = false;
     if (value.type == TOK_T_INT || value.type == TOK_T_UINT || value.type == TOK_T_SERIAL) {
@@ -462,15 +479,14 @@ ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema
   return create_bool_column_value(false, value.is_null);
 }
 
-ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                           Database* db, uint8_t schema_idx) {
-  ColumnValue left = evaluate_expression(expr->binary.left, row, schema, db, schema_idx);
+ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, Database* db) {
+  ColumnValue left = evaluate_expression(expr->binary.left, row, db);
   
   if (!left.bool_value && !left.is_null) {
     return create_bool_column_value(false, false);
   }
   
-  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, db, schema_idx);
+  ColumnValue right = evaluate_expression(expr->binary.right, row, db);
   
   bool result = left.bool_value && right.bool_value;
   bool is_null = left.is_null || right.is_null;
@@ -478,15 +494,14 @@ ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, TableSchem
   return create_bool_column_value(result, is_null);
 }
 
-ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                          Database* db, uint8_t schema_idx) {
-  ColumnValue left = evaluate_expression(expr->binary.left, row, schema, db, schema_idx);
+ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, Database* db) {
+  ColumnValue left = evaluate_expression(expr->binary.left, row, db);
   
   if (left.bool_value && !left.is_null) {
     return create_bool_column_value(true, false);
   }
   
-  ColumnValue right = evaluate_expression(expr->binary.right, row, schema, db, schema_idx);
+  ColumnValue right = evaluate_expression(expr->binary.right, row, db);
   
   bool result = left.bool_value || right.bool_value;
   bool is_null = left.is_null || right.is_null;
@@ -494,31 +509,75 @@ ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, TableSchema
   return create_bool_column_value(result, is_null);
 }
 
-ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, TableSchema* schema, 
-                                           Database* db, uint8_t schema_idx) {
-  ColumnValue operand = evaluate_expression(expr->unary, row, schema, db, schema_idx);
+ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, Database* db) {
+  ColumnValue operand = evaluate_expression(expr->unary, row, db);
   
   return create_bool_column_value(!operand.bool_value, operand.is_null);
 }
 
-ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, 
-                              uint8_t schema_idx, ColumnDefinition* out) {
-  ColumnValue value = evaluate_expression(expr, row, schema, db, schema_idx);
-  
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, Database* db, ColumnDefinition* out) {
+  ColumnValue value = {0};
+
   if (expr->type == EXPR_COLUMN) {
-    int col_index = expr->column.index;
-    if (col_index < schema->column_count) {
-      value = row->values[col_index];
-      *out = schema->columns[col_index];
-    } else {
-      LOG_ERROR("Column index %d out of bounds (max: %d)", col_index, schema->column_count);
+    int table_id = expr->column.table;
+    const char* col_name = expr->column.col_name;
+
+    if (table_id < 0 || table_id >= db->table_count) {
+      LOG_ERROR("Invalid table_id %d", table_id);
+      return value;
     }
+
+    TableSchema* schema = db->tc[table_id].schema;
+    int col_index = find_column_index(schema, col_name); 
+
+    if (col_index == -1) {
+      LOG_ERROR("Column '%s' not found in table '%s'", col_name, schema->table_name);
+      return value;
+    }
+
+    value = row->values[col_index];
+    if (out) *out = schema->columns[col_index];
+
+  } else {
+    value = evaluate_expression(expr, row, db);
   }
-  
+
   return value;
 }
 
-ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+
+static const char* EXPR_TYPE_STR[] = {
+  [EXPR_COLUMN]       = "COLUMN",
+  [EXPR_ARRAY_ACCESS] = "ARRAY_ACCESS",
+  [EXPR_LITERAL]      = "LITERAL",
+  [EXPR_UNARY_OP]     = "UNARY_OP",
+  [EXPR_BINARY_OP]    = "BINARY_OP",
+  [EXPR_FUNCTION]     = "FUNCTION",
+  [EXPR_COMPARISON]   = "COMPARISON",
+  [EXPR_IN]           = "IN",
+  [EXPR_BETWEEN]      = "BETWEEN",
+  [EXPR_LIKE]         = "LIKE",
+  [EXPR_LOGICAL_NOT]  = "LOGICAL_NOT",
+  [EXPR_LOGICAL_AND]  = "LOGICAL_AND",
+  [EXPR_LOGICAL_OR]   = "LOGICAL_OR",
+};
+
+static const char* TOKEN_STR[] = {
+  [TOK_EQ]  = "EQ",
+  [TOK_NE]  = "NE",
+  [TOK_LT]  = "LT",
+  [TOK_GT]  = "GT",
+  [TOK_LE]  = "LE",
+  [TOK_GE]  = "GE",
+
+  [TOK_ADD] = "+",
+  [TOK_SUB] = "-",
+  [TOK_MUL] = "*",
+  [TOK_DIV] = "/",
+};
+
+
+ColumnValue evaluate_expression(ExprNode* expr, Row* row, Database* db) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
   
@@ -526,7 +585,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, D
     return result;
   }
 
-  LOG_DEBUG("Evaluating expression of type: %d", expr->type);
+  LOG_DEBUG("Evaluating expression of type: %s", EXPR_TYPE_STR[expr->type]);
 
   if (is_struct_zeroed(row, sizeof(Row)) && 
       !(expr->type == EXPR_LITERAL || expr->type == EXPR_FUNCTION || expr->type == EXPR_BINARY_OP)) {
@@ -539,46 +598,46 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, D
       return evaluate_literal_expression(expr, db);
       
     case EXPR_ARRAY_ACCESS:
-      return evaluate_array_access_expression(expr, row, schema, db, schema_idx);
+      return evaluate_array_access_expression(expr, row, db);
       
     case EXPR_COLUMN:
-      return evaluate_column_expression(expr, row, schema, db);
+      return evaluate_column_expression(expr, row, db);
       
     case EXPR_UNARY_OP:
-      return evaluate_unary_op_expression(expr, row, schema, db, schema_idx);
+      return evaluate_unary_op_expression(expr, row, db);
       
     case EXPR_BINARY_OP:
-      return evaluate_binary_op_expression(expr, row, schema, db, schema_idx);
+      return evaluate_binary_op_expression(expr, row, db);
       
     case EXPR_FUNCTION:
       if (expr->fn.type == NOT_AGG) {
         return evaluate_function(expr->fn.name, expr->fn.args, expr->fn.arg_count, 
-                               row, schema, db, schema_idx);
+                               row, db);
       } else {
         LOG_WARN("Evaluation of AGG function attempted, post-evaluation will be used");
         return (ColumnValue){ .uneval = &(expr->fn) };
       }
       
     case EXPR_COMPARISON:
-      return evaluate_comparison_expression(expr, row, schema, db, schema_idx);
+      return evaluate_comparison_expression(expr, row, db);
       
     case EXPR_LIKE:
-      return evaluate_like_expression(expr, row, schema, db, schema_idx);
+      return evaluate_like_expression(expr, row, db);
       
     case EXPR_BETWEEN:
-      return evaluate_between_expression(expr, row, schema, db, schema_idx);
+      return evaluate_between_expression(expr, row, db);
       
     case EXPR_IN:
-      return evaluate_in_expression(expr, row, schema, db, schema_idx);
+      return evaluate_in_expression(expr, row, db);
       
     case EXPR_LOGICAL_AND:
-      return evaluate_logical_and_expression(expr, row, schema, db, schema_idx);
+      return evaluate_logical_and_expression(expr, row, db);
       
     case EXPR_LOGICAL_OR:
-      return evaluate_logical_or_expression(expr, row, schema, db, schema_idx);
+      return evaluate_logical_or_expression(expr, row, db);
       
     case EXPR_LOGICAL_NOT:
-      return evaluate_logical_not_expression(expr, row, schema, db, schema_idx);
+      return evaluate_logical_not_expression(expr, row, db);
       
     default:
       LOG_WARN("Unsupported expression type: %d", expr->type);
@@ -586,12 +645,12 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, D
   }
 }
 
-bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+bool evaluate_condition(ExprNode* expr, Row* row, Database* db) {
   if (!expr) {
     return false;
   }
   
-  ColumnValue result = evaluate_expression(expr, row, schema, db, schema_idx);
+  ColumnValue result = evaluate_expression(expr, row, db);
   
   return result.bool_value && !result.is_null;
 }

@@ -62,14 +62,29 @@ int partition_rows(Row rows[], int low, int high,
   return i + 1;
 }
 
-void quick_sort_rows(Row rows[], int low, int high,
-                     JQLCommand *cmd, TableSchema *schema) {
-  if (low < high) {
-    int pi = partition_rows(rows, low, high, cmd, schema);
-    quick_sort_rows(rows,     low, pi - 1, cmd, schema);
-    quick_sort_rows(rows, pi + 1,   high, cmd, schema);
+void quick_sort_rows(Row** rows, int left, int right, JQLCommand* cmd, TableSchema* schema) {
+  if (left >= right) return;
+
+  int i = left, j = right;
+  Row* pivot = rows[(left + right) / 2];
+
+  while (i <= j) {
+    while (compare_rows(rows[i], pivot, cmd, schema) < 0) i++;
+    while (compare_rows(rows[j], pivot, cmd, schema) > 0) j--;
+
+    if (i <= j) {
+      Row* tmp = rows[i];
+      rows[i] = rows[j];
+      rows[j] = tmp;
+      i++; j--;
+    }
   }
+
+  if (left < j) quick_sort_rows(rows, left, j, cmd, schema);
+  if (i < right) quick_sort_rows(rows, i, right, cmd, schema);
 }
+
+
 
 
 bool match_char_class(char** pattern_ptr, char* str) {

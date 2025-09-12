@@ -357,11 +357,22 @@ typedef struct OrderByClause {
   bool decend;
 } OrderByClause; 
 
+typedef struct {
+  char* alias;   
+  int table_id;
+} AliasEntry;
+
+typedef struct {
+  AliasEntry* entries;
+  size_t count;
+  size_t capacity;
+} AliasMap;
 
 typedef struct {
   JQLCommandType type;
   
   SchemaRef* schemas;
+  AliasMap alias_map;
   uint16_t schema_count;
 
   char* schema_name;
@@ -550,6 +561,10 @@ void free_jql_command(JQLCommand* cmd);
 SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16_t needed);
 SchemaRef* find_schema(JQLCommand* cmd, const char* key);
 void set_schema_alias(SchemaRef* ref, const char* alias);
+
+void alias_map_init(AliasMap* map);
+void alias_map_add(AliasMap* map, const char* alias, int table_id);
+int alias_map_resolve(AliasMap* map, const char* alias);
 
 #endif // JQL_PARSER_CORE_H
 

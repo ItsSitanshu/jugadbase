@@ -63,25 +63,25 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 #define KERNEL_EXPRESSION_H
 
 
-ColumnValue resolve_expr_value(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx, ColumnDefinition* out);
-ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
-bool evaluate_condition(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
+ColumnValue resolve_expr_value(ExprNode* expr, Row* row, Database* db, ColumnDefinition* out);
+ColumnValue evaluate_expression(ExprNode* expr, Row* row, Database* db);
+bool evaluate_condition(ExprNode* expr, Row* row, Database* db);
 
 ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db);
-ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db);
-ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
+ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, Database* db);
 
-ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
-ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
+ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, Database* db);
 ColumnValue evaluate_numeric_binary_op(ColumnValue left, ColumnValue right, int op);
-ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
-ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
-ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
-ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
+ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, Database* db);
 
-ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
-ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
-ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx);
+ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, Database* db);
 
 ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int op);
 
@@ -224,7 +224,7 @@ void swap_rows(Row* r1, Row* r2);
 int compare_rows(const Row* r1, const Row* r2, JQLCommand* cmd, TableSchema* schema);
 
 int partition_rows(Row rows[], int low, int high, JQLCommand *cmd, TableSchema *schema);
-void quick_sort_rows(Row rows[], int low, int high, JQLCommand *cmd, TableSchema *schema);
+void quick_sort_rows(Row** rows, int left, int right, JQLCommand* cmd, TableSchema* schema);
 
 char* process_str_arg(const char* check_expr);
 

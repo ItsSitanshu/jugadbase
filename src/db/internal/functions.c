@@ -65,17 +65,17 @@ void register_builtin_functions() {
   register_function("RADIANS", fn_radians);
 }
 
-ColumnValue evaluate_function(const char* name, ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_function(const char* name, ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   BuiltinFunction fn = find_function(name);
 
   if (!fn) {
     LOG_ERROR("Unknown function was found. Most recent query not executed");
     ColumnValue v; memset(&v, 0, sizeof(ColumnValue)); return v;
   }
-  return fn(args, arg_count, row, schema, db, schema_idx);
+  return fn(args, arg_count, row, db);
 }
 
-ColumnValue evaluate_aggregate(ExprNode* expr, Row* rows, uint32_t row_count, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue evaluate_aggregate(ExprNode* expr, Row* rows, uint32_t row_count, JQLCommand* cmd, Database* db) {
   ColumnValue result;
   memset(&result, 0, sizeof(ColumnValue));
 
@@ -110,8 +110,8 @@ ColumnValue evaluate_aggregate(ExprNode* expr, Row* rows, uint32_t row_count, Ta
   return result;
 }
 
-ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true };
 
   if (input.type == TOK_T_INT || input.type == TOK_T_UINT || input.type == TOK_T_SERIAL ) {
@@ -133,8 +133,8 @@ ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue fn_round(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_round(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -152,7 +152,7 @@ ColumnValue fn_round(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
 }
 
 
-ColumnValue fn_now(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue fn_now(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   ColumnValue result = { .type = TOK_T_TIMESTAMP_TZ };
 
   time_t now = time(NULL);
@@ -174,8 +174,8 @@ ColumnValue fn_now(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue fn_sin(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_sin(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -192,8 +192,8 @@ ColumnValue fn_sin(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue fn_cos(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_cos(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -210,8 +210,8 @@ ColumnValue fn_cos(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue fn_tan(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_tan(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -228,8 +228,8 @@ ColumnValue fn_tan(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue fn_log(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_log(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -246,9 +246,9 @@ ColumnValue fn_log(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue fn_pow(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue base = evaluate_expression(args[0], row, schema, db, schema_idx);
-  ColumnValue exponent = evaluate_expression(args[1], row, schema, db, schema_idx);
+ColumnValue fn_pow(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue base = evaluate_expression(args[0], row, db);
+  ColumnValue exponent = evaluate_expression(args[1], row, db);
   ColumnValue result = { .is_null = true };
   
   bool valid_conversion = infer_and_cast_va(2,
@@ -268,9 +268,9 @@ ColumnValue fn_pow(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* sc
   return result;
 }
 
-ColumnValue fn_concat(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue str1 = evaluate_expression(args[0], row, schema, db, schema_idx);
-  ColumnValue str2 = evaluate_expression(args[1], row, schema, db, schema_idx);
+ColumnValue fn_concat(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue str1 = evaluate_expression(args[0], row, db);
+  ColumnValue str2 = evaluate_expression(args[1], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_va(2,
@@ -291,10 +291,10 @@ ColumnValue fn_concat(ExprNode** args, uint8_t arg_count, Row* row, TableSchema*
 }
 
 
-ColumnValue fn_substring(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
-  ColumnValue start = evaluate_expression(args[1], row, schema, db, schema_idx);
-  ColumnValue length = evaluate_expression(args[2], row, schema, db, schema_idx);
+ColumnValue fn_substring(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue str = evaluate_expression(args[0], row, db);
+  ColumnValue start = evaluate_expression(args[1], row, db);
+  ColumnValue length = evaluate_expression(args[2], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_va(3, 
@@ -328,8 +328,8 @@ ColumnValue fn_substring(ExprNode** args, uint8_t arg_count, Row* row, TableSche
   return result;
 }
 
-ColumnValue fn_length(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_length(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue str = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_INT };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -348,8 +348,8 @@ ColumnValue fn_length(ExprNode** args, uint8_t arg_count, Row* row, TableSchema*
   return result;
 }
 
-ColumnValue fn_lower(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_lower(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue str = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -372,8 +372,8 @@ ColumnValue fn_lower(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   return result;
 }
 
-ColumnValue fn_upper(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_upper(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue str = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -396,8 +396,8 @@ ColumnValue fn_upper(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   return result;
 }
 
-ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue str = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -426,10 +426,10 @@ ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
   return result;
 }
 
-ColumnValue fn_replace(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue str = evaluate_expression(args[0], row, schema, db, schema_idx);
-  ColumnValue old_sub = evaluate_expression(args[1], row, schema, db, schema_idx);
-  ColumnValue new_sub = evaluate_expression(args[2], row, schema, db, schema_idx);
+ColumnValue fn_replace(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue str = evaluate_expression(args[0], row, db);
+  ColumnValue old_sub = evaluate_expression(args[1], row, db);
+  ColumnValue new_sub = evaluate_expression(args[2], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -464,11 +464,11 @@ ColumnValue fn_replace(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   return result;
 }
 
-ColumnValue fn_coalesce(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue fn_coalesce(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   ColumnValue result = { .is_null = true };
 
   for (uint8_t i = 0; i < arg_count; i++) {
-    result = evaluate_expression(args[i], row, schema, db, schema_idx);
+    result = evaluate_expression(args[i], row, db);
     if (!result.is_null) {
       break;
     }
@@ -477,9 +477,9 @@ ColumnValue fn_coalesce(ExprNode** args, uint8_t arg_count, Row* row, TableSchem
   return result;
 }
 
-ColumnValue fn_cast(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
-  ColumnValue type_info = evaluate_expression(args[1], row, schema, db, schema_idx);
+ColumnValue fn_cast(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
+  ColumnValue type_info = evaluate_expression(args[1], row, db);
   ColumnValue result = { .is_null = true };
 
   if (type_info.type == TOK_T_INT) {
@@ -494,7 +494,7 @@ ColumnValue fn_cast(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
   return result;
 }
 
-ColumnValue fn_date(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue fn_date(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   ColumnValue result = { .type = TOK_T_DATE };
 
   time_t now = time(NULL);
@@ -507,7 +507,7 @@ ColumnValue fn_date(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
   return result;
 }
 
-ColumnValue fn_extract(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue fn_extract(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   ColumnValue result = { .type = TOK_T_INT };
   result.is_null = true;
 
@@ -516,13 +516,13 @@ ColumnValue fn_extract(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
     return result;
   }
 
-  ColumnValue field_arg = resolve_expr_value(args[0], row, schema, db, schema_idx, NULL);
+  ColumnValue field_arg = resolve_expr_value(args[0], row, db, NULL);
   if (field_arg.is_null || (field_arg.type != TOK_T_STRING && field_arg.type != TOK_T_VARCHAR)) {
     LOG_WARN("First argument of EXTRACT() must be a non-null string");
     return result;
   }
 
-  ColumnValue time_arg = resolve_expr_value(args[1], row, schema, db, schema_idx, NULL);
+  ColumnValue time_arg = resolve_expr_value(args[1], row, db, NULL);
   if (time_arg.is_null) {
     LOG_WARN("Second argument of EXTRACT() cannot be NULL");
     return result;
@@ -643,7 +643,7 @@ ColumnValue fn_extract(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   return result;
 }
 
-ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   ColumnValue result = { .type = TOK_T_TIME };
 
   time_t now = time(NULL);
@@ -656,21 +656,21 @@ ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* s
   return result;
 }
 
-ColumnValue fn_ifnull(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_ifnull(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   
   if (input.is_null) {
-    return evaluate_expression(args[1], row, schema, db, schema_idx);
+    return evaluate_expression(args[1], row, db);
   } else {
     return input;
   }
 }
 
-ColumnValue fn_greatest(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue result = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_greatest(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue result = evaluate_expression(args[0], row, db);
 
   for (uint8_t i = 1; i < arg_count; i++) {
-    ColumnValue temp = evaluate_expression(args[i], row, schema, db, schema_idx);
+    ColumnValue temp = evaluate_expression(args[i], row, db);
     if (temp.type == TOK_T_INT && result.type == TOK_T_INT) {
       if (temp.int_value > result.int_value) {
         result = temp;
@@ -685,11 +685,11 @@ ColumnValue fn_greatest(ExprNode** args, uint8_t arg_count, Row* row, TableSchem
   return result;
 }
 
-ColumnValue fn_least(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue result = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_least(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue result = evaluate_expression(args[0], row, db);
 
   for (uint8_t i = 1; i < arg_count; i++) {
-    ColumnValue temp = evaluate_expression(args[i], row, schema, db, schema_idx);
+    ColumnValue temp = evaluate_expression(args[i], row, db);
     if (temp.type == TOK_T_INT && result.type == TOK_T_INT) {
       if (temp.int_value < result.int_value) {
         result = temp;
@@ -704,15 +704,15 @@ ColumnValue fn_least(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   return result;
 }
 
-ColumnValue fn_rand(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue fn_rand(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   ColumnValue result = { .type = TOK_T_DOUBLE };
   result.double_value = (double)rand() / RAND_MAX;
   result.is_null = false;
   return result;
 }
 
-ColumnValue fn_floor(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_floor(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   if (input.type == TOK_T_DOUBLE) {
@@ -723,8 +723,8 @@ ColumnValue fn_floor(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* 
   return result;
 }
 
-ColumnValue fn_ceiling(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_ceiling(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   if (input.type == TOK_T_DOUBLE) {
@@ -735,15 +735,15 @@ ColumnValue fn_ceiling(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   return result;
 }
 
-ColumnValue fn_pi(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
+ColumnValue fn_pi(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
   ColumnValue result = { .type = TOK_T_DOUBLE };
   result.double_value = M_PI;
   result.is_null = false;
   return result;
 }
 
-ColumnValue fn_degrees(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_degrees(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -759,8 +759,8 @@ ColumnValue fn_degrees(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   return result;
 }
 
-ColumnValue fn_radians(ExprNode** args, uint8_t arg_count, Row* row, TableSchema* schema, Database* db, uint8_t schema_idx) {
-  ColumnValue input = evaluate_expression(args[0], row, schema, db, schema_idx);
+ColumnValue fn_radians(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
+  ColumnValue input = evaluate_expression(args[0], row, db);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);

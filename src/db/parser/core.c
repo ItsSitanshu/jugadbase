@@ -911,3 +911,28 @@ void set_schema_alias(SchemaRef* ref, const char* alias) {
   xstrncpy(ref->alias, alias, MAX_ALIAS_LEN - 1);
   ref->alias[MAX_ALIAS_LEN - 1] = '\0';
 }
+
+void alias_map_init(AliasMap* map) {
+  map->entries = NULL;
+  map->count = 0;
+  map->capacity = 0;
+}
+
+void alias_map_add(AliasMap* map, const char* alias, int table_id) {
+  if (map->count == map->capacity) {
+    map->capacity = map->capacity ? map->capacity * 2 : 4;
+    map->entries = realloc(map->entries, map->capacity * sizeof(AliasEntry));
+  }
+  map->entries[map->count].alias = strdup(alias);
+  map->entries[map->count].table_id = table_id;
+  map->count++;
+}
+
+int alias_map_resolve(AliasMap* map, const char* alias) {
+  for (size_t i = 0; i < map->count; i++) {
+    if (strcmp(map->entries[i].alias, alias) == 0) {
+      return map->entries[i].table_id;
+    }
+  }
+  return -1; // not found
+}

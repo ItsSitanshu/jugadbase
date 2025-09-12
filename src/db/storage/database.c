@@ -634,7 +634,7 @@ bool load_schema_tc(Database* db, char* table_name) {
       Row empty_row = {0}; 
 
       ExprNode* node =  load_attr_default(db, table_id, col->name);
-      ColumnValue cur = evaluate_expression(node, &empty_row, schema, db, idx);
+      ColumnValue cur = evaluate_expression(node, &empty_row, db);
 
       bool valid_conversion = infer_and_cast_value(&cur, col);
 
@@ -868,7 +868,7 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
       Row empty_row = {0};
 
       ExprNode* node =  load_attr_default(attr_db, table_id, schema->columns[j].name);
-      ColumnValue cur = evaluate_expression(node, &empty_row, schema, db, idx);
+      ColumnValue cur = evaluate_expression(node, &empty_row, db);
 
       bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[j]));
 
