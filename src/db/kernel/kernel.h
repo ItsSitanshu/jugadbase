@@ -7,6 +7,7 @@
 #include "storage/database.h"
 
 #include "internal/functions.h"
+#include "internal/toast.h"
 
 #include "utils/log.h"
 #include "utils/security.h"
@@ -107,6 +108,7 @@ int64_t insert_attribute(Database* db, int64_t table_id, const char* column_name
 Attribute* load_attribute(Database* db, int64_t table_id, const char* column_name);
 
 int64_t insert_attr_default(Database* db, int64_t table_id, const char* column_name, const char* default_expr, bool flag_a);
+void check_and_concat_toast(Database* db, ColumnValue* value);
 ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name);
 
 bool bootstrap_core_tables(Database* db);

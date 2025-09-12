@@ -1,9 +1,11 @@
 #include "storage/database.h"
 
 #include "storage/syscache.h"
+#include "storage/cluster.h"
 #include "kernel/kernel.h"
-#include "utils/uuid.h"
 
+#include "utils/uuid.h"
+#include "utils/jb_core.h"
 #include "utils/log.h"
 #include "utils/security.h"
 
@@ -26,7 +28,7 @@ Database* db_init(char* dir, Database* core) {
   db->parser = parser_init(db->lexer);
   if (!db->parser) {
     LOG_FATAL("Failed to initialize parser.");
-    lexer_xfree(db->lexer);
+    lexer_free(db->lexer);
     xfree(db);
     return NULL;
   }
@@ -34,8 +36,8 @@ Database* db_init(char* dir, Database* core) {
   db->uuid = xstrdup(dir);
   if (!db->uuid) {
     LOG_FATAL("Failed to generate UUID.");
-    parser_xfree(db->parser);
-    lexer_xfree(db->lexer);
+    parser_free(db->parser);
+    lexer_free(db->lexer);
     xfree(db);
     return NULL;
   }
@@ -44,8 +46,8 @@ Database* db_init(char* dir, Database* core) {
   if (!db->fs) {
     LOG_FATAL("Failed to initialize file system.");
     xfree(db->uuid);
-    parser_xfree(db->parser);
-    lexer_xfree(db->lexer);
+    parser_free(db->parser);
+    lexer_free(db->lexer);
     xfree(db);
     return NULL;
   }
@@ -64,6 +66,22 @@ Database* db_init(char* dir, Database* core) {
   db->core = core;
   db->current_role = NULL;
 
+  if (!db->core) {
+    db->is_core = true;
+    register_builtin_functions();
+    bootstrap_core_tables(db);
+    
+    load_tc(db);
+    if (!load_initial_schema(db)) {
+      LOG_FATAL("Failed to read schema");
+    }
+
+    load_lake(db);
+
+  
+    process_file(db, CORE_JCL_PATH, true, true);
+  }
+
   load_tc(db);
   if (!load_initial_schema(db)) {
     LOG_FATAL("Failed to read schema");
@@ -74,12 +92,10 @@ Database* db_init(char* dir, Database* core) {
 
   load_constr_syscache(db);  
 
-  register_builtin_functions();
-
   return db;
 }
 
-void db_xfree(Database* db) {
+void db_free(Database* db) {
   if (!db || db == NULL) return;
 
   io_close(db->tc_reader);
@@ -116,8 +132,8 @@ void db_xfree(Database* db) {
     free_table_schema(schema);
   }
 
-  parser_xfree(db->parser);
-  fs_xfree(db->fs);
+  parser_free(db->parser);
+  fsfree(db->fs);
   xfree(db->uuid);
 }
 
@@ -150,7 +166,7 @@ bool process_cmd_no_db(ClusterManager* cm, char* input) {
     return true;
   } else if (strcmp(input, ".quit") == 0 || tolower(input[0]) == 'q') {
     LOG_INFO("Exiting...");
-    cluster_manager_xfree(cm);
+    cluster_manager_free(cm);
     exit(0);
     return true;
   } else if (strcmp(input, "clear") == 0) {
@@ -197,7 +213,7 @@ bool process_cmd_with_db(Database* db, char* input) {
       show = true;
     }
 
-    process_file(db, filename, !show);
+    process_file(db, filename, !show, false);
     return true;
   }
 
@@ -221,20 +237,18 @@ void list_tables(Database* db) {
   }
 }
 
-void process_file(Database* db, char* filename, bool show) {
+void process_file(Database* db, char* filename, bool show, bool internal) {
   FILE* file = fopen(filename, "r");
   if (!file) {
     LOG_ERROR("Error opening file: %s", filename);
     return;
   }
 
-  if (!is_god_mode() && db->current_role == NULL && !db->is_core) {
-    LOG_ERROR("No active role. Please login first.");
-    return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
-  } 
-
   if (!db->is_core) {
-    // LOG_DEBUG("Current role: %s", db->current_role->name);
+    if (!is_god_mode() && db->current_role == NULL && !db->is_core) {
+      LOG_ERROR("No active role. Please login first.");
+      // return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
+    }
   }
 
   fseek(file, 0, SEEK_END); 
@@ -269,9 +283,9 @@ void process_file(Database* db, char* filename, bool show) {
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
  
-  JQLCommand cmd = parser_parse(db);
-  while (!is_struct_zeroed(&cmd, sizeof(JQLCommand))) {
-    Result res = execute_cmd(db, &cmd, show);
+  JQLCommand* cmd = parser_parse(db);
+  while (!is_struct_zeroed(cmd, sizeof(JQLCommand))) {
+    Result res = execute_cmd(db, cmd, show);
     free_result(&res);
     cmd = parser_parse(db);
   }
@@ -686,28 +700,26 @@ bool load_initial_schema(Database* db) {
     if (io_read(db->tc_reader, &db_init, sizeof(uint32_t)) != sizeof(uint32_t)) {
       LOG_ERROR("Failed to read database initialization magic number.");
       io_close(db->tc_reader);
-      return;
+      return false;
     }
 
     if (db_init != DB_INIT_MAGIC) {
       LOG_ERROR("Invalid database file (wrong DB INIT magic number: 0x%X).", db_init);
       io_close(db->tc_reader);
-      return;
+      return false;
     }
 
     if (io_read(db->tc_reader, &db->table_count, sizeof(uint32_t)) != sizeof(uint32_t)) {
       LOG_ERROR("Failed to read table count.");
       io_close(db->tc_reader);
-      return;
+      return false;
     }
 
     if (db->table_count > MAX_TABLES) {
       LOG_ERROR("Table count exceeds maximum allowed tables.");
       io_close(db->tc_reader);
-      return;
+      return false;
     }
-
-    if (db->table_count == 0) return true;
     
     if (!load_jb_tables_hardcoded(db)) {
       LOG_ERROR("Failed to hardcode jb_tables.");
@@ -860,8 +872,12 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
 
       bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[j]));
 
+
       if (!valid_conversion) {
-        LOG_ERROR("Invalid conversion whilst trying to insert row");
+        LOG_ERROR("Invalid conversion whilst trying to insert row from %s to %s",
+          token_type_strings[cur.type],
+          token_type_strings[schema->columns[j].type]
+        );
         return NULL;
       }
 
@@ -897,7 +913,7 @@ void load_constr_syscache(Database* db) {
 
   ParserState state = parser_save_state(db->core->parser);
 
-  const char* query = 
+  char* query = 
     "SELECT id, table_id, columns, name, constraint_type, check_expr, "
     "ref_table, ref_columns, on_delete, on_update, is_deferrable, "
     "is_deferred, is_nullable, is_primary, is_unique "
@@ -941,7 +957,7 @@ void load_lake(Database* db) {
         LOG_WARN("Could not open file for reading: %s", file_path);
         continue;
       }
-
+      
 
       fseek(file, 0, SEEK_END);
       long file_size = ftell(file);

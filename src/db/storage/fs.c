@@ -109,7 +109,7 @@ FS* fs_init(char* root_directory) {
   return fs;
 }
 
-void fs_xfree(FS* fs) {
+void fsfree(FS* fs) {
   if (!fs) return;
 
   xfree(fs->root_dir);

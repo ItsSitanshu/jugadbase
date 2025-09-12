@@ -556,7 +556,7 @@ ColumnValue evaluate_expression(ExprNode* expr, Row* row, TableSchema* schema, D
                                row, schema, db, schema_idx);
       } else {
         LOG_WARN("Evaluation of AGG function attempted, post-evaluation will be used");
-        return (ColumnValue){ .tbev = &(expr->fn) };
+        return (ColumnValue){ .uneval = &(expr->fn) };
       }
       
     case EXPR_COMPARISON:

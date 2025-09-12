@@ -20,24 +20,53 @@ JQLCommand* jql_command_init(JQLCommandType type) {
 
   cmd->type = type;
 
-  cmd->schemas = xcalloc(10, sizeof(SchemaRef));
+  int schema_capacity = (type == CMD_SELECT) ? 10 : 1;
+  cmd->schemas = xcalloc(schema_capacity, sizeof(SchemaRef));
   cmd->schema_count = 0;
+  cmd->schema_name = NULL;
 
+  memset(cmd->value_counts, 0, sizeof(cmd->value_counts));
   cmd->row_count = 0;
-  cmd->values = NULL;
+  cmd->col_count = 0;
+  cmd->ret_col_count = 0;
 
+  cmd->bitmap = NULL;
+  cmd->values = NULL;
+  cmd->returning_columns = NULL;
+  cmd->columns = NULL;
+
+  cmd->sel_columns = NULL;
+  cmd->select_all = false;
+  cmd->update_columns = NULL;
+
+  cmd->where = NULL;
+  cmd->has_where = false;
+
+  cmd->has_limit = false;
+  cmd->has_offset = false;
+  cmd->limit = 0;
+  cmd->offset = 0;
+
+  cmd->has_order_by = false;
+  cmd->order_by_count = 0;
+  cmd->order_by = NULL;
+
+  cmd->alter = NULL;
+  memset(&cmd->constraint, 0, sizeof(ParsedConstraint));
   cmd->constraint_count = 0;
 
   cmd->function_count = 0;
+  cmd->has_aggregate = false;
 
-  memset(cmd->value_counts, 0, MAX_OPERATIONS);
-  memset(cmd->conditions, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->order_by, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->group_by, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->having, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->join_table, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->join_condition, 0, MAX_IDENTIFIER_LEN);
-  memset(cmd->transaction, 0, MAX_IDENTIFIER_LEN);
+  memset(cmd->conditions, 0, sizeof(cmd->conditions));
+  memset(cmd->group_by, 0, sizeof(cmd->group_by));
+  memset(cmd->having, 0, sizeof(cmd->having));
+  memset(cmd->join_table, 0, sizeof(cmd->join_table));
+  memset(cmd->join_condition, 0, sizeof(cmd->join_condition));
+  memset(cmd->transaction, 0, sizeof(cmd->transaction));
+
+  cmd->is_invalid = false;
+  cmd->flag_a = false;
 
   return cmd;
 }
@@ -66,11 +95,11 @@ JQLCommand parser_expect_nc(Parser* parser, int expected, char* error_msg) {
 
 void parser_consume(Parser* parser) {
   if (parser->cur->type == TOK_EOF) {
-    token_xfree(parser->cur);
+    tokenfree(parser->cur);
     return;
   }
 
-  token_xfree(parser->cur);
+  tokenfree(parser->cur);
 
   parser->cur = lexer_next_token(parser->lexer);
 }
@@ -84,6 +113,7 @@ ParserState parser_save_state(Parser* parser) {
 
   state.buffer_size = parser->lexer->buf_size;
   state.buffer_copy = xmalloc(state.buffer_size);
+  LOG_INFO("Buffer size: %zu", state.buffer_size);
   xmemcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
 
   state.current_token = token_clone(parser->cur);
@@ -105,10 +135,10 @@ void parser_restore_state(Parser* parser, ParserState state) {
   parser->lexer->c = (parser->lexer->i < parser->lexer->buf_size) ?
                      parser->lexer->buf[parser->lexer->i] : '\0';
 
-  if (parser->cur) token_xfree(parser->cur);
+  if (parser->cur) tokenfree(parser->cur);
   parser->cur = token_clone(state.current_token);
 
-  token_xfree(state.current_token);
+  tokenfree(state.current_token);
   xfree(state.buffer_copy);
 }
 
@@ -433,7 +463,8 @@ char* str_column_value(ColumnValue* val) {
     case TOK_T_BLOB:
     case TOK_T_JSON: {
       if (val->is_toast) {
-        snprintf(buffer, sizeof(buffer), "%u", token_type_strings[val->type], val->toast_object);
+        // snprintf(buffer, sizeof(buffer), "%u", token_type_strings[val->type], val->toast_object);
+        snprintf(buffer, sizeof(buffer), "%u", token_type_strings[val->type]);
       } else {
         const char* s = val->str_value;
         size_t len = strlen(s);
@@ -616,12 +647,22 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val) {
   }
 }
 
-void parser_xfree(Parser* parser) {
+SchemaRef* find_schema_by_qualifier(JQLCommand *cmd, const char *qual) {
+  if (!qual || qual[0] == '\0') return NULL;
+  for (uint16_t i = 0; i < cmd->schema_count; i++) {
+    SchemaRef *r = &cmd->schemas[i];
+    if (strcasecmp(r->alias, qual) == 0) return r;
+    if (strcasecmp(r->ptr->table_name, qual) == 0) return r;
+  }
+  return NULL;
+}
+
+void parser_free(Parser* parser) {
   if (!parser) {
     return;
   }
 
-  lexer_xfree(parser->lexer);
+  lexer_free(parser->lexer);
 
   parser = NULL;
 }
@@ -744,62 +785,89 @@ void free_table_schema(TableSchema* schema) {
 void free_jql_command(JQLCommand* cmd) {
   if (!cmd) return;
 
-  // if (cmd->bitmap) xfree(cmd->bitmap);
-
-  if (cmd->has_where) {
-    free_expr_node(cmd->where);
+  if (cmd->schemas) {
+    // for (uint16_t i = 0; i < cmd->schema_count; i++) {
+    //   if (cmd->schemas[i].ptr) {
+    //     // free_schema(cmd->schemas[i].ptr); 
+    //   }
+    // }
+    xfree(cmd->schemas);
   }
 
-  // if (cmd->values) {
-  //   for (uint8_t i = 0; i < cmd->row_count; i++) {
-  //     if (cmd->values[i]) {
-  //       // for (uint8_t j = 0; j < MAX_COLUMNS; j++) {
-  //       //   if (cmd->values[i][j]) free_expr_node(cmd->values[i][j]);
-  //       // }
-  //       // xfree(cmd->values[i]);
-  //     }
-  //   }
-  //   xfree(cmd->values);
-  // }
-
-  // if (cmd->returning_columns) {
-  //   for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
-  //     if (cmd->returning_columns[i]) xfree(cmd->returning_columns[i]);
-  //   }
-  //   xfree(cmd->returning_columns);
-  // }
-
-  // if (cmd->columns) {
-  //   for (uint8_t i = 0; i < cmd->col_count; i++) {
-  //     // if (cmd->columns[i]) xfree(cmd->columns[i]);
-  //   }
-  //   xfree(cmd->columns);
-  // }
-
-  if (cmd->sel_columns) {
-    for (uint8_t i = 0; i < MAX_COLUMNS; i++) {
-      if (i >= cmd->col_count) break;
-      if (cmd->sel_columns[i].alias) xfree(cmd->sel_columns[i].alias);
-      if (cmd->sel_columns[i].expr) free_expr_node(cmd->sel_columns[i].expr);
-      // xfree(&cmd->sel_columns[i]);
-    }
-    xfree(cmd->sel_columns);
+  if (cmd->schema_name) {
+    xfree(cmd->schema_name);
   }
 
-  if (cmd->update_columns) {
-    for (uint8_t i = 0; i < cmd->col_count; i++) {
-      free_expr_node(cmd->update_columns[i].array_idx);
-    }
-    xfree(cmd->update_columns);
+  if (cmd->bitmap) {
+    xfree(cmd->bitmap);
   }
 
   if (cmd->where) {
     free_expr_node(cmd->where);
   }
 
+  if (cmd->values) {
+    for (uint8_t i = 0; i < cmd->row_count; i++) {
+      if (cmd->values[i]) {
+        for (uint8_t j = 0; j < cmd->col_count; j++) {
+          if (cmd->values[i][j]) {
+            free_expr_node(cmd->values[i][j]);
+          }
+        }
+        xfree(cmd->values[i]);
+      }
+    }
+    xfree(cmd->values);
+  }
+
+  if (cmd->returning_columns) {
+    for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
+      if (cmd->returning_columns[i]) {
+        xfree(cmd->returning_columns[i]);
+      }
+    }
+    xfree(cmd->returning_columns);
+  }
+
+  if (cmd->columns) {
+    for (uint8_t i = 0; i < cmd->col_count; i++) {
+      if (cmd->columns[i]) {
+        xfree(cmd->columns[i]);
+      }
+    }
+    xfree(cmd->columns);
+  }
+
+  if (cmd->sel_columns) {
+    for (uint8_t i = 0; i < cmd->col_count; i++) {
+      if (cmd->sel_columns[i].alias) {
+        xfree(cmd->sel_columns[i].alias);
+      }
+      if (cmd->sel_columns[i].expr) {
+        free_expr_node(cmd->sel_columns[i].expr);
+      }
+    }
+    xfree(cmd->sel_columns);
+  }
+
+  if (cmd->update_columns) {
+    for (uint8_t i = 0; i < cmd->col_count; i++) {
+      if (cmd->update_columns[i].array_idx) {
+        free_expr_node(cmd->update_columns[i].array_idx);
+      }
+    }
+    xfree(cmd->update_columns);
+  }
+
   if (cmd->order_by) {
     xfree(cmd->order_by);
   }
+
+  if (cmd->alter) {
+    xfree(cmd->alter);
+  }
+
+  xfree(cmd);
 }
 
 SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16_t needed) {
@@ -837,7 +905,7 @@ void set_schema_alias(SchemaRef* ref, const char* alias) {
   }
 
   if (strlen(alias) >= MAX_ALIAS_LEN) {
-    REPORT_ERROR("Why the fuck would you keep need an alias > %d chars, trimmed", MAX_ALIAS_LEN - 1);
+    LOG_ERROR("Why the fuck would you keep need an alias > %d chars, trimmed", MAX_ALIAS_LEN - 1);
   }
 
   xstrncpy(ref->alias, alias, MAX_ALIAS_LEN - 1);

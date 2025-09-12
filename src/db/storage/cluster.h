@@ -43,7 +43,7 @@ typedef struct ClusterManager {
 ClusterManager* cluster_manager_init(char* root_dir);
 
 bool cluster_manager_save(ClusterManager* manager);
-void cluster_manager_xfree(ClusterManager* manager);
+void cluster_manager_free(ClusterManager* manager);
 bool cluster_create(ClusterManager* manager, char* name);
 bool cluster_add_db(ClusterManager* manager, int cluster_idx, char* db_path);
 bool cluster_switch(ClusterManager* manager, int cluster_idx);

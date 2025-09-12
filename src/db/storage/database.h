@@ -50,12 +50,12 @@ typedef struct Database {
 } Database;
 
 Database* db_init(char* dir, Database* core);
-void db_xfree(Database* db);
+void db_free(Database* db);
 
 bool process_cmd_no_db(ClusterManager* cm, char* input);
 bool process_cmd_with_db(Database* db, char* input);
 void list_tables(Database* db);
-void process_file(Database* db, char* filename, bool show);
+void process_file(Database* db, char* filename, bool show, bool internal);
 
 void load_tc(Database* db);
 void load_table_schema(Database* db);

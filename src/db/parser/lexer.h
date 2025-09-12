@@ -27,11 +27,11 @@ typedef struct Lexer {
 
 Lexer* lexer_init();
 void lexer_set_buffer(Lexer* lexer, char* buffer);
-void lexer_xfree(Lexer* lexer);
+void lexer_free(Lexer* lexer);
 
 Token* lexer_token_init(Lexer* lexer, char* value, uint8_t type);
 Token* token_clone(Token* src);
-void token_xfree(Token* token);
+void tokenfree(Token* token);
 
 Token* lexer_next_token(Lexer* lexer);
 

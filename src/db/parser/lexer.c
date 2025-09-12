@@ -71,7 +71,7 @@ void lexer_set_buffer(Lexer* lexer, char* buffer) {
   lexer->cl = 1;
 }
 
-void lexer_xfree(Lexer* lexer) {
+void lexer_free(Lexer* lexer) {
   if (!lexer) {
     return;
     exit(EXIT_FAILURE);
@@ -124,7 +124,7 @@ Token* token_clone(Token* src) {
 
 }
 
-void token_xfree(Token* token) {
+void tokenfree(Token* token) {
   /*
   De-initializes provided token
   */
@@ -323,7 +323,7 @@ Token* lexer_handle_alpha(Lexer* lexer) {
       xfree(buf);
 
       Token* token = lexer_next_token(lexer);
-      if (token) token_xfree(token); 
+      if (token) tokenfree(token); 
 
       return lexer_next_token(lexer); 
     }

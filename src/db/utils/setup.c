@@ -146,7 +146,7 @@ SetupResult perform_setup(int argc, char* argv[]) {
   
   SetupResult cluster_result = setup_default_cluster(init_result.cluster_manager, &config);
   if (!cluster_result.success) {
-    cluster_manager_xfree(init_result.cluster_manager);
+    cluster_manager_free(init_result.cluster_manager);
     return cluster_result;
   }
   
@@ -165,7 +165,7 @@ SetupResult perform_setup(int argc, char* argv[]) {
 
 void cleanup_setup(SetupResult* setup) {
   if (setup->cluster_manager) {
-    cluster_manager_xfree(setup->cluster_manager);
+    cluster_manager_free(setup->cluster_manager);
     setup->cluster_manager = NULL;
   }
   

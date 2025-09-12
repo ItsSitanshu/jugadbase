@@ -513,7 +513,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
 
     if (!row) {
       for (uint32_t j = 0; j < inserted_count; j++) {
-        serialize_delete(schema, inserted_rows[j]);  
+        serialize_delete(&db->lake[schema_idx], inserted_rows[j]);  
       }      
 
       xfree(primary_key_cols);
@@ -607,7 +607,10 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
     bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
 
     if (!valid_conversion) {
-      LOG_ERROR("Invalid conversion whilst trying to insert row");
+      LOG_ERROR("Invalid conversion whilst trying to insert row from %s to %s",
+        token_type_strings[cur.type],
+        token_type_strings[schema->columns[i].type]
+      );
       return NULL;
     }
         
@@ -724,7 +727,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   }
 
   load_btree_cluster(db, schema->table_name);
-  cmd->schema = schema;
+  cmd->schemas[0].ptr = schema;
 
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
@@ -822,14 +825,14 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       } else if (expr->type == EXPR_ARRAY_ACCESS) {
         int base_idx = expr->column.index;
         int array_idx = expr->column.array_idx->literal.int_value;
-        const char* base_name = cmd->schema->columns[base_idx].name;
+        const char* base_name = cmd->schemas[0].ptr->columns[base_idx].name;
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "%s[%d]", base_name, array_idx);
         aliases[j] = xstrdup(buffer);
       } else if (expr->type == EXPR_FUNCTION) {
         aliases[j] = xstrdup(expr->fn.name);
       } else {
-        aliases[j] = xstrdup(cmd->schema->columns[expr->column.index].name);
+        aliases[j] = xstrdup(cmd->schemas[0].ptr->columns[expr->column.index].name);
       }
       
       if (!expr) {
@@ -943,8 +946,6 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
 cleanup:
   if (old_fk) cleanup_fk_constraints(old_fk, fk_count);
   if (new_fk) cleanup_fk_constraints(new_fk, fk_count);
-  xfree(old_fk);
-  xfree(new_fk);
   xfree(update_set.rows);
   return result.code == 0 ? result : (result.code ? result : (ExecutionResult){1, "OOM or error in cleanup"});
 }
@@ -1029,7 +1030,7 @@ ExecutionResult execute_drop_table(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "Invalid DROP TABLE command or context"};
   }
 
-  const char* table_name = cmd->schemas[0].ptr->table_name;
+  char* table_name = cmd->schemas[0].ptr->table_name;
 
   if (!get_validated_table(db, table_name)) {
     return (ExecutionResult){1, "Table does not exist"};

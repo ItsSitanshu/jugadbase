@@ -46,6 +46,7 @@ set(DB_SOURCES
 
 set(UTILS_SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/io.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/jb_core.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/setup.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/jugadline.c
   ${CMAKE_CURRENT_SOURCE_DIR}/src/db/utils/log.c

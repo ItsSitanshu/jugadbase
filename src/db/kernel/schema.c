@@ -11,6 +11,8 @@ char* CONSTRAINT_FLAGS[N_CONSTRAINTS_TYPES][N_CONSTRAINTS_FLAGS] = {
 int64_t find_table(Database* db, char* name) {
   if (strcmp(name, "jb_tables") == 0) {
     return 0;
+  } else if (strcmp(name, "jb_sequences") == 0) {
+    return 1;
   } else if (strcmp(name, "jb_attribute") == 0) {
     return 2;
   }
@@ -262,7 +264,7 @@ ExprNode* load_attr_default(Database* db, int64_t table_id, char* column_name) {
   lexer_set_buffer(db->core->lexer, default_expr_str);
   parser_reset(db->core->parser);
 
-  ExprNode* expr_node = parser_parse_expression(db->core->parser, db->tc[table_id].schema);
+  ExprNode* expr_node = parser_parse_expression(db->core->parser, NULL);
   if (!expr_node) {
     LOG_ERROR("Failed to parse default expression for column '%s'", column_name);
   }
@@ -290,6 +292,7 @@ bool bootstrap_core_tables(Database* db) {
       LOG_FATAL("Failed to bootstrap table '%s': %s", schemas[i]->table_name, res.message);
       return false;
     } 
+    LOG_DEBUG("Bootstrapped table '%s': %s", schemas[i]->table_name, res.message);
   }
 
   return true;

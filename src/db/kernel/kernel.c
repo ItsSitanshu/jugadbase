@@ -14,7 +14,7 @@ Result process(Database* db, char* buffer) {
   parser_reset(db->parser);
 
   JQLCommand* cmd = xmalloc(sizeof(JQLCommand));
-  *cmd = parser_parse(db);
+  cmd = parser_parse(db);
 
   Result result = execute_cmd(db, cmd, true);
   return result;
@@ -30,14 +30,14 @@ Result process_silent(Database* db, char* buffer) {
 
 
   JQLCommand* cmd = xmalloc(sizeof(JQLCommand));
-  *cmd = parser_parse(db);
+  cmd = parser_parse(db);
 
   Result result = execute_cmd(db, cmd, false);
   return result;
 }
 
 Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
-  if (cmd->is_invalid) {
+  if (!cmd || cmd->is_invalid) {
     return (Result){(ExecutionResult){1, "Invalid command"}, NULL};
   }
 

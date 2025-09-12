@@ -8,7 +8,7 @@ void swap_rows(Row* r1, Row* r2) {
 
 int compare_rows(const Row* r1, const Row* r2, JQLCommand* cmd, TableSchema* schema) {
   for (uint8_t i = 0; i < cmd->order_by_count; i++) {
-    uint8_t col = cmd->order_by[i].col;
+    uint16_t col = cmd->order_by[i].index;
     bool desc = cmd->order_by[i].decend;
 
     ColumnValue v1 = r1->values[col];

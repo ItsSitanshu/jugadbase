@@ -66,6 +66,6 @@ typedef struct {
 } FS;
 
 FS* fs_init(char* root_directory);
-void fs_xfree(FS* fs);
+void fsfree(FS* fs);
 
 #endif // FS_H

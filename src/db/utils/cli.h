@@ -34,13 +34,17 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
     return xstrdup("(0 rows)\n");
   }
 
-  size_t* col_widths = xcalloc(cmd->schema->column_count, sizeof(size_t));
+  TableSchema* schema = cmd->schemas[0].ptr;
+  ColumnDefinition* columns = schema->columns;
+  uint8_t col_c = schema->column_count;
+
+  size_t* col_widths = xcalloc(col_c, sizeof(size_t));
   
-  for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
-    col_widths[c] = strlen(cmd->schema->columns[c].name);
+  for (uint8_t c = 0; c < col_c; c++) {
+    col_widths[c] = strlen(columns[c].name);
   }
   
-  char** formatted_values = xcalloc(result.row_count * cmd->schema->column_count, sizeof(char*));
+  char** formatted_values = xcalloc(result.row_count * col_c, sizeof(char*));
   
   for (uint32_t i = 0; i < result.row_count; i++) {
     Row* row = &result.rows[i];
@@ -48,13 +52,13 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
       continue;
     }
     
-    for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
+    for (uint8_t c = 0; c < col_c; c++) {
       ColumnValue val = row->values[c];
       
       char* buffer;
       format_column_value(buffer, 256, &val);
       
-      formatted_values[i * cmd->schema->column_count + c] = xstrdup(buffer);
+      formatted_values[i * col_c + c] = xstrdup(buffer);
       
       size_t len = strlen(buffer);
       if (len > col_widths[c]) {
@@ -64,7 +68,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   }
   
   size_t total_width = 0;
-  for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
+  for (uint8_t c = 0; c < col_c; c++) {
     total_width += col_widths[c] + 3; // width + padding + separator
   }
   
@@ -74,7 +78,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   
   char* output = xmalloc(total_size);
   if (!output) {
-    for (uint32_t i = 0; i < result.row_count * cmd->schema->column_count; i++) {
+    for (uint32_t i = 0; i < result.row_count * col_c; i++) {
       if (formatted_values[i] != NULL) {
         xfree(formatted_values[i]);
       }
@@ -91,9 +95,9 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   ptr += written;
   remaining -= written;
   
-  for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
+  for (uint8_t c = 0; c < col_c; c++) {
     written = snprintf(ptr, remaining, " %-*s |", 
-                      (int)col_widths[c], cmd->schema->columns[c].name);
+                      (int)col_widths[c], columns[c].name);
     ptr += written;
     remaining -= written;
   }
@@ -106,7 +110,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   ptr += written;
   remaining -= written;
   
-  for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
+  for (uint8_t c = 0; c < col_c; c++) {
     for (size_t i = 0; i < col_widths[c] + 2; i++) {
       written = snprintf(ptr, remaining, "-");
       ptr += written;
@@ -131,14 +135,14 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
     ptr += written;
     remaining -= written;
     
-    for (uint8_t c = 0; c < cmd->schema->column_count; c++) {
-      char* value = formatted_values[i * cmd->schema->column_count + c];
+    for (uint8_t c = 0; c < col_c; c++) {
+      char* value = formatted_values[i * col_c + c];
       
-      if (cmd->schema->columns[c].type == TOK_T_INT || 
-          cmd->schema->columns[c].type == TOK_T_DOUBLE || 
-          cmd->schema->columns[c].type == TOK_T_FLOAT || 
-          cmd->schema->columns[c].type == TOK_T_UINT || 
-          cmd->schema->columns[c].type == TOK_T_SERIAL) {
+      if (columns[c].type == TOK_T_INT || 
+          columns[c].type == TOK_T_DOUBLE || 
+          columns[c].type == TOK_T_FLOAT || 
+          columns[c].type == TOK_T_UINT || 
+          columns[c].type == TOK_T_SERIAL) {
         written = snprintf(ptr, remaining, " %*s |", (int)col_widths[c], value);
       } else {
         written = snprintf(ptr, remaining, " %-*s |", (int)col_widths[c], value);
@@ -157,7 +161,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
   ptr += written;
   remaining -= written;
   
-  for (uint32_t i = 0; i < result.row_count * cmd->schema->column_count; i++) {
+  for (uint32_t i = 0; i < result.row_count * col_c; i++) {
     if (formatted_values[i] != NULL) {
       xfree(formatted_values[i]);
     }

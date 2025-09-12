@@ -28,12 +28,12 @@ int64_t sequence_next_val(Database* db, char* name) {
 
   char query[2048];
   snprintf(query, sizeof(query),
-    "SELECT current_value, increment_by FROM jb_sequences "
+    "SELECT name, current_value, increment_by FROM jb_sequences "
     "WHERE name = '%s'; ",
     name
   );
 
-  Result res = process_silent(db->core, query);
+  Result res = process(db->core, query);
   bool success = res.exec.code == 0;
   if (!success) {
     LOG_ERROR("Failed to find a valid sequence '%s'", name);

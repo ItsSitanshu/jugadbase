@@ -90,7 +90,7 @@ typedef struct ColumnValue {
       uint16_t index;
       int16_t array_idx;
     } column;
-    Function* tbev;  
+    Function* uneval;  
   };
 } ColumnValue;
 
@@ -127,7 +127,7 @@ typedef enum AggregateType {
   AGG_LAST,            
   AGG_BOOL_AND,        // TRUE if all are TRUE
   AGG_BOOL_OR,         // TRUE if any are TRUE
-  NOT_AGG
+  NOT_AGG,
 } AggregateType;
 
 typedef struct Function {
@@ -349,6 +349,15 @@ typedef struct SchemaRef {
   char alias[MAX_ALIAS_LEN];
 } SchemaRef;
 
+typedef struct OrderByClause {
+  TableSchema* schema;
+  uint32_t table_id;
+  uint16_t index;
+  uint8_t type;
+  bool decend;
+} OrderByClause; 
+
+
 typedef struct {
   JQLCommandType type;
   
@@ -384,11 +393,7 @@ typedef struct {
 
   bool has_order_by;
   uint8_t order_by_count;
-  struct order_by {
-    uint8_t col;
-    uint8_t type;
-    bool decend;
-  }* order_by; 
+  OrderByClause* order_by; 
 
   AlterTableCommand* alter;
   ParsedConstraint constraint;
@@ -439,14 +444,18 @@ typedef struct AlterHandler {
 #ifndef JQL_PARSER_STATEMENTS_H
 #define JQL_PARSER_STATEMENTS_H
 
-JQLCommand parser_parse(Database* db);
-JQLCommand parser_parse_create_table(Parser* parser, Database* db);
-JQLCommand parser_parse_insert(Parser *parser, Database* db);
-JQLCommand parser_parse_select(Parser* parser, Database* db);
-JQLCommand parser_parse_update(Parser* parser, Database* db);
-JQLCommand parser_parse_delete(Parser* parser, Database* db);
-JQLCommand parser_parse_alter_table(Parser* parser, Database* db);
-JQLCommand parser_parse_drop_table(Parser* parser, Database* db);
+#define _cmd_is_invalid(cmd) ((cmd) == NULL || (cmd)->is_invalid)
+#define _jql_command_fail(cmd) do { free_jql_command(cmd); return NULL; } while (0)
+#define _jql_command_schemas_capacity 10
+ 
+JQLCommand* parser_parse(Database* db);
+JQLCommand* parser_parse_create_table(Parser* parser, Database* db);
+JQLCommand* parser_parse_insert(Parser *parser, Database* db);
+JQLCommand* parser_parse_select(Parser* parser, Database* db);
+JQLCommand* parser_parse_update(Parser* parser, Database* db);
+JQLCommand* parser_parse_delete(Parser* parser, Database* db);
+JQLCommand* parser_parse_alter_table(Parser* parser, Database* db);
+JQLCommand* parser_parse_drop_table(Parser* parser, Database* db);
 
 #endif // JQL_PARSER_STATEMENTS_H
 
@@ -469,23 +478,23 @@ bool parse_alter_set_tablespace(Parser* parser, AlterTableCommand* cmd);
 #ifndef JQL_PARSER_EXPRESSIONS_H
 #define JQL_PARSER_EXPRESSIONS_H
 
-ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema);
-ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema);
-ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema);
-ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema);
-ExprNode* parser_parse_term(Parser* parser, TableSchema* schema);
-ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema);
-ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema);
-ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema);
+ExprNode* parser_parse_expression(Parser* parser, JQLCommand* cmd);
+ExprNode* parser_parse_logical_and(Parser* parser, JQLCommand* cmd);
+ExprNode* parser_parse_logical_not(Parser* parser, JQLCommand* cmd);
+ExprNode* parser_parse_comparison(Parser* parser, JQLCommand* cmd);
+ExprNode* parser_parse_term(Parser* parser, JQLCommand* cmd);
+ExprNode* parser_parse_unary(Parser* parser, JQLCommand* cmd);
+ExprNode* parser_parse_arithmetic(Parser* parser, JQLCommand* cmd);
+ExprNode* parser_parse_primary(Parser* parser, JQLCommand* cmd);
 
-ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left);
-ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* left);
-ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* left);
+ExprNode* parser_parse_like(Parser* parser, JQLCommand* cmd, ExprNode* left);
+ExprNode* parser_parse_between(Parser* parser, JQLCommand* cmd, ExprNode* left);
+ExprNode* parser_parse_in(Parser* parser, JQLCommand* cmd, ExprNode* left);
 
-void parse_where_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
+void parse_where_clause(Parser* parser, Database* db, JQLCommand* command);
 void parse_limit_clause(Parser* parser, JQLCommand* command);
 void parse_offset_clause(Parser* parser, JQLCommand* command);
-void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command, uint32_t idx);
+void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command);
 bool parser_parse_column_definition(Parser *parser, JQLCommand *command);
 
 bool parser_parse_constraint(Parser* parser, ColumnDefinition* col_def);
@@ -528,8 +537,9 @@ void print_column_value(ColumnValue* val);
 char* str_column_value(ColumnValue* val);
 char** stringify_column_array(ColumnValue* array_val, int* out_count);
 void format_column_value(char* out, size_t out_size, ColumnValue* val);
+SchemaRef* find_schema_by_qualifier(JQLCommand *cmd, const char *qual);
 
-void parser_xfree(Parser* parser);
+void parser_free(Parser* parser);
 
 void free_expr_node(ExprNode* node);
 void free_column_value(ColumnValue* val);

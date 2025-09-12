@@ -2,11 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "utils/xmem.h"
 #include "utils/setup.h"
 #include "utils/cli.h"
-#include "kernel/kernel.h"
-
 #include "utils/jugadline.h"
+
+#include "kernel/kernel.h"
 
 int main(int argc, char* argv[]) {
   SetupResult setup = perform_setup(argc, argv);
@@ -97,4 +98,9 @@ int main(int argc, char* argv[]) {
   }
   
   return 0;
+}
+
+__attribute__((constructor))
+static void xmem_init_report(void) {
+  atexit(xmem_report);
 }

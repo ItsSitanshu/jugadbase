@@ -764,9 +764,8 @@ ColumnValue fn_radians(ExprNode** args, uint8_t arg_count, Row* row, TableSchema
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
-
   if (!valid_conversion) {
-    LOG_ERROR("Invalid conversion whilst trying to insert row");
+    LOG_ERROR("Invalid conversion whilst trying to insert row", token_type_strings[TOK_T_DOUBLE], token_type_strings[input.type]);
     return result;
   }
 

@@ -1,14 +1,14 @@
 #include "parser/parser.h"
 #include "storage/database.h"
 
-ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema) {
-  ExprNode* node = parser_parse_logical_and(parser, schema);
+ExprNode* parser_parse_expression(Parser* parser, JQLCommand* cmd) {
+  ExprNode* node = parser_parse_logical_and(parser, cmd);
   
   while (parser->cur->type == TOK_OR) {
     uint16_t op = parser->cur->type;
     parser_consume(parser);
     
-    ExprNode* right = parser_parse_logical_and(parser, schema);
+    ExprNode* right = parser_parse_logical_and(parser, cmd);
     
     ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_LOGICAL_OR;
@@ -21,14 +21,14 @@ ExprNode* parser_parse_expression(Parser* parser, TableSchema* schema) {
   return node;
 }
 
-ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema) {
-  ExprNode* node = parser_parse_logical_not(parser, schema);
+ExprNode* parser_parse_logical_and(Parser* parser, JQLCommand* cmd) {
+  ExprNode* node = parser_parse_logical_not(parser, cmd);
   
   while (parser->cur->type == TOK_AND) {
     uint16_t op = parser->cur->type;
     parser_consume(parser);
     
-    ExprNode* right = parser_parse_logical_not(parser, schema);
+    ExprNode* right = parser_parse_logical_not(parser, cmd);
     
     ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_LOGICAL_AND;
@@ -41,30 +41,30 @@ ExprNode* parser_parse_logical_and(Parser* parser, TableSchema* schema) {
   return node;
 }
 
-ExprNode* parser_parse_logical_not(Parser* parser, TableSchema* schema) {
+ExprNode* parser_parse_logical_not(Parser* parser, JQLCommand* cmd) {
   if (parser->cur->type == TOK_NOT) {
     parser_consume(parser);
     
     ExprNode* node = xcalloc(1, sizeof(ExprNode));
     node->type = EXPR_LOGICAL_NOT;    
-    node->unary = parser_parse_logical_not(parser, schema);
+    node->unary = parser_parse_logical_not(parser, cmd);
     
     return node;
   }
 
-  return parser_parse_comparison(parser, schema);
+  return parser_parse_comparison(parser, cmd);
 }
 
-ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
-  ExprNode* left = parser_parse_arithmetic(parser, schema);
+ExprNode* parser_parse_comparison(Parser* parser, JQLCommand* cmd) {
+  ExprNode* left = parser_parse_arithmetic(parser, cmd);
 
   switch (parser->cur->type) {
     case TOK_LIKE:
-      return parser_parse_like(parser, schema, left);
+      return parser_parse_like(parser, cmd, left);
     case TOK_BETWEEN:
-      return parser_parse_between(parser, schema, left);
+      return parser_parse_between(parser, cmd, left);
     case TOK_IN:
-      return parser_parse_in(parser, schema, left);
+      return parser_parse_in(parser, cmd, left);
     case TOK_EQ:
     case TOK_NE:
     case TOK_LT:
@@ -73,7 +73,7 @@ ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
     case TOK_GE: {
       uint16_t op = parser->cur->type;
       parser_consume(parser);
-      ExprNode* right = parser_parse_arithmetic(parser, schema);
+      ExprNode* right = parser_parse_arithmetic(parser, cmd);
 
       ExprNode* node = xcalloc(1, sizeof(ExprNode));
       node->type = EXPR_COMPARISON;
@@ -89,13 +89,13 @@ ExprNode* parser_parse_comparison(Parser* parser, TableSchema* schema) {
 }
 
 
-ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema) {
-  ExprNode* node = parser_parse_term(parser, schema);
+ExprNode* parser_parse_arithmetic(Parser* parser, JQLCommand* cmd) {
+  ExprNode* node = parser_parse_term(parser, cmd);
 
   while (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
     uint16_t op = parser->cur->type;
     parser_consume(parser);
-    ExprNode* right = parser_parse_term(parser, schema);
+    ExprNode* right = parser_parse_term(parser, cmd);
 
     ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_BINARY_OP;
@@ -108,14 +108,14 @@ ExprNode* parser_parse_arithmetic(Parser* parser, TableSchema* schema) {
   return node;
 }
 
-ExprNode* parser_parse_term(Parser* parser, TableSchema* schema) {
-  ExprNode* node = parser_parse_unary(parser, schema);
+ExprNode* parser_parse_term(Parser* parser, JQLCommand* cmd) {
+  ExprNode* node = parser_parse_unary(parser, cmd);
 
   while (parser->cur->type == TOK_MUL || parser->cur->type == TOK_DIV || parser->cur->type == TOK_MOD) {
     uint16_t op = parser->cur->type;
 
     parser_consume(parser);
-    ExprNode* right = parser_parse_unary(parser, schema);
+    ExprNode* right = parser_parse_unary(parser, cmd);
 
     ExprNode* new_node = xcalloc(1, sizeof(ExprNode));
     new_node->type = EXPR_BINARY_OP;
@@ -128,12 +128,12 @@ ExprNode* parser_parse_term(Parser* parser, TableSchema* schema) {
   return node;
 }
 
-ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema) {
+ExprNode* parser_parse_unary(Parser* parser, JQLCommand* cmd) {
   if (parser->cur->type == TOK_ADD || parser->cur->type == TOK_SUB) {
     uint16_t op = parser->cur->type;
     parser_consume(parser);
     
-    ExprNode* operand = parser_parse_unary(parser, schema); 
+    ExprNode* operand = parser_parse_unary(parser, cmd); 
     if (!operand) return NULL;
 
     ExprNode* node = xcalloc(1, sizeof(ExprNode));
@@ -143,13 +143,13 @@ ExprNode* parser_parse_unary(Parser* parser, TableSchema* schema) {
     return node;
   }
 
-  return parser_parse_primary(parser, schema); 
+  return parser_parse_primary(parser, cmd); 
 }
 
-ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
+ExprNode* parser_parse_primary(Parser* parser, JQLCommand* cmd) {
   if (parser->cur->type == TOK_LP) {
     parser_consume(parser);
-    ExprNode* node = parser_parse_expression(parser, schema);
+    ExprNode* node = parser_parse_expression(parser, cmd);
     if (parser->cur->type != TOK_RP) {
       REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
       return NULL;
@@ -162,6 +162,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
     char* first_ident = xstrdup(parser->cur->value);
     parser_consume(parser);
 
+    // Function call
     if (parser->cur->type == TOK_LP) {
       ExprNode* node = xcalloc(1, sizeof(ExprNode));
       node->type = EXPR_FUNCTION;
@@ -170,40 +171,38 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
       node->fn.args = xcalloc(MAX_FN_ARGS, sizeof(ExprNode*));
       node->fn.arg_count = 0;
 
-      parser_consume(parser);  
+      parser_consume(parser);
 
-      if (parser->cur->type != TOK_RP) {
-        while (true) {
-          if (node->fn.arg_count >= MAX_FN_ARGS) {
-            REPORT_ERROR(parser->lexer, "SYE_E_TOO_MANY_FN_ARGS");
-            return NULL;
-          }
-
-          ExprNode* arg = parser_parse_expression(parser, schema);
-          if (!arg) return NULL;
-
-          node->fn.args[node->fn.arg_count++] = arg;
-
-          if (parser->cur->type == TOK_COM) {
-            parser_consume(parser);
-          } else {
-            break;
-          }
+      while (parser->cur->type != TOK_RP) {
+        if (node->fn.arg_count >= MAX_FN_ARGS) {
+          REPORT_ERROR(parser->lexer, "SYE_E_TOO_MANY_FN_ARGS");
+          return NULL;
         }
+
+        ExprNode* arg = parser_parse_expression(parser, cmd);
+        if (!arg) return NULL;
+
+        node->fn.args[node->fn.arg_count++] = arg;
+
+        if (parser->cur->type == TOK_COM) parser_consume(parser);
+        else break;
       }
 
       if (parser->cur->type != TOK_RP) {
         REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_RP");
         return NULL;
       }
-
-      parser_consume(parser);  
+      parser_consume(parser);
       return node;
     }
 
+    // Column reference (maybe qualified with table)
     char* table_name = NULL;
     char* field_name = NULL;
 
+    LOG_DEBUG("Parsing column reference starting with '%s'", first_ident);
+    LOG_DEBUG("CUR tok %s of type", parser->cur->value, parser->cur->type);
+    
     if (parser->cur->type == TOK_DOT) {
       table_name = first_ident;
       parser_consume(parser);
@@ -218,29 +217,18 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
       parser_consume(parser);
     } else {
       field_name = first_ident;
+      table_name = cmd->schemas[0].ptr->table_name;
     }
-
-    int col_index = -1;
-    int table_idx = -1;
-    
-    if (table_name) {
-      table_idx = hash_fnv1a(table_name, MAX_TABLES);
-      LOG_INFO("table_idx evaluated from %s = %d", table_name, table_idx);
-    } 
-
-
-    if (field_name) col_index = find_column_index(schema, field_name);
 
     ExprNode* base = xcalloc(1, sizeof(ExprNode));
     base->type = EXPR_COLUMN;
-    base->column.index = col_index;  
-    base->column.table = table_idx; 
-    base->column.col_name = xstrdup(field_name);
-    
+    base->column.table = hash_fnv1a(table_name, MAX_TABLES);
+    base->column.col_name = field_name;
+
+    // Array access
     while (parser->cur->type == TOK_LB) {
       parser_consume(parser);
-
-      ExprNode* index_expr = parser_parse_expression(parser, schema);
+      ExprNode* index_expr = parser_parse_expression(parser, cmd);
       if (!index_expr) return NULL;
 
       if (parser->cur->type != TOK_RB) {
@@ -251,18 +239,19 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
 
       ExprNode* array_node = xcalloc(1, sizeof(ExprNode));
       array_node->type = EXPR_ARRAY_ACCESS;
-      array_node->column.index = base->column.index;
-      array_node->column.table = base->column.table;
       array_node->column.array_idx = index_expr;
 
-      xfree(base);  
+      array_node->column.table = base->column.table;
+      array_node->column.col_name = base->column.col_name;
+
+      xfree(base);
       base = array_node;
     }
 
-    LOG_INFO("Parsed [iden]: table_idx=%d, col_index=%d, col_name=%s", base->column.table, base->column.index, base->column.col_name ? base->column.col_name : "NULL");
     return base;
   }
 
+  // Literal
   ColumnValue val;
   if (!parser_parse_value(parser, &val)) return NULL;
 
@@ -274,8 +263,7 @@ ExprNode* parser_parse_primary(Parser* parser, TableSchema* schema) {
 }
 
 
-
-ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left) {
+ExprNode* parser_parse_like(Parser* parser, JQLCommand* cmd, ExprNode* left) {
   parser_consume(parser);
 
   if (parser->cur->type != TOK_L_STRING) {
@@ -291,17 +279,17 @@ ExprNode* parser_parse_like(Parser* parser, TableSchema* schema, ExprNode* left)
   return node;
 }
 
-ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* value) {
+ExprNode* parser_parse_between(Parser* parser, JQLCommand* cmd, ExprNode* value) {
   parser_consume(parser);
 
-  ExprNode* lower = parser_parse_arithmetic(parser, schema);
+  ExprNode* lower = parser_parse_arithmetic(parser, cmd);
 
   if (parser->cur->type != TOK_AND) {
     REPORT_ERROR(parser->lexer, "E_EXPECTED_AND_BETWEEN");
   }
   parser_consume(parser);
 
-  ExprNode* upper = parser_parse_arithmetic(parser, schema);
+  ExprNode* upper = parser_parse_arithmetic(parser, cmd);
 
   ExprNode* node = xcalloc(1, sizeof(ExprNode));
   node->type = EXPR_BETWEEN;
@@ -312,7 +300,7 @@ ExprNode* parser_parse_between(Parser* parser, TableSchema* schema, ExprNode* va
   return node;
 }
 
-ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) {
+ExprNode* parser_parse_in(Parser* parser, JQLCommand* cmd, ExprNode* value) {
   parser_consume(parser);
 
   if (parser->cur->type != TOK_LP) {
@@ -324,7 +312,7 @@ ExprNode* parser_parse_in(Parser* parser, TableSchema* schema, ExprNode* value) 
   size_t count = 0;
 
   while (1) {
-    ExprNode* val = parser_parse_arithmetic(parser, schema);
+    ExprNode* val = parser_parse_arithmetic(parser, cmd);
     values = xrealloc(values, sizeof(ExprNode*) * (count + 1));
     values[count++] = val;
 
@@ -440,7 +428,7 @@ bool parser_parse_value(Parser* parser, ColumnValue* col_val) {
           }
         }
 
-        parser_xfree(tmp_parser);
+        parser_free(tmp_parser);
 
         col_val->array.array_size = count;
         col_val->array.array_type = array_type;
