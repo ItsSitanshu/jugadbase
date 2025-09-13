@@ -1,4 +1,5 @@
-#include "storage.h"
+#include "storage/storage.h"
+#include "storage/database.h"
 
 void initialize_buffer_pool(BufferPool* pool, uint8_t idx, char* filename) {
   for (int i = 0; i < POOL_SIZE; i++) {

@@ -602,7 +602,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     // LOG_INFO("%d: %s type of %d", i, schema->columns[i].name, schema->columns[i].type);
 
-    ColumnValue cur = evaluate_expression(src[i], &empty_row, db);
+    ColumnValue cur = evaluate_expression(src[i], &__tup(&empty_row), db, __tup_map, NULL);
 
     bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
 
@@ -728,16 +728,14 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "No table selected"};
   }
 
-  cmd->schemas = xcalloc(cmd->alias_map.count, sizeof(SchemaPointer));
+  TableSchema** schemas = xcalloc(cmd->alias_map.count, sizeof(TableSchema));
   for (int t = 0; t < cmd->alias_map.count; t++) {
-    TableSchema* schema = cmd->schemas[t].ptr;
-    if (!schema) {
+    if (!schemas[t]) {
       LOG_DEBUG("Error: Invalid schema at index %d", t);
       return (ExecutionResult){1, "Error: Invalid schema"};
     }
-    cmd->schemas[t].ptr = schema;
-    LOG_DEBUG("Loading table '%s' into buffer pool", schema->table_name);
-    load_btree_cluster(db, schema->table_name);
+    LOG_DEBUG("Loading table '%s' into buffer pool", schemas[t]->table_name);
+    load_btree_cluster(db, schemas[t]->table_name);
   }
 
   TupleSet* tuples = generate_all_tuples(db, cmd);
@@ -762,8 +760,8 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   uint32_t total_found = 0;
   for (uint32_t i = 0; i < tuples->count; i++) {
     Tuple* tuple = &tuples->tuples[i];
-    if (cmd->has_where && !evaluate_tuple(cmd->where, tuple, db)) continue;
-    matching_rows[total_found++] = (Row*)tuple; // store pointer to tuple for evaluation
+    if (cmd->has_where && !evaluate_condition(cmd->where, tuple, db, tuples->table_map, schemas)) continue;
+    matching_rows[total_found++] = (Row*)tuple; 
   }
 
   LOG_DEBUG("Total matching rows after WHERE: %d", total_found);
@@ -798,7 +796,6 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       ExprNode* expr = cmd->sel_columns[j].expr;
       ColumnValue val = {0};
 
-      // Alias resolution
       if (cmd->sel_columns[j].alias) {
         aliases[j] = xstrdup(cmd->sel_columns[j].alias);
       } else if (expr && expr->type == EXPR_FUNCTION) {
@@ -808,20 +805,19 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
         int array_idx = expr->column.array_idx->literal.int_value;
         char buffer[256];
         snprintf(buffer, sizeof(buffer), "%s[%d]",
-                 tuple->vectors[expr->column.table]->values[base_idx].str_value,
+                 tuple->rows[expr->column.table]->values[base_idx].str_value,
                  array_idx);
         aliases[j] = xstrdup(buffer);
       } else if (expr && expr->type == EXPR_COLUMN) {
-        aliases[j] = xstrdup(cmd->schemas[expr->column.table].ptr->columns[expr->column.index].name);
+        aliases[j] = xstrdup(schemas[expr->column.table]->columns[expr->column.index].name);
       }
 
-      // Value evaluation
       if (!expr) {
-        val = tuple->vectors[0]->values[j];
+        val = tuple->rows[0]->values[j];
       } else if (is_aggregate_col[j]) {
         val = aggregate_results[j];
       } else {
-        val = evaluate_expression(expr, tuple, db);
+        val = evaluate_expression(expr, tuple, db, tuples->table_map, schemas);
       }
 
       dst->values[j] = val;
@@ -837,7 +833,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       char valbuf[128];
       ColumnValue v = r->values[j];
       if (v.is_null) snprintf(valbuf, sizeof(valbuf), "NULL");
-      else if (v.type == TOK_T_INT) snprintf(valbuf, sizeof(valbuf), "%lld", v.int_value);
+      else if (v.type == TOK_T_INT) snprintf(valbuf, sizeof(valbuf), "%ld", v.int_value);
       else if (v.type == TOK_T_FLOAT) snprintf(valbuf, sizeof(valbuf), "%f", v.float_value);
       else snprintf(valbuf, sizeof(valbuf), "'%s'", v.str_value);
       strncat(buffer, " | ", sizeof(buffer) - strlen(buffer) - 1);
@@ -847,7 +843,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   }
 
   // Cleanup
-  for (uint32_t i = 0; i < tuples->count; i++) free(tuples->tuples[i].vectors);
+  for (uint32_t i = 0; i < tuples->count; i++) free(tuples->tuples[i].rows);
   free(tuples->tuples);
   free(tuples);
   xfree(is_aggregate_col);
@@ -866,155 +862,6 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     .owns_rows = 1
   };
 }
-
-
-
-// ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
-//   if (!db || !cmd || !cmd->schemas[0].ptr) {
-//     return (ExecutionResult){1, "Invalid execution context or command"};
-//   }
-
-//   TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
-//   if (!schema) {
-//     return (ExecutionResult){1, "Error: Invalid schema"};
-//   }
-
-//   load_btree_cluster(db, schema->table_name);
-//   cmd->schemas[0].ptr = schema;
-
-//   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
-//   BufferPool* pool = &db->lake[schema_idx];
-
-//   RowID row_start = {0};
-//   Row* collected_rows = xcalloc(100, sizeof(Row));
-//   if (!collected_rows) {
-//     return (ExecutionResult){1, "Memory allocation failed for result rows"};
-//   }
-
-//   uint32_t total_found = 0;
-//   for (uint16_t i = 0; i < pool->num_pages; i++) {
-//     Page* page = pool->pages[i];
-//     if (!page || page->num_rows == 0) continue;
-//     for (uint16_t j = 0; j < page->num_rows; j++) {
-//       Row* row = &page->rows[j];
-//       if (!is_struct_zeroed(&row_start, sizeof(RowID))) {
-//         if (row->id.page_id != row_start.page_id || row->id.row_id != row_start.row_id)
-//           continue;
-//       }
-
-//       if (is_struct_zeroed(row, sizeof(Row))) continue;
-//       if (row->deleted) continue;
-//       if (cmd->has_where && !evaluate_condition(cmd->where, row, db))  continue;
-
-//       collected_rows[total_found] = *row;
-//       total_found++;  
-      
-//       if (!is_struct_zeroed(&row_start, sizeof(RowID)) && total_found > 0)
-//         break;
-//     }
-//   }
-
-//   if (cmd->has_order_by && total_found > 1) {
-//     quick_sort_rows(collected_rows, 0, total_found - 1, cmd, schema);
-//   }
-
-//   uint32_t start = cmd->has_offset ? cmd->offset : 0;
-//   uint32_t max_out = cmd->has_limit  ? cmd->limit  : total_found;
-//   uint32_t available = (start < total_found) ? (total_found - start) : 0;
-//   uint32_t out_count = (available < max_out) ? available : max_out;
-
-//   Row* result_rows = xcalloc(out_count, sizeof(Row));
-//   char** aliases = xmalloc(sizeof(char*) * cmd->value_counts[0]);
-//   for (int i = 0; i < cmd->value_counts[0]; i++) {
-//     aliases[i] = xmalloc(256);
-//   }
-  
-//   if (!result_rows) {
-//     xfree(collected_rows);
-//     return (ExecutionResult){1, "Memory allocation failed for limited result rows"};
-//   }
-
-//   bool* is_aggregate_col = xcalloc(schema->column_count, sizeof(bool));
-//   ColumnValue* aggregate_results = xcalloc(schema->column_count, sizeof(ColumnValue));
-
-//   for (int j = 0; j < schema->column_count; j++) {
-//     ExprNode* expr = cmd->sel_columns[j].expr;
-    
-//     if (expr && expr->type == EXPR_FUNCTION && expr->fn.type != NOT_AGG) {
-//       is_aggregate_col[j] = true;
-//       aggregate_results[j] = evaluate_aggregate(expr, collected_rows, total_found, cmd, db);
-//     }
-//   }
-
-
-//   for (uint32_t i = 0; i < out_count; i++) {
-//     Row* src = &collected_rows[start + i];
-//     Row* dst = &result_rows[i];
-    
-//     memset(dst, 0, sizeof(Row));
-//     dst->id = src->id;
-//     dst->values = xcalloc(schema->column_count, sizeof(ColumnValue));
-//     dst->n_values = schema->column_count;
-//     if (!dst->values) {
-//       xfree(collected_rows);
-//       xfree(result_rows);
-//       xfree(is_aggregate_col);
-//       xfree(aggregate_results);
-//     }
-        
-//     for (int k = 0; k < schema->column_count; k++) {
-//       dst->values[k].is_null = true;
-//     }
-
-//     int col_count = cmd->value_counts[0];
-
-//     for (int j = 0; j < col_count; j++) {
-//       ExprNode* expr = cmd->sel_columns[j].expr;
-//       ColumnValue val = {0};
-
-//       if (cmd->sel_columns[j].alias) {
-//         aliases[j] = xstrdup(cmd->sel_columns[j].alias);
-//       } else if (expr->type == EXPR_ARRAY_ACCESS) {
-//         int base_idx = expr->column.index;
-//         int array_idx = expr->column.array_idx->literal.int_value;
-//         const char* base_name = cmd->schemas[0].ptr->columns[base_idx].name;
-//         char buffer[256];
-//         snprintf(buffer, sizeof(buffer), "%s[%d]", base_name, array_idx);
-//         aliases[j] = xstrdup(buffer);
-//       } else if (expr->type == EXPR_FUNCTION) {
-//         aliases[j] = xstrdup(expr->fn.name);
-//       } else {
-//         aliases[j] = xstrdup(cmd->schemas[0].ptr->columns[expr->column.index].name);
-//       }
-      
-//       if (!expr) {
-//         dst = src;
-//         continue;
-//       }
-      
-//       if (is_aggregate_col[j]) {
-//         dst->values[j] = aggregate_results[j];
-//       } else {
-//         val = evaluate_expression(expr, src, cmd, db);
-//         dst->values[j] = val;
-//       }
-//     }
-//   }
-
-//   xfree(is_aggregate_col);
-//   xfree(aggregate_results);
-//   xfree(collected_rows);
-
-//   return (ExecutionResult){
-//     .code = 0,
-//     .message = "Select executed successfully",
-//     .rows = result_rows,
-//     .aliases = aliases,
-//     .row_count = out_count,
-//     .alias_limit = cmd->value_counts[0],
-//     .owns_rows = 1
-//   };
-// }
 
 ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
   if (!db || !cmd || !cmd->schemas[0].ptr) {

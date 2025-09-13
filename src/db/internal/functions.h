@@ -32,7 +32,7 @@ typedef struct {
 } FunctionRegistry;
 
 extern FunctionRegistry global_function_registry;
-ColumnValue resolve_expr_value(ExprNode* expr, Row* row, Database* db, ColumnDefinition* out);
+ColumnValue resolve_expr_value(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas, ColumnDefinition* out_defn);
 
 void register_function(const char* name, BuiltinFunction func);
 BuiltinFunction find_function(const char* name);
@@ -41,7 +41,7 @@ void register_builtin_functions();
 
 ColumnValue evaluate_function(const char* name, ExprNode** args, uint8_t arg_count, Row* row, Database* db);
 ColumnValue evaluate_aggregate(ExprNode* expr, Row* rows, uint32_t row_count, JQLCommand* cmd, Database* db);
-ColumnValue evaluate_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
 
 ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, Database* db);
 ColumnValue fn_round(ExprNode** args, uint8_t arg_count, Row* row, Database* db);

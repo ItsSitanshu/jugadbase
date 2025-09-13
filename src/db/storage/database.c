@@ -634,7 +634,7 @@ bool load_schema_tc(Database* db, char* table_name) {
       Row empty_row = {0}; 
 
       ExprNode* node =  load_attr_default(db, table_id, col->name);
-      ColumnValue cur = evaluate_expression(node, &empty_row, db);
+      ColumnValue cur = evaluate_expression(node, &__tup(&empty_row), db, __tup_map, NULL);
 
       bool valid_conversion = infer_and_cast_value(&cur, col);
 
@@ -695,7 +695,7 @@ TableSchema* get_table_schema_cmd(Database* db, JQLCommand* cmd, const char* ali
 
   int table_id = cmd->table_id;
 
-  if (cmd->alias_map && cmd->alias_map.count > 0) {
+  if (!(is_struct_zeroed(&cmd->alias_map, sizeof(cmd->alias_map))) && cmd->alias_map.count > 0) {
     bool found = false;
     for (int i = 0; i < cmd->alias_map.count; i++) {
       if (strcmp(cmd->alias_map.entries[i].alias, alias_or_table) == 0) {
@@ -729,7 +729,7 @@ TableSchema* get_primary_schema(Database* db, JQLCommand* cmd) {
     return NULL;
   }
 
-  int table_id = (cmd->alias_map && cmd->alias_map.count > 0)
+  int table_id = (!is_struct_zeroed(&cmd->alias_map, sizeof(cmd->alias_map)) && cmd->alias_map.count > 0)
     ? cmd->alias_map.entries[0].table_id
     : cmd->table_id;
 
@@ -932,7 +932,7 @@ bool load_schema_for_table(Database* db, size_t idx, const char* table_name) {
       Row empty_row = {0};
 
       ExprNode* node =  load_attr_default(attr_db, table_id, schema->columns[j].name);
-      ColumnValue cur = evaluate_expression(node, &empty_row, db);
+      ColumnValue cur = evaluate_expression(node, &__tup(&empty_row), db, __tup_map, NULL);
 
       bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[j]));
 

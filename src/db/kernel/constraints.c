@@ -508,7 +508,7 @@ ExecutionResult collect_fk_tuples_delete(Database* db, TableSchema* schema, JQLC
     for (uint16_t row_idx = 0; row_idx < page->num_rows; row_idx++) {
       Row* row = &page->rows[row_idx];
       if (is_struct_zeroed(row, sizeof(Row)) || row->deleted) continue;
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, db)) continue;
+      if (cmd->has_where && !evaluate_condition(cmd->where, &__tup(row), db, __tup_map, NULL)) continue;
 
       if (!expand_row_set(delete_set)) return (ExecutionResult){1, "Out of memory"};
       delete_set->rows[delete_set->count++] = (RowID){page_idx, row_idx};
@@ -545,7 +545,7 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
     for (uint16_t row_idx = 0; row_idx < page->num_rows; ++row_idx) {
       Row* row = &page->rows[row_idx];
       if (row->deleted || !row) continue;
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, db)) continue;
+      if (cmd->has_where && !evaluate_condition(cmd->where, &__tup(row), db, __tup_map, NULL)) continue;
 
       if (!expand_row_set(update_set)) return (ExecutionResult){1, "Out of memory"};
       update_set->rows[update_set->count++] = (RowID){page_idx, row_idx};
@@ -574,8 +574,8 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
 
           for (int k = 0; k < cmd->value_counts[0]; ++k) {
             if (cmd->update_columns[k].index == schema_col_idx) {
-              ColumnValue eval = evaluate_expression(cmd->values[0][k], row, db);
-              ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, db);
+              ColumnValue eval = evaluate_expression(cmd->values[0][k], &__tup(row), db, __tup_map, NULL);
+              ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, &__tup(row), db, __tup_map, NULL);
 
               if (!infer_and_cast_value(&eval, &schema->columns[schema_col_idx])) {
                 xfree(old_tuple);
@@ -943,8 +943,8 @@ ExecutionResult perform_updates(Database* db, TableSchema* schema, JQLCommand* c
 
     for (int k = 0; k < max_updates; ++k) {
       int col_index = cmd->update_columns[k].index;
-      ColumnValue eval = evaluate_expression(cmd->values[0][k], row, db);
-      ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, row, db);
+      ColumnValue eval = evaluate_expression(cmd->values[0][k], &__tup(row), db, __tup_map, NULL);
+      ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, &__tup(row), db, __tup_map, NULL);
 
       if (!infer_and_cast_value(&eval, &schema->columns[col_index])) {
         xfree(upd.cols);

@@ -42,6 +42,11 @@ typedef struct {
   int* table_map; 
 } TupleSet;
 
+#define __tup(row_ptr) \
+  ((Tuple){.dimension = 1, .rows = (Row*[]){row_ptr}})
+#define __tup_map &((int){0})
+#define __schemas(schema_ptr) ((TableSchema*[]){schema_ptr})
+
 typedef struct UpdateData {
   uint16_t* cols;
   ColumnValue* old_vals;

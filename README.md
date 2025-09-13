@@ -63,6 +63,7 @@ A database built for JugadInnovations. Why go for complex systems when a little 
 - FIX BUG: Multiple inserts statements in same file when large contents are present
 - ~Implement a basic permission check layer~
 - Implement table_a.row_x.attr = table_b.row_y.attr comparisons
+- Re-write functions to implement argument based tuples
 - Implement `DROP` to remove tables
 - Implement `JOIN` operations  
 - Implement composite primary keys

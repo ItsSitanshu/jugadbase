@@ -35,8 +35,8 @@ ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db) {
 ColumnValue evaluate_column_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas) {
   ColumnValue result = {0};
   int table_idx = table_map[expr->column.table];
-  Row* row = tuple->vectors[table_idx];
-  TableSchema* schema = schemas[table_idx].ptr;
+  Row* row = tuple->rows[table_idx];
+  TableSchema* schema = schemas[table_idx];
 
   if (!row || !schema) {
     LOG_ERROR("Invalid row or schema for table index %d", expr->column.table);
@@ -271,8 +271,8 @@ ColumnValue resolve_expr_value(ExprNode* expr, Tuple* tuple, Database* db, int* 
   ColumnValue val = {0};
   if (expr->type == EXPR_COLUMN) {
     int table_id = table_map[expr->column.table];
-    TableSchema* schema = schemas[table_id].ptr;
-    Row* row = tuple->vectors[table_id];
+    TableSchema* schema = schemas[table_id];
+    Row* row = tuple->rows[table_id];
     int col_index = find_column_index(schema, expr->column.col_name);
     if (col_index < 0 || !row) return val;
     val = row->values[col_index];
@@ -298,7 +298,18 @@ ColumnValue evaluate_expression(ExprNode* expr, Tuple* tuple, Database* db, int*
     case EXPR_LOGICAL_AND: return evaluate_logical_and_expression(expr, tuple, db, table_map, schemas);
     case EXPR_LOGICAL_OR: return evaluate_logical_or_expression(expr, tuple, db, table_map, schemas);
     case EXPR_LOGICAL_NOT: return evaluate_logical_not_expression(expr, tuple, db, table_map, schemas);
-    default: return (ColumnValue){0};
+    case EXPR_FUNCTION: {
+      if (expr->fn.type != NOT_AGG) {
+        LOG_WARN("Evaluation of AGG function attempted, post-evaluation will be used");
+        return (ColumnValue){ .uneval = &(expr->fn) };
+      }
+      
+      return evaluate_function(expr->fn.name, expr->fn.args, expr->fn.arg_count, NULL, db);
+    }
+    default: {
+      LOG_WARN("Unsupported expression type: %d", expr->type);
+      return (ColumnValue){0};
+    }
   }
 }
 
