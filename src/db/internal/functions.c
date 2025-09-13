@@ -115,7 +115,7 @@ ColumnValue evaluate_aggregate(ExprNode* expr, Row* rows, uint32_t row_count, JQ
 }
 
 ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
 
   if (input.type == TOK_T_INT || input.type == TOK_T_UINT || input.type == TOK_T_SERIAL ) {
@@ -138,7 +138,7 @@ ColumnValue fn_abs(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_round(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -179,7 +179,7 @@ ColumnValue fn_now(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_sin(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -197,7 +197,7 @@ ColumnValue fn_sin(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_cos(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -215,7 +215,7 @@ ColumnValue fn_cos(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_tan(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -233,7 +233,7 @@ ColumnValue fn_tan(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_log(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -251,8 +251,8 @@ ColumnValue fn_log(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_pow(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue base = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
-  ColumnValue exponent = evaluate_expression(args[1], &__tup(row), db, __tup_map, NULL);
+  ColumnValue base = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
+  ColumnValue exponent = evaluate_expression(args[1], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
   
   bool valid_conversion = infer_and_cast_va(2,
@@ -273,8 +273,8 @@ ColumnValue fn_pow(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_concat(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue str1 = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
-  ColumnValue str2 = evaluate_expression(args[1], &__tup(row), db, __tup_map, NULL);
+  ColumnValue str1 = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
+  ColumnValue str2 = evaluate_expression(args[1], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_va(2,
@@ -296,9 +296,9 @@ ColumnValue fn_concat(ExprNode** args, uint8_t arg_count, Row* row, Database* db
 
 
 ColumnValue fn_substring(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
-  ColumnValue start = evaluate_expression(args[1], &__tup(row), db, __tup_map, NULL);
-  ColumnValue length = evaluate_expression(args[2], &__tup(row), db, __tup_map, NULL);
+  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
+  ColumnValue start = evaluate_expression(args[1], &__tup(row), db, NULL, NULL);
+  ColumnValue length = evaluate_expression(args[2], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_va(3, 
@@ -333,7 +333,7 @@ ColumnValue fn_substring(ExprNode** args, uint8_t arg_count, Row* row, Database*
 }
 
 ColumnValue fn_length(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_INT };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -353,7 +353,7 @@ ColumnValue fn_length(ExprNode** args, uint8_t arg_count, Row* row, Database* db
 }
 
 ColumnValue fn_lower(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -377,7 +377,7 @@ ColumnValue fn_lower(ExprNode** args, uint8_t arg_count, Row* row, Database* db)
 }
 
 ColumnValue fn_upper(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -401,7 +401,7 @@ ColumnValue fn_upper(ExprNode** args, uint8_t arg_count, Row* row, Database* db)
 }
 
 ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -431,9 +431,9 @@ ColumnValue fn_trim(ExprNode** args, uint8_t arg_count, Row* row, Database* db) 
 }
 
 ColumnValue fn_replace(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
-  ColumnValue old_sub = evaluate_expression(args[1], &__tup(row), db, __tup_map, NULL);
-  ColumnValue new_sub = evaluate_expression(args[2], &__tup(row), db, __tup_map, NULL);
+  ColumnValue str = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
+  ColumnValue old_sub = evaluate_expression(args[1], &__tup(row), db, NULL, NULL);
+  ColumnValue new_sub = evaluate_expression(args[2], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_STRING };
 
   bool valid_conversion = infer_and_cast_value_raw(&str, TOK_T_STRING);
@@ -472,7 +472,7 @@ ColumnValue fn_coalesce(ExprNode** args, uint8_t arg_count, Row* row, Database* 
   ColumnValue result = { .is_null = true };
 
   for (uint8_t i = 0; i < arg_count; i++) {
-    result = evaluate_expression(args[i], &__tup(row), db, __tup_map, NULL);
+    result = evaluate_expression(args[i], &__tup(row), db, NULL, NULL);
     if (!result.is_null) {
       break;
     }
@@ -482,8 +482,8 @@ ColumnValue fn_coalesce(ExprNode** args, uint8_t arg_count, Row* row, Database* 
 }
 
 ColumnValue fn_cast(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
-  ColumnValue type_info = evaluate_expression(args[1], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
+  ColumnValue type_info = evaluate_expression(args[1], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true };
 
   if (type_info.type == TOK_T_INT) {
@@ -520,13 +520,13 @@ ColumnValue fn_extract(ExprNode** args, uint8_t arg_count, Row* row, Database* d
     return result;
   }
 
-  ColumnValue field_arg = resolve_expr_value(args[0], &__tup(row), db, __tup_map, NULL, NULL);
+  ColumnValue field_arg = resolve_expr_value(args[0], &__tup(row), db, NULL, NULL, NULL);
   if (field_arg.is_null || (field_arg.type != TOK_T_STRING && field_arg.type != TOK_T_VARCHAR)) {
     LOG_WARN("First argument of EXTRACT() must be a non-null string");
     return result;
   }
 
-  ColumnValue time_arg = resolve_expr_value(args[1], &__tup(row), db, __tup_map, NULL, NULL);
+  ColumnValue time_arg = resolve_expr_value(args[1], &__tup(row), db, NULL, NULL, NULL);
   if (time_arg.is_null) {
     LOG_WARN("Second argument of EXTRACT() cannot be NULL");
     return result;
@@ -661,20 +661,20 @@ ColumnValue fn_time(ExprNode** args, uint8_t arg_count, Row* row, Database* db) 
 }
 
 ColumnValue fn_ifnull(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   
   if (input.is_null) {
-    return evaluate_expression(args[1], &__tup(row), db, __tup_map, NULL);
+    return evaluate_expression(args[1], &__tup(row), db, NULL, NULL);
   } else {
     return input;
   }
 }
 
 ColumnValue fn_greatest(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue result = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue result = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
 
   for (uint8_t i = 1; i < arg_count; i++) {
-    ColumnValue temp = evaluate_expression(args[i], &__tup(row), db, __tup_map, NULL);
+    ColumnValue temp = evaluate_expression(args[i], &__tup(row), db, NULL, NULL);
     if (temp.type == TOK_T_INT && result.type == TOK_T_INT) {
       if (temp.int_value > result.int_value) {
         result = temp;
@@ -690,10 +690,10 @@ ColumnValue fn_greatest(ExprNode** args, uint8_t arg_count, Row* row, Database* 
 }
 
 ColumnValue fn_least(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue result = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue result = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
 
   for (uint8_t i = 1; i < arg_count; i++) {
-    ColumnValue temp = evaluate_expression(args[i], &__tup(row), db, __tup_map, NULL);
+    ColumnValue temp = evaluate_expression(args[i], &__tup(row), db, NULL, NULL);
     if (temp.type == TOK_T_INT && result.type == TOK_T_INT) {
       if (temp.int_value < result.int_value) {
         result = temp;
@@ -716,7 +716,7 @@ ColumnValue fn_rand(ExprNode** args, uint8_t arg_count, Row* row, Database* db) 
 }
 
 ColumnValue fn_floor(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   if (input.type == TOK_T_DOUBLE) {
@@ -728,7 +728,7 @@ ColumnValue fn_floor(ExprNode** args, uint8_t arg_count, Row* row, Database* db)
 }
 
 ColumnValue fn_ceiling(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   if (input.type == TOK_T_DOUBLE) {
@@ -747,7 +747,7 @@ ColumnValue fn_pi(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
 }
 
 ColumnValue fn_degrees(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);
@@ -764,7 +764,7 @@ ColumnValue fn_degrees(ExprNode** args, uint8_t arg_count, Row* row, Database* d
 }
 
 ColumnValue fn_radians(ExprNode** args, uint8_t arg_count, Row* row, Database* db) {
-  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, __tup_map, NULL);
+  ColumnValue input = evaluate_expression(args[0], &__tup(row), db, NULL, NULL);
   ColumnValue result = { .is_null = true, .type = TOK_T_DOUBLE };
 
   bool valid_conversion = infer_and_cast_value_raw(&input, TOK_T_DOUBLE);

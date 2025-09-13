@@ -294,11 +294,17 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
   command->sel_columns = xcalloc(MAX_COLUMNS, sizeof(SelectColumn));
   int column_count = 0;
 
+  if (primary_table_id < 0 && command->alias_map.count == 1) {
+    primary_table_id = command->alias_map.entries[0].table_id;
+  }
+
+
   if (parser->cur->type == TOK_MUL) {
     if (primary_table_id < 0) {
-      REPORT_ERROR(parser->lexer, "SELECT * requires a primary table (!table)");
+      REPORT_ERROR(parser->lexer, "SELECT * requires a primary table (!table) amongst multiple tables: TODO(COMMAFIER)");
       return command;
     }
+
     TableSchema* schema = db->tc[primary_table_id].schema;
     for (int i = 0; i < schema->column_count; i++) {
       ExprNode* expr = xmalloc(sizeof(ExprNode));
@@ -306,6 +312,7 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
       expr->column.index = i;
       expr->column.table = primary_table_id;
       command->sel_columns[i].expr = expr;
+      LOG_DEBUG("col: %d tbl: %d", expr->column.index, expr->column.table);
     }
     column_count = schema->column_count;
     parser_consume(parser);

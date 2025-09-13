@@ -34,9 +34,17 @@ ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db) {
 // --- Column ---
 ColumnValue evaluate_column_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas) {
   ColumnValue result = {0};
-  int table_idx = table_map[expr->column.table];
-  Row* row = tuple->rows[table_idx];
-  TableSchema* schema = schemas[table_idx];
+  bool multi_row = !(table_map == NULL && schemas == NULL);
+
+  Row* row = tuple->rows[0];
+  TableSchema* schema = db->tc[expr->column.table].schema;
+  
+  if (multi_row) {
+    int table_idx = table_map[expr->column.table];
+    
+    schema = schemas[table_idx];
+    row = tuple->rows[table_idx];
+  }
 
   if (!row || !schema) {
     LOG_ERROR("Invalid row or schema for table index %d", expr->column.table);
@@ -266,13 +274,22 @@ ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int
   return result;
 }
 
-// --- Resolve & Evaluate ---
 ColumnValue resolve_expr_value(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas, ColumnDefinition* out_defn) {
   ColumnValue val = {0};
+
+  bool multi_row = !(table_map == NULL && schemas == NULL);
+
   if (expr->type == EXPR_COLUMN) {
-    int table_id = table_map[expr->column.table];
-    TableSchema* schema = schemas[table_id];
-    Row* row = tuple->rows[table_id];
+    Row* row = tuple->rows[0];
+    TableSchema* schema = db->tc[expr->column.table].schema;
+
+    if (multi_row) {
+      int table_idx = table_map[expr->column.table];
+      
+      schema = schemas[table_idx];
+      row = tuple->rows[table_idx];
+    }
+    
     int col_index = find_column_index(schema, expr->column.col_name);
     if (col_index < 0 || !row) return val;
     val = row->values[col_index];

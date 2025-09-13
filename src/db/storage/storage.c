@@ -720,8 +720,8 @@ bool serialize_delete(BufferPool* pool, RowID rid) {
   return true;
 }
 
-void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, TupleSet* result) {
-  if (dimension == cmd->schema_count) {
+void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, TupleSet* result, TableSchema** schemas) {
+  if (dimension == cmd->alias_map.count) {
     if (result->count >= result->capacity) {
       result->capacity *= 2;
       result->tuples = xrealloc(result->tuples,
@@ -729,13 +729,13 @@ void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, T
     }
 
     Tuple* t = &result->tuples[result->count++];
-    t->dimension = cmd->schema_count;
-    t->rows = xcalloc(cmd->schema_count, sizeof(Row*));
-    memcpy(t->rows, cur_row, cmd->schema_count * sizeof(Row*));
+    t->dimension = cmd->alias_map.count;
+    t->rows = xcalloc(t->dimension, sizeof(Row*));
+    memcpy(t->rows, cur_row, t->dimension * sizeof(Row*));
     return;
   }
 
-  TableSchema* schema = cmd->schemas[dimension].ptr;
+  TableSchema* schema = schemas[dimension];
   if (!schema) {
     LOG_ERROR("Schema missing at dimension %d", dimension);
     return;
@@ -753,20 +753,26 @@ void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, T
       if (!vec || vec->deleted || is_struct_zeroed(vec, sizeof(Row))) continue;
 
       cur_row[dimension] = vec;
-      build_tuples(db, cmd, dimension + 1, cur_row, result);
+      build_tuples(db, cmd, dimension + 1, cur_row, result, schemas);
     }
   }
 }
 
-TupleSet* generate_all_tuples(Database* db, JQLCommand* cmd) {
+TupleSet* generate_all_tuples(Database* db, JQLCommand* cmd, TableSchema** schemas) {
   TupleSet* result = xcalloc(1, sizeof(TupleSet));
   result->capacity = 128;
   result->tuples = xcalloc(result->capacity, sizeof(Tuple));
   result->count = 0;
 
-  Row** cur_row = xcalloc(cmd->schema_count, sizeof(Row*));
-  build_tuples(db, cmd, 0, cur_row, result);
+  Row** cur_row = xcalloc(cmd->alias_map.count, sizeof(Row*));
+
+  build_tuples(db, cmd, 0, cur_row, result, schemas);
   free(cur_row);
+
+  result->table_map = xcalloc(cmd->alias_map.count, sizeof(int));
+  for (int i = 0; i < cmd->alias_map.count; i++) {
+    result->table_map[i] = hash_fnv1a(schemas[i]->table_name, MAX_TABLES);
+  }
 
   return result;
 }

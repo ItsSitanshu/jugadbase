@@ -5,10 +5,10 @@ Result process(Database* db, char* buffer) {
     return (Result){(ExecutionResult){1, "Invalid context"}, NULL};
   }
 
-  if (!is_god_mode() && db->current_role == NULL && !db->is_core) {
-    LOG_ERROR("No active role. Please login first.");
-    return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
-  } 
+  // if (!is_god_mode() && db->current_role == NULL && !db->is_core) {
+  //   LOG_ERROR("No active role. Please login first.");
+  //   return (Result){(ExecutionResult){1, "No active role. Please login first."}, NULL};
+  // } 
 
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
@@ -27,7 +27,6 @@ Result process_silent(Database* db, char* buffer) {
 
   lexer_set_buffer(db->lexer, buffer);
   parser_reset(db->parser);
-
 
   JQLCommand* cmd = xmalloc(sizeof(JQLCommand));
   cmd = parser_parse(db);

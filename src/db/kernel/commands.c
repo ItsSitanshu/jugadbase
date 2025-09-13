@@ -602,7 +602,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 
     // LOG_INFO("%d: %s type of %d", i, schema->columns[i].name, schema->columns[i].type);
 
-    ColumnValue cur = evaluate_expression(src[i], &__tup(&empty_row), db, __tup_map, NULL);
+    ColumnValue cur = evaluate_expression(src[i], &__tup(&empty_row), db, NULL, NULL);
 
     bool valid_conversion = infer_and_cast_value(&cur, &(schema->columns[i]));
 
@@ -728,17 +728,24 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "No table selected"};
   }
 
+  // if (cmd->table_id != -1) {
+  //   cmd->alias_map.count = 1;
+  //   cmd->alias_map.aliases[0] = ;
+  //   cmd->alias_map.table_ids[0] = cmd->table_id;
+  // }
   TableSchema** schemas = xcalloc(cmd->alias_map.count, sizeof(TableSchema));
   for (int t = 0; t < cmd->alias_map.count; t++) {
+    int idx = cmd->alias_map.entries[t].table_id;
+    schemas[t] = db->tc[idx].schema;
     if (!schemas[t]) {
-      LOG_DEBUG("Error: Invalid schema at index %d", t);
+      LOG_DEBUG("Error: Invalid schema at index %d", idx);
       return (ExecutionResult){1, "Error: Invalid schema"};
     }
     LOG_DEBUG("Loading table '%s' into buffer pool", schemas[t]->table_name);
     load_btree_cluster(db, schemas[t]->table_name);
   }
 
-  TupleSet* tuples = generate_all_tuples(db, cmd);
+  TupleSet* tuples = generate_all_tuples(db, cmd, schemas);
   if (!tuples || tuples->count == 0) {
     LOG_DEBUG("No rows found in any table combination");
     return (ExecutionResult){0, "Select executed successfully"};
@@ -809,7 +816,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
                  array_idx);
         aliases[j] = xstrdup(buffer);
       } else if (expr && expr->type == EXPR_COLUMN) {
-        aliases[j] = xstrdup(schemas[expr->column.table]->columns[expr->column.index].name);
+        aliases[j] = xstrdup(db->tc[expr->column.table].schema->columns[expr->column.index].name);
       }
 
       if (!expr) {
@@ -832,12 +839,7 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     for (int j = 0; j < cmd->value_counts[0]; j++) {
       char valbuf[128];
       ColumnValue v = r->values[j];
-      if (v.is_null) snprintf(valbuf, sizeof(valbuf), "NULL");
-      else if (v.type == TOK_T_INT) snprintf(valbuf, sizeof(valbuf), "%ld", v.int_value);
-      else if (v.type == TOK_T_FLOAT) snprintf(valbuf, sizeof(valbuf), "%f", v.float_value);
-      else snprintf(valbuf, sizeof(valbuf), "'%s'", v.str_value);
-      strncat(buffer, " | ", sizeof(buffer) - strlen(buffer) - 1);
-      strncat(buffer, valbuf, sizeof(buffer) - strlen(buffer) - 1);
+      print_column_value(&v);
     }
     LOG_DEBUG("%s", buffer);
   }

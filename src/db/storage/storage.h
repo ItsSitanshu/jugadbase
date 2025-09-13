@@ -44,8 +44,6 @@ typedef struct {
 
 #define __tup(row_ptr) \
   ((Tuple){.dimension = 1, .rows = (Row*[]){row_ptr}})
-#define __tup_map &((int){0})
-#define __schemas(schema_ptr) ((TableSchema*[]){schema_ptr})
 
 typedef struct UpdateData {
   uint16_t* cols;
@@ -88,8 +86,8 @@ RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc);
 uint32_t row_to_buffer(Row* row, BufferPool* pool, TableSchema* schema, uint8_t* buffer);
 bool serialize_delete(BufferPool* pool, RowID rid);
 
-void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, TupleSet* result);
-TupleSet* generate_all_tuples(Database* db, JQLCommand* cmd);
+void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, TupleSet* result, TableSchema** schemas);
+TupleSet* generate_all_tuples(Database* db, JQLCommand* cmd, TableSchema** schemas);
 
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc);
 void free_row(Row* row);
