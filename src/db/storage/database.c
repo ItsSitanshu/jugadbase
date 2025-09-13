@@ -66,22 +66,6 @@ Database* db_init(char* dir, Database* core) {
   db->core = core;
   db->current_role = NULL;
 
-  if (!db->core) {
-    db->is_core = true;
-    register_builtin_functions();
-    bootstrap_core_tables(db);
-    
-    load_tc(db);
-    if (!load_initial_schema(db)) {
-      LOG_FATAL("Failed to read schema");
-    }
-
-    load_lake(db);
-
-  
-    process_file(db, CORE_JCL_PATH, true, true);
-  }
-
   load_tc(db);
   if (!load_initial_schema(db)) {
     LOG_FATAL("Failed to read schema");
@@ -91,6 +75,8 @@ Database* db_init(char* dir, Database* core) {
   LOG_INFO("Successfully loaded %lu table(s) from catalog", db->table_count);
 
   load_constr_syscache(db);  
+
+  register_builtin_functions();
 
   return db;
 }
@@ -415,6 +401,7 @@ void load_table_schema(Database* db) {
 }
 
 void load_btree_cluster(Database* db, char* name) {
+  LOG_DEBUG();
   uint8_t idx = hash_fnv1a(name, MAX_TABLES);
 
   if (db->tc[idx].is_populated) {
@@ -422,13 +409,13 @@ void load_btree_cluster(Database* db, char* name) {
     return;
   }
 
-  TableSchema* schema = (&db->tc[idx])->schema;
+  TableSchema* schema = db->tc[idx].schema;
 
   char rows_db_path[MAX_PATH_LENGTH];
   snprintf(rows_db_path, sizeof(rows_db_path), "%s" SEP "%s" SEP "rows.db", 
             db->fs->tables_dir, name);
   if (!file_exists(rows_db_path)) {
-    LOG_FATAL("Failed to find rows.db in directory '%s'.\n\t > run 'fix'", db->fs->tables_dir);
+    LOG_FATAL("Failed to find '%s' for %s.\n\t > run 'fix'", rows_db_path, name);
     return;
   }
   
@@ -785,6 +772,8 @@ bool load_initial_schema(Database* db) {
       return false;
     }
     
+    if (db->table_count == 0) return true;
+
     if (!load_jb_tables_hardcoded(db)) {
       LOG_ERROR("Failed to hardcode jb_tables.");
       return false;

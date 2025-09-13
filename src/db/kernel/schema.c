@@ -292,8 +292,12 @@ bool bootstrap_core_tables(Database* db) {
       LOG_FATAL("Failed to bootstrap table '%s': %s", schemas[i]->table_name, res.message);
       return false;
     } 
+
+  
     LOG_DEBUG("Bootstrapped table '%s': %s", schemas[i]->table_name, res.message);
   }
+
+  load_table_schema(db);
 
   return true;
 }

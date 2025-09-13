@@ -277,8 +277,9 @@ ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int
 ColumnValue resolve_expr_value(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas, ColumnDefinition* out_defn) {
   ColumnValue val = {0};
 
-  bool multi_row = !(table_map == NULL && schemas == NULL);
-
+  bool multi_row = !(table_map == NULL && schemas == NULL && tuple->dimension == 1);
+  LOG_DEBUG("Resolving expr of type %d (multi_row=%d) tuple dim = %d", expr->type, multi_row, tuple->dimension);
+  
   if (expr->type == EXPR_COLUMN) {
     Row* row = tuple->rows[0];
     TableSchema* schema = db->tc[expr->column.table].schema;

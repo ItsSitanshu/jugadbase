@@ -162,8 +162,9 @@ static inline char* __xstrncpy(char* dest, const char* src, size_t n, const char
     );
   }
   mem_stats.strcpy_count++;
+  strncpy(dest, src, n);
+
   if (n > 0) {
-    strncpy(dest, src, n);
     dest[n-1] = '\0';
   }
   return dest;
@@ -208,6 +209,10 @@ static inline void xmem_report(void) {
     mem_stats.bytes_allocated,
     mem_stats.bytes_freed
   );
+}
+
+static inline int __gdb() {
+  return 42;
 }
 
 #endif

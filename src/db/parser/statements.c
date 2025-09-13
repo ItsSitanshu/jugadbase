@@ -106,8 +106,7 @@ JQLCommand* parser_parse_create_table(Parser* parser, Database* db) {
   command->is_invalid = false;
 
   command->schema_count = 1;
-  command->schemas->ptr = schema;
-  command->schemas->alias[0] = '\0';
+  command->schema = schema;
 
   return command;
 }
@@ -130,7 +129,7 @@ JQLCommand* parser_parse_insert(Parser *parser, Database* db) {
     LOG_ERROR("! Table '%s' doesn't exist", parser->cur->value);
     return command;
   }
-  command->schemas[0].ptr = schema;
+  command->schema = schema;
 
   parser_consume(parser);
   command->columns = xcalloc(MAX_COLUMNS, sizeof(char *));
@@ -261,7 +260,7 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
 
     char* alias = NULL;
     if (parser->cur->type == TOK_ID) {
-      alias = parser->cur->value;
+      alias = __strdup(parser->cur->value);
       alias_map_add(&command->alias_map, alias, table_id);
       parser_consume(parser);
     } else {
@@ -376,11 +375,12 @@ JQLCommand* parser_parse_update(Parser* parser, Database* db) {
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
   
   uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
-  command->table_id = idx;
   TableSchema* schema = db->tc[idx].schema;
-  command->schemas[0].ptr = schema;
+  command->schema = schema;
 
-  if (is_struct_zeroed(schema, sizeof(TableSchema))) return command;
+  LOG_ERROR("command->schema->table_name: %s", command->schema->table_name);
+
+  if (is_struct_zeroed(command->schema, sizeof(TableSchema))) return command;
   
   parser_consume(parser);
   parser_expect(parser, TOK_SET, "SYE_E_EXPECTED_SET");
@@ -444,7 +444,7 @@ JQLCommand* parser_parse_delete(Parser* parser, Database* db) {
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
 
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  command->schemas[0].ptr = schema;
+  command->schema = schema;
   xstrcpy(schema->table_name, parser->cur->value);
   
   if (!get_validated_table(db, schema->table_name)) return command;
@@ -453,7 +453,6 @@ JQLCommand* parser_parse_delete(Parser* parser, Database* db) {
   
   parse_where_clause(parser, db, command);
 
-  command->schemas[0].ptr = schema;
   command->is_invalid = false;
   return command;
 }
@@ -513,7 +512,7 @@ JQLCommand* parser_parse_drop_table(Parser* parser, Database* db) {
 
   parser_consume(parser); 
 
-  command->schemas[0].ptr = schema;
+  command->schema = schema;
   command->is_invalid = false;
   return command;
 }

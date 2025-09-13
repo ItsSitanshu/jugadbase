@@ -34,7 +34,7 @@ char* format_text_table(ExecutionResult result, JQLCommand* cmd) {
     return xstrdup("(0 rows)\n");
   }
 
-  TableSchema* schema = cmd->schemas[0].ptr;
+  TableSchema* schema = cmd->schema;
   ColumnDefinition* columns = schema->columns;
   uint8_t col_c = schema->column_count;
 

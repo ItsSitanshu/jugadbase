@@ -4,7 +4,10 @@
 
 TableSchema* jb_tables_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  xstrcpy(schema->table_name, "jb_tables");
+  memset(schema, 0, sizeof(TableSchema));
+
+  xstrncpy(schema->table_name, "jb_tables", MAX_TABLE_NAME - 1);
+  schema->table_name[MAX_TABLE_NAME - 1] = '\0';
 
   schema->column_count = 5;
   schema->not_null_count = 1;
@@ -39,7 +42,10 @@ TableSchema* jb_tables_schema() {
 
 TableSchema* jb_sequences_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  xstrcpy(schema->table_name, "jb_sequences");
+  memset(schema, 0, sizeof(TableSchema));
+
+  xstrncpy(schema->table_name, "jb_sequences", MAX_TABLE_NAME - 1);
+  schema->table_name[MAX_TABLE_NAME - 1] = '\0';
 
   schema->column_count = 7;
   schema->not_null_count = 0;
@@ -74,7 +80,8 @@ TableSchema* jb_sequences_schema() {
 
 TableSchema* jb_attribute_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  xstrcpy(schema->table_name, "jb_attribute");
+  xstrncpy(schema->table_name, "jb_attribute", MAX_TABLE_NAME - 1);
+  schema->table_name[MAX_TABLE_NAME - 1] = '\0';
 
   schema->column_count = 9;
   schema->not_null_count = 0;
@@ -115,7 +122,8 @@ TableSchema* jb_attribute_schema() {
 
 TableSchema* jb_attrdef_schema() {
   TableSchema* schema = xmalloc(sizeof(TableSchema));
-  xstrcpy(schema->table_name, "jb_attrdef");
+  xstrncpy(schema->table_name, "jb_attrdef", MAX_TABLE_NAME - 1);
+  schema->table_name[MAX_TABLE_NAME - 1] = '\0';
 
   schema->column_count = 5;
   schema->not_null_count = 3;

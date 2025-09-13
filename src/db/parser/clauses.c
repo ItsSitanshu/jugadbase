@@ -539,7 +539,6 @@ void parse_order_by_clause(Parser* parser, Database* db, JQLCommand* command) {
   }
 }
 
-
 bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   if (parser->cur->type != TOK_ID) {
     REPORT_ERROR(parser->lexer, "SYE_E_CNAME");
@@ -635,7 +634,7 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
 
   memset(&column.constraint, 0, sizeof(column.constraint));
 
-  TableSchema* schema = command->schemas[0].ptr;
+  TableSchema* schema = command->schema;
 
   while (parser->cur->type != TOK_COM && parser->cur->type != TOK_RP) {
     switch (parser->cur->type) {

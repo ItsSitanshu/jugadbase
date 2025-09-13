@@ -20,7 +20,7 @@ JQLCommand* jql_command_init(JQLCommandType type) {
 
   cmd->type = type;
 
-  cmd->schemas = xcalloc(1, sizeof(SchemaRef));
+  cmd->schema = xmalloc(sizeof(TableSchema));
   cmd->schema_count = 0;
   cmd->schema_name = NULL;
   cmd->table_id = -1;
@@ -113,7 +113,7 @@ ParserState parser_save_state(Parser* parser) {
   state.lexer_column = parser->lexer->cc;
 
   state.buffer_size = parser->lexer->buf_size;
-  state.buffer_copy = xmalloc(state.buffer_size);
+  state.buffer_copy = xmalloc(state.buffer_size + 1);
   LOG_INFO("Buffer size: %zu", state.buffer_size);
   xmemcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
 
@@ -648,16 +648,6 @@ void format_column_value(char* out, size_t out_size, ColumnValue* val) {
   }
 }
 
-SchemaRef* find_schema_by_qualifier(JQLCommand *cmd, const char *qual) {
-  if (!qual || qual[0] == '\0') return NULL;
-  for (uint16_t i = 0; i < cmd->schema_count; i++) {
-    SchemaRef *r = &cmd->schemas[i];
-    if (strcasecmp(r->alias, qual) == 0) return r;
-    if (strcasecmp(r->ptr->table_name, qual) == 0) return r;
-  }
-  return NULL;
-}
-
 void parser_free(Parser* parser) {
   if (!parser) {
     return;
@@ -786,13 +776,8 @@ void free_table_schema(TableSchema* schema) {
 void free_jql_command(JQLCommand* cmd) {
   if (!cmd) return;
 
-  if (cmd->schemas) {
-    // for (uint16_t i = 0; i < cmd->schema_count; i++) {
-    //   if (cmd->schemas[i].ptr) {
-    //     // free_schema(cmd->schemas[i].ptr); 
-    //   }
-    // }
-    xfree(cmd->schemas);
+  if (cmd->schema) {
+    xfree(cmd->schema);
   }
 
   if (cmd->schema_name) {
@@ -869,48 +854,6 @@ void free_jql_command(JQLCommand* cmd) {
   }
 
   xfree(cmd);
-}
-
-SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16_t needed) {
-  if (needed < *capacity) return schemas;
-
-  uint16_t new_cap = (*capacity == 0) ? 8 : (*capacity * 2);
-  if (new_cap < needed) new_cap = needed;
-
-  SchemaRef* new_arr = xrealloc(schemas, new_cap * sizeof(SchemaRef));
-  
-  if (!new_arr) {
-    fprintf(stderr, "OOM expanding schema refs\n");
-    exit(EXIT_FAILURE);
-  }
-
-  memset(new_arr + *capacity, 0, (new_cap - *capacity) * sizeof(SchemaRef));
-  *capacity = new_cap;
-  return new_arr;
-}
-
-SchemaRef* find_schema(JQLCommand* cmd, const char* key) {
-  for (uint16_t i = 0; i < cmd->schema_count; i++) {
-    if (strncmp(cmd->schemas[i].alias, key, MAX_ALIAS_LEN) == 0 ||
-      strncmp(cmd->schemas[i].ptr->table_name, key, MAX_ALIAS_LEN) == 0) {
-      return &cmd->schemas[i];
-    }
-  }
-  return NULL;
-}
-
-void set_schema_alias(SchemaRef* ref, const char* alias) {
-  if (!alias) {
-    ref->alias[0] = '\0';
-    return;
-  }
-
-  if (strlen(alias) >= MAX_ALIAS_LEN) {
-    LOG_ERROR("Why the fuck would you keep need an alias > %d chars, trimmed", MAX_ALIAS_LEN - 1);
-  }
-
-  xstrncpy(ref->alias, alias, MAX_ALIAS_LEN - 1);
-  ref->alias[MAX_ALIAS_LEN - 1] = '\0';
 }
 
 void alias_map_init(AliasMap* map) {

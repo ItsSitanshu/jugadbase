@@ -27,7 +27,7 @@
   #define LOGS_VERBOSE 0
 #endif
 
-#define MAX_PATH_LENGTH 512
+#define MAX_PATH_LENGTH 4096
 
 #ifndef DB_ROOT_DIRECTORY
   #ifdef _WIN32

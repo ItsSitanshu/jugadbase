@@ -344,11 +344,6 @@ typedef struct AlterTableCommand {
   bool is_invalid;
 } AlterTableCommand;
 
-typedef struct SchemaRef {
-  TableSchema* ptr;                
-  char alias[MAX_ALIAS_LEN];
-} SchemaRef;
-
 typedef struct OrderByClause {
   TableSchema* schema;
   uint32_t table_id;
@@ -371,7 +366,7 @@ typedef struct {
 typedef struct {
   JQLCommandType type;
   
-  SchemaRef* schemas;
+  TableSchema* schema;
   AliasMap alias_map;
   uint16_t schema_count;
 
@@ -458,7 +453,6 @@ typedef struct AlterHandler {
 
 #define _cmd_is_invalid(cmd) ((cmd) == NULL || (cmd)->is_invalid)
 #define _jql_command_fail(cmd) do { free_jql_command(cmd); return NULL; } while (0)
-#define _jql_command_schemas_capacity 10
  
 JQLCommand* parser_parse(Database* db);
 JQLCommand* parser_parse_create_table(Parser* parser, Database* db);
@@ -549,7 +543,6 @@ void print_column_value(ColumnValue* val);
 char* str_column_value(ColumnValue* val);
 char** stringify_column_array(ColumnValue* array_val, int* out_count);
 void format_column_value(char* out, size_t out_size, ColumnValue* val);
-SchemaRef* find_schema_by_qualifier(JQLCommand *cmd, const char *qual);
 
 void parser_free(Parser* parser);
 
@@ -558,10 +551,6 @@ void free_column_value(ColumnValue* val);
 void free_column_definition(ColumnDefinition* col_def);
 void free_table_schema(TableSchema* schema);
 void free_jql_command(JQLCommand* cmd);
-
-SchemaRef* ensure_schema_capacity(SchemaRef* schemas, uint16_t* capacity, uint16_t needed);
-SchemaRef* find_schema(JQLCommand* cmd, const char* key);
-void set_schema_alias(SchemaRef* ref, const char* alias);
 
 void alias_map_init(AliasMap* map);
 void alias_map_add(AliasMap* map, const char* alias, int table_id);

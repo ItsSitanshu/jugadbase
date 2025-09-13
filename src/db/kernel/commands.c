@@ -6,7 +6,7 @@ ExecutionResult execute_create_table(Database* db, JQLCommand* cmd) {
   }
 
   FILE* tca_io = db->tc_appender;
-  TableSchema* schema = cmd->schemas[0].ptr;
+  TableSchema* schema = cmd->schema;
 
   int64_t table_id = insert_table(db, schema->table_name);
   if (table_id == -1) { 
@@ -475,11 +475,11 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
 }
 
 ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schemas[0].ptr) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
+  TableSchema* schema = cmd->schema;
   if (!schema) return (ExecutionResult){1, "Error: Invalid schema"};
 
   load_btree_cluster(db, schema->table_name);
@@ -547,7 +547,7 @@ ExecutionResult execute_insert(Database* db, JQLCommand* cmd) {
     .row_count = inserted_count,
     .rows = ret_rows,
     .aliases = cmd->returning_columns,
-    .alias_limit = cmd->ret_col_count
+    .n_cols = cmd->ret_col_count
   };
 }
 
@@ -728,17 +728,11 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     return (ExecutionResult){1, "No table selected"};
   }
 
-  // if (cmd->table_id != -1) {
-  //   cmd->alias_map.count = 1;
-  //   cmd->alias_map.aliases[0] = ;
-  //   cmd->alias_map.table_ids[0] = cmd->table_id;
-  // }
   TableSchema** schemas = xcalloc(cmd->alias_map.count, sizeof(TableSchema));
   for (int t = 0; t < cmd->alias_map.count; t++) {
     int idx = cmd->alias_map.entries[t].table_id;
     schemas[t] = db->tc[idx].schema;
     if (!schemas[t]) {
-      LOG_DEBUG("Error: Invalid schema at index %d", idx);
       return (ExecutionResult){1, "Error: Invalid schema"};
     }
     LOG_DEBUG("Loading table '%s' into buffer pool", schemas[t]->table_name);
@@ -762,36 +756,35 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     }
   }
 
-  // Filter tuples by WHERE
   Row** matching_rows = xcalloc(tuples->count, sizeof(Row*));
   uint32_t total_found = 0;
+
+  int* tuple_map = tuples->table_map;
+  
+  if (cmd->alias_map.count == 1) {
+    tuple_map = NULL;
+    schemas = NULL;
+  }
+
   for (uint32_t i = 0; i < tuples->count; i++) {
     Tuple* tuple = &tuples->tuples[i];
-    if (cmd->has_where && !evaluate_condition(cmd->where, tuple, db, tuples->table_map, schemas)) continue;
+    if (cmd->has_where && !evaluate_condition(cmd->where, tuple, db, tuple_map, schemas)) continue;
     matching_rows[total_found++] = (Row*)tuple; 
   }
 
-  LOG_DEBUG("Total matching rows after WHERE: %d", total_found);
-
-  // ORDER BY
   if (cmd->has_order_by && total_found > 1) {
-    LOG_DEBUG("Sorting rows by ORDER BY");
     quick_sort_rows(matching_rows, 0, total_found - 1, cmd, NULL); // schema is per-tuple now
   }
 
-  // OFFSET / LIMIT
   uint32_t start = cmd->has_offset ? cmd->offset : 0;
   uint32_t max_out = cmd->has_limit ? cmd->limit : total_found;
   if (start > total_found) start = total_found;
   uint32_t available = total_found - start;
   uint32_t out_count = (available < max_out) ? available : max_out;
-  LOG_DEBUG("Applying OFFSET %d LIMIT %d -> out_count=%d", start, max_out, out_count);
 
-  // Allocate final result rows and aliases
   Row* result_rows = xcalloc(out_count, sizeof(Row));
   char** aliases = xcalloc(cmd->value_counts[0], sizeof(char*));
 
-  // Fill in result rows
   for (uint32_t i = 0; i < out_count; i++) {
     Tuple* tuple = (Tuple*)matching_rows[start + i];
     Row* dst = &result_rows[i];
@@ -824,27 +817,13 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       } else if (is_aggregate_col[j]) {
         val = aggregate_results[j];
       } else {
-        val = evaluate_expression(expr, tuple, db, tuples->table_map, schemas);
+        val = evaluate_expression(expr, tuple, db, tuple_map, schemas);
       }
 
       dst->values[j] = val;
     }
   }
 
-  // Debug print all results
-  for (uint32_t i = 0; i < out_count; i++) {
-    Row* r = &result_rows[i];
-    char buffer[1024] = {0};
-    snprintf(buffer, sizeof(buffer), "Row %d: ID=(%d,%d)", i, r->id.page_id, r->id.row_id);
-    for (int j = 0; j < cmd->value_counts[0]; j++) {
-      char valbuf[128];
-      ColumnValue v = r->values[j];
-      print_column_value(&v);
-    }
-    LOG_DEBUG("%s", buffer);
-  }
-
-  // Cleanup
   for (uint32_t i = 0; i < tuples->count; i++) free(tuples->tuples[i].rows);
   free(tuples->tuples);
   free(tuples);
@@ -852,30 +831,28 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
   xfree(aggregate_results);
   xfree(matching_rows);
 
-  LOG_DEBUG("execute_select: Finished execution");
-
   return (ExecutionResult){
     .code = 0,
     .message = "Select executed successfully",
     .rows = result_rows,
     .aliases = aliases,
     .row_count = out_count,
-    .alias_limit = cmd->value_counts[0],
+    .n_cols = cmd->value_counts[0],
     .owns_rows = 1
   };
 }
 
 ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schemas[0].ptr) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
+  TableSchema* schema = cmd->schema;
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
 
-  load_btree_cluster(db, schema->table_name);
+  load_btree_cluster(db, cmd->schema->table_name);
 
   int64_t table_id = find_table(db, schema->table_name);
   if (table_id == -1) {
@@ -953,11 +930,11 @@ cleanup:
 
 
 ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schemas[0].ptr) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
+  TableSchema* schema = cmd->schema;
   if (!schema) {
     return (ExecutionResult){1, "Error: Invalid schema"};
   }
@@ -1027,11 +1004,11 @@ ExecutionResult execute_delete(Database* db, JQLCommand* cmd) {
 }
 
 ExecutionResult execute_drop_table(Database* db, JQLCommand* cmd) {
-  if (!db || !cmd || !cmd->schemas[0].ptr) {
+  if (!db || !cmd || !cmd->schema) {
     return (ExecutionResult){1, "Invalid DROP TABLE command or context"};
   }
 
-  char* table_name = cmd->schemas[0].ptr->table_name;
+  char* table_name = cmd->schema->table_name;
 
   if (!get_validated_table(db, table_name)) {
     return (ExecutionResult){1, "Table does not exist"};

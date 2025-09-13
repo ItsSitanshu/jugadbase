@@ -72,7 +72,7 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
 
   LOG_INFO("%s (effected %u rows)", result.exec.message, result.exec.row_count);
 
-  if (result.exec.rows && result.exec.alias_limit > 0 && result.exec.row_count > 0) {
+  if (result.exec.rows && result.exec.n_cols > 0 && result.exec.row_count > 0) {
     printf("-> Returned %u row(s):\n", result.exec.row_count);
 
     for (uint32_t i = 0; i < result.exec.row_count; i++) {
@@ -84,24 +84,21 @@ Result execute_cmd(Database* db, JQLCommand* cmd, bool show) {
 
       printf("Row %u [%u.%u]: ", i + 1, row->id.page_id, row->id.row_id);
 
-      uint8_t alias_count = 0;
-      for (uint8_t c = 0; c < cmd->schemas[0].ptr->column_count; c++) {
-        ColumnDefinition col = cmd->schemas[0].ptr->columns[c];
-        ColumnValue val = row->values[c];
+      uint8_t col = 0;
+      while (1) {
+        ColumnValue val = row->values[col];
 
-        // LOG_DEBUG("%d : alias: %s norm: %s", c, result.exec.aliases[alias_count], col.name);
-
-        if (result.exec.aliases[alias_count]) {
-          printf("%s: ", result.exec.aliases[alias_count]);
-          alias_count++;
+        if (result.exec.aliases[col]) {
+          printf("%s: ", result.exec.aliases[col]);
+          col++;
         }
         print_column_value(&val);
 
-        if (alias_count >= result.exec.alias_limit) {
+        if (col >= result.exec.n_cols) {
           break;
         }
 
-        if ((c < cmd->value_counts[0] - 1))  {
+        if ((col < cmd->value_counts[0] - 1))  {
           printf(", ");
         }
       }
@@ -126,7 +123,7 @@ void free_execution_result(ExecutionResult* result) {
   if (!result) return;
 
   if (result->aliases) {
-    for (size_t i = 0; i < result->alias_limit; i++) {
+    for (size_t i = 0; i < result->n_cols; i++) {
       if (result->aliases[i]) {
         xfree(result->aliases[i]);
       }
@@ -134,7 +131,7 @@ void free_execution_result(ExecutionResult* result) {
     xfree(result->aliases);
   }
 
-  // if (result->rows && result->alias_limit > 0) {
+  // if (result->rows && result->n_cols > 0) {
   //   for (uint32_t i = 0; i < result->row_count; i++) {
   //     free_row(&result->rows[i]);
   //   }

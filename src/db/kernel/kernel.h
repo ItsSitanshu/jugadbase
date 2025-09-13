@@ -20,7 +20,7 @@ typedef struct {
   Row* rows;
   uint32_t row_count;
   char** aliases;
-  size_t alias_limit;
+  size_t n_cols;
   uint8_t owns_rows;
 } ExecutionResult;
 
