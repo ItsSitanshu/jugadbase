@@ -64,6 +64,8 @@ void pop_btree_cluster(Database* db);
 
 bool load_schema_tc(Database* db, char* table_name);
 TableSchema* get_table_schema(Database* db, const char* filename);
+TableSchema* get_table_schema_cmd(Database* db, JQLCommand* cmd, const char* alias_or_table);
+TableSchema* get_primary_schema(Database* db, JQLCommand* cmd);
 bool load_initial_schema(Database* db);
 
 void load_constr_syscache(Database* db);

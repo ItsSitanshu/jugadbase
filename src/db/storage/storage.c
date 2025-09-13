@@ -719,6 +719,57 @@ bool serialize_delete(BufferPool* pool, RowID rid) {
   return true;
 }
 
+void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, TupleSet* result) {
+  if (dimension == cmd->schema_count) {
+    if (result->count >= result->capacity) {
+      result->capacity *= 2;
+      result->tuples = xrealloc(result->tuples,
+                                result->capacity * sizeof(Tuple));
+    }
+
+    Tuple* t = &result->tuples[result->count++];
+    t->dimension = cmd->schema_count;
+    t->rows = xcalloc(cmd->schema_count, sizeof(Row*));
+    memcpy(t->rows, cur_row, cmd->schema_count * sizeof(Row*));
+    return;
+  }
+
+  TableSchema* schema = cmd->schemas[dimension].ptr;
+  if (!schema) {
+    LOG_ERROR("Schema missing at dimension %d", dimension);
+    return;
+  }
+
+  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
+  BufferPool* pool = &db->lake[schema_idx];
+
+  for (uint16_t i = 0; i < pool->num_pages; i++) {
+    Page* page = pool->pages[i];
+    if (!page) continue;
+
+    for (uint16_t j = 0; j < page->num_rows; j++) {
+      Row* vec = &page->rows[j];
+      if (!vec || vec->deleted || is_struct_zeroed(vec, sizeof(Row))) continue;
+
+      cur_row[dimension] = vec;
+      build_tuples(db, cmd, dimension + 1, cur_row, result);
+    }
+  }
+}
+
+TupleSet* generate_all_tuples(Database* db, JQLCommand* cmd) {
+  TupleSet* result = xcalloc(1, sizeof(TupleSet));
+  result->capacity = 128;
+  result->tuples = xcalloc(result->capacity, sizeof(Tuple));
+  result->count = 0;
+
+  Row** cur_row = xcalloc(cmd->schema_count, sizeof(Row*));
+  build_tuples(db, cmd, 0, cur_row, result);
+  free(cur_row);
+
+  return result;
+}
+
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc) {
   if (pool->num_pages == 0) return;
 

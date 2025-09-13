@@ -199,6 +199,10 @@ ExprNode* parser_parse_primary(Parser* parser, JQLCommand* cmd) {
     // Column reference (maybe qualified with table)
     char* table_name = NULL;
     char* field_name = NULL;
+    int table_id = -1;
+
+    ExprNode* base = xcalloc(1, sizeof(ExprNode));
+    base->type = EXPR_COLUMN;
 
     // LOG_DEBUG("Parsing column reference starting with '%s'", first_ident);
     // LOG_DEBUG("CUR tok %s of type", parser->cur->value, parser->cur->type);
@@ -210,22 +214,21 @@ ExprNode* parser_parse_primary(Parser* parser, JQLCommand* cmd) {
       if (parser->cur->type != TOK_ID) {
         REPORT_ERROR(parser->lexer, "SYE_E_EXPECTED_IDENTIFIER_AFTER_DOT");
         xfree(table_name);
+        xfree(base);
         return NULL;
       }
 
       field_name = xstrdup(parser->cur->value);
+      base->column.table = hash_fnv1a(table_name, MAX_TABLES);
       parser_consume(parser);
     } else {
       field_name = first_ident;
-      table_name = cmd->schemas[0].ptr->table_name;
+      bool is_aliased = !is_struct_zeroed(&cmd->alias_map, sizeof(AliasMap)) && cmd->alias_map.count > 0;
+      base->column.table = is_aliased ? cmd->alias_map.entries[0].table_id : cmd->table_id;
     }
 
-    ExprNode* base = xcalloc(1, sizeof(ExprNode));
-    base->type = EXPR_COLUMN;
-    base->column.table = hash_fnv1a(table_name, MAX_TABLES);
     base->column.col_name = field_name;
 
-    // Array access
     while (parser->cur->type == TOK_LB) {
       parser_consume(parser);
       ExprNode* index_expr = parser_parse_expression(parser, cmd);

@@ -283,6 +283,12 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
     break;
   }
 
+  LOG_INFO("ALIAS MAP SIZE: %zu", command->alias_map.count);
+  for (int i = 0; i < command->alias_map.count; i++) {
+    uint32_t t_id = command->alias_map.entries[i].table_id;
+    LOG_DEBUG("table id at alias idx [%d] = %d", i, t_id);
+  }
+
   parser_restore_state(parser, state);
 
   command->sel_columns = xcalloc(MAX_COLUMNS, sizeof(SelectColumn));
@@ -363,6 +369,7 @@ JQLCommand* parser_parse_update(Parser* parser, Database* db) {
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
   
   uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
+  command->table_id = idx;
   TableSchema* schema = db->tc[idx].schema;
   command->schemas[0].ptr = schema;
 

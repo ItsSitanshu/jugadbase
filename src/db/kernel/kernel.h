@@ -63,25 +63,25 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 #define KERNEL_EXPRESSION_H
 
 
-ColumnValue resolve_expr_value(ExprNode* expr, Row* row, Database* db, ColumnDefinition* out);
-ColumnValue evaluate_expression(ExprNode* expr, Row* row, Database* db);
-bool evaluate_condition(ExprNode* expr, Row* row, Database* db);
+ColumnValue resolve_expr_value(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas, ColumnDefinition* out_defn);
+ColumnValue evaluate_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+bool evaluate_condition(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
 
 ColumnValue evaluate_literal_expression(ExprNode* expr, Database* db);
-ColumnValue evaluate_column_expression(ExprNode* expr, Row* row, Database* db);
-ColumnValue evaluate_array_access_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_column_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+ColumnValue evaluate_array_access_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
 
-ColumnValue evaluate_unary_op_expression(ExprNode* expr, Row* row, Database* db);
-ColumnValue evaluate_binary_op_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_unary_op_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+ColumnValue evaluate_binary_op_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
 ColumnValue evaluate_numeric_binary_op(ColumnValue left, ColumnValue right, int op);
-ColumnValue evaluate_comparison_expression(ExprNode* expr, Row* row, Database* db);
-ColumnValue evaluate_like_expression(ExprNode* expr, Row* row, Database* db);
-ColumnValue evaluate_between_expression(ExprNode* expr, Row* row, Database* db);
-ColumnValue evaluate_in_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_comparison_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+ColumnValue evaluate_like_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+ColumnValue evaluate_between_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+ColumnValue evaluate_in_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
 
-ColumnValue evaluate_logical_and_expression(ExprNode* expr, Row* row, Database* db);
-ColumnValue evaluate_logical_or_expression(ExprNode* expr, Row* row, Database* db);
-ColumnValue evaluate_logical_not_expression(ExprNode* expr, Row* row, Database* db);
+ColumnValue evaluate_logical_and_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+ColumnValue evaluate_logical_or_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
+ColumnValue evaluate_logical_not_expression(ExprNode* expr, Tuple* tuple, Database* db, int* table_map, TableSchema** schemas);
 
 ColumnValue evaluate_datetime_binary_op(ColumnValue left, ColumnValue right, int op);
 

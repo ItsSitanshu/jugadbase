@@ -717,95 +717,80 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 }
 
 ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
-  LOG_ERROR("!!! execute_select: Starting execution");
+  LOG_DEBUG("!!! execute_select: Starting execution");
 
-  if (!db || !cmd || !cmd->schemas[0].ptr) {
-    LOG_DEBUG("Invalid execution context or command");
+  if (!db || !cmd) {
     return (ExecutionResult){1, "Invalid execution context or command"};
   }
 
-  TableSchema* schema = get_table_schema(db, cmd->schemas[0].ptr->table_name);
-  if (!schema) {
-    LOG_DEBUG("Error: Invalid schema '%s'", cmd->schemas[0].ptr->table_name);
-    return (ExecutionResult){1, "Error: Invalid schema"};
+  bool is_aliased = !is_struct_zeroed(&cmd->alias_map, sizeof(AliasMap)) && cmd->alias_map.count > 0;
+  if (!is_aliased && cmd->table_id == -1) {
+    return (ExecutionResult){1, "No table selected"};
   }
 
-  LOG_DEBUG("Loading table '%s' into buffer pool", schema->table_name);
-  load_btree_cluster(db, schema->table_name);
-  cmd->schemas[0].ptr = schema;
+  cmd->schemas = xcalloc(cmd->alias_map.count, sizeof(SchemaPointer));
+  for (int t = 0; t < cmd->alias_map.count; t++) {
+    TableSchema* schema = cmd->schemas[t].ptr;
+    if (!schema) {
+      LOG_DEBUG("Error: Invalid schema at index %d", t);
+      return (ExecutionResult){1, "Error: Invalid schema"};
+    }
+    cmd->schemas[t].ptr = schema;
+    LOG_DEBUG("Loading table '%s' into buffer pool", schema->table_name);
+    load_btree_cluster(db, schema->table_name);
+  }
 
-  uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
-  BufferPool* pool = &db->lake[schema_idx];
+  TupleSet* tuples = generate_all_tuples(db, cmd);
+  if (!tuples || tuples->count == 0) {
+    LOG_DEBUG("No rows found in any table combination");
+    return (ExecutionResult){0, "Select executed successfully"};
+  }
 
-  LOG_DEBUG("Iterating buffer pool: num_pages=%d", pool->num_pages);
-
-  Row** matching_rows = NULL;
-  uint32_t total_found = 0;
-  uint32_t match_cap = 128;
-
-  matching_rows = xcalloc(match_cap, sizeof(Row*));
-
-  for (uint16_t i = 0; i < pool->num_pages; i++) {
-    Page* page = pool->pages[i];
-    if (!page || page->num_rows == 0) continue;
-
-    LOG_DEBUG("Page %d: num_rows=%d", i, page->num_rows);
-
-    for (uint16_t j = 0; j < page->num_rows; j++) {
-      Row* row = &page->rows[j];
-
-      if (row->deleted || is_struct_zeroed(row, sizeof(Row))) continue;
-
-      if (cmd->has_where && !evaluate_condition(cmd->where, row, db))
-        continue;
-
-      if (total_found >= match_cap) {
-        match_cap *= 2;
-        LOG_DEBUG("Expanding matching_rows capacity to %d", match_cap);
-        matching_rows = xrealloc(matching_rows, match_cap * sizeof(Row*));
-      }
-
-      matching_rows[total_found++] = row;
-      LOG_DEBUG("Collected row %d from page %d", j, i);
+  bool* is_aggregate_col = xcalloc(cmd->value_counts[0], sizeof(bool));
+  ColumnValue* aggregate_results = xcalloc(cmd->value_counts[0], sizeof(ColumnValue));
+  for (int j = 0; j < cmd->value_counts[0]; j++) {
+    ExprNode* expr = cmd->sel_columns[j].expr;
+    if (expr && expr->type == EXPR_FUNCTION && expr->fn.type != NOT_AGG) {
+      is_aggregate_col[j] = true;
+      aggregate_results[j] = evaluate_aggregate(expr, NULL, tuples->count, cmd, db);
+      LOG_DEBUG("Aggregate col %d: %s evaluated", j, expr->fn.name);
     }
   }
 
-  LOG_DEBUG("Total matching rows: %d", total_found);
-
-  if (cmd->has_order_by && total_found > 1) {
-    LOG_DEBUG("Sorting rows by ORDER BY");
-    quick_sort_rows(matching_rows, 0, total_found - 1, cmd, schema);
+  // Filter tuples by WHERE
+  Row** matching_rows = xcalloc(tuples->count, sizeof(Row*));
+  uint32_t total_found = 0;
+  for (uint32_t i = 0; i < tuples->count; i++) {
+    Tuple* tuple = &tuples->tuples[i];
+    if (cmd->has_where && !evaluate_tuple(cmd->where, tuple, db)) continue;
+    matching_rows[total_found++] = (Row*)tuple; // store pointer to tuple for evaluation
   }
 
+  LOG_DEBUG("Total matching rows after WHERE: %d", total_found);
+
+  // ORDER BY
+  if (cmd->has_order_by && total_found > 1) {
+    LOG_DEBUG("Sorting rows by ORDER BY");
+    quick_sort_rows(matching_rows, 0, total_found - 1, cmd, NULL); // schema is per-tuple now
+  }
+
+  // OFFSET / LIMIT
   uint32_t start = cmd->has_offset ? cmd->offset : 0;
   uint32_t max_out = cmd->has_limit ? cmd->limit : total_found;
   if (start > total_found) start = total_found;
   uint32_t available = total_found - start;
   uint32_t out_count = (available < max_out) ? available : max_out;
-
   LOG_DEBUG("Applying OFFSET %d LIMIT %d -> out_count=%d", start, max_out, out_count);
 
+  // Allocate final result rows and aliases
   Row* result_rows = xcalloc(out_count, sizeof(Row));
   char** aliases = xcalloc(cmd->value_counts[0], sizeof(char*));
 
-  bool* is_aggregate_col = xcalloc(cmd->value_counts[0], sizeof(bool));
-  ColumnValue* aggregate_results = xcalloc(cmd->value_counts[0], sizeof(ColumnValue));
-
-  for (int j = 0; j < cmd->value_counts[0]; j++) {
-    ExprNode* expr = cmd->sel_columns[j].expr;
-    if (expr && expr->type == EXPR_FUNCTION && expr->fn.type != NOT_AGG) {
-      is_aggregate_col[j] = true;
-      aggregate_results[j] = evaluate_aggregate(expr, matching_rows, total_found, cmd, db);
-      LOG_DEBUG("Aggregate col %d: %s evaluated", j, expr->fn.name);
-    }
-  }
-
+  // Fill in result rows
   for (uint32_t i = 0; i < out_count; i++) {
-    Row* src = matching_rows[start + i];
+    Tuple* tuple = (Tuple*)matching_rows[start + i];
     Row* dst = &result_rows[i];
-
     memset(dst, 0, sizeof(Row));
-    dst->id = src->id;
     dst->n_values = cmd->value_counts[0];
     dst->values = xcalloc(dst->n_values, sizeof(ColumnValue));
 
@@ -813,34 +798,37 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       ExprNode* expr = cmd->sel_columns[j].expr;
       ColumnValue val = {0};
 
+      // Alias resolution
       if (cmd->sel_columns[j].alias) {
         aliases[j] = xstrdup(cmd->sel_columns[j].alias);
-      } else if (expr->type == EXPR_ARRAY_ACCESS) {
+      } else if (expr && expr->type == EXPR_FUNCTION) {
+        aliases[j] = xstrdup(expr->fn.name);
+      } else if (expr && expr->type == EXPR_ARRAY_ACCESS) {
         int base_idx = expr->column.index;
         int array_idx = expr->column.array_idx->literal.int_value;
         char buffer[256];
-        snprintf(buffer, sizeof(buffer), "%s[%d]", schema->columns[base_idx].name, array_idx);
+        snprintf(buffer, sizeof(buffer), "%s[%d]",
+                 tuple->vectors[expr->column.table]->values[base_idx].str_value,
+                 array_idx);
         aliases[j] = xstrdup(buffer);
-      } else if (expr->type == EXPR_FUNCTION) {
-        aliases[j] = xstrdup(expr->fn.name);
-      } else {
-        aliases[j] = xstrdup(schema->columns[expr->column.index].name);
+      } else if (expr && expr->type == EXPR_COLUMN) {
+        aliases[j] = xstrdup(cmd->schemas[expr->column.table].ptr->columns[expr->column.index].name);
       }
 
+      // Value evaluation
       if (!expr) {
-        dst->values[j] = src->values[j];
+        val = tuple->vectors[0]->values[j];
       } else if (is_aggregate_col[j]) {
-        dst->values[j] = aggregate_results[j];
+        val = aggregate_results[j];
       } else {
-        val = evaluate_expression(expr, src, db);
-        dst->values[j] = val;
+        val = evaluate_expression(expr, tuple, db);
       }
 
-      LOG_DEBUG("Row %d Col %d: Alias='%s', Value type=%d", i, j, aliases[j], dst->values[j].type);
+      dst->values[j] = val;
     }
   }
 
-  LOG_DEBUG("All result rows prepared. Printing results:");
+  // Debug print all results
   for (uint32_t i = 0; i < out_count; i++) {
     Row* r = &result_rows[i];
     char buffer[1024] = {0};
@@ -858,6 +846,10 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     LOG_DEBUG("%s", buffer);
   }
 
+  // Cleanup
+  for (uint32_t i = 0; i < tuples->count; i++) free(tuples->tuples[i].vectors);
+  free(tuples->tuples);
+  free(tuples);
   xfree(is_aggregate_col);
   xfree(aggregate_results);
   xfree(matching_rows);

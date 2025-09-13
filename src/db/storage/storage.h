@@ -30,6 +30,18 @@ typedef struct RowSet {
   uint32_t capacity;
 } RowSet;
 
+typedef struct {
+  Row** rows;   
+  int dimension;   
+} Tuple;
+
+typedef struct {
+  Tuple* tuples;
+  uint32_t count;
+  uint32_t capacity;
+  int* table_map; 
+} TupleSet;
+
 typedef struct UpdateData {
   uint16_t* cols;
   ColumnValue* old_vals;
@@ -70,6 +82,9 @@ uint32_t write_column_value_to_buffer(uint8_t* buffer, ColumnValue* col_val, Col
 RowID serialize_insert(BufferPool* pool, Row row, TableCatalogEntry tc);
 uint32_t row_to_buffer(Row* row, BufferPool* pool, TableSchema* schema, uint8_t* buffer);
 bool serialize_delete(BufferPool* pool, RowID rid);
+
+void build_tuples(Database* db, JQLCommand* cmd, int dimension, Row** cur_row, TupleSet* result);
+TupleSet* generate_all_tuples(Database* db, JQLCommand* cmd);
 
 void pop_lru_page(BufferPool* pool, TableCatalogEntry tc);
 void free_row(Row* row);

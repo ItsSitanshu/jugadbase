@@ -20,10 +20,10 @@ JQLCommand* jql_command_init(JQLCommandType type) {
 
   cmd->type = type;
 
-  int schema_capacity = (type == CMD_SELECT) ? 10 : 1;
-  cmd->schemas = xcalloc(schema_capacity, sizeof(SchemaRef));
+  cmd->schemas = xcalloc(1, sizeof(SchemaRef));
   cmd->schema_count = 0;
   cmd->schema_name = NULL;
+  cmd->table_id = -1;
 
   memset(cmd->value_counts, 0, sizeof(cmd->value_counts));
   cmd->row_count = 0;
@@ -58,6 +58,7 @@ JQLCommand* jql_command_init(JQLCommandType type) {
   cmd->function_count = 0;
   cmd->has_aggregate = false;
 
+  memset(&cmd->alias_map, 0, sizeof(AliasMap));
   memset(cmd->conditions, 0, sizeof(cmd->conditions));
   memset(cmd->group_by, 0, sizeof(cmd->group_by));
   memset(cmd->having, 0, sizeof(cmd->having));

@@ -376,7 +376,8 @@ typedef struct {
   uint16_t schema_count;
 
   char* schema_name;
-
+  int32_t table_id;
+  
   uint8_t* bitmap;
   uint8_t value_counts[MAX_OPERATIONS];
   ExprNode** (*values);

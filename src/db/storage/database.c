@@ -687,6 +687,70 @@ TableSchema* get_table_schema(Database* db, const char* tablename) {
   return NULL;
 }
 
+TableSchema* get_table_schema_cmd(Database* db, JQLCommand* cmd, const char* alias_or_table) {
+  if (!db || !cmd || !alias_or_table) {
+    LOG_ERROR("Invalid args in get_table_schema_cmd.");
+    return NULL;
+  }
+
+  int table_id = cmd->table_id;
+
+  if (cmd->alias_map && cmd->alias_map.count > 0) {
+    bool found = false;
+    for (int i = 0; i < cmd->alias_map.count; i++) {
+      if (strcmp(cmd->alias_map.entries[i].alias, alias_or_table) == 0) {
+        table_id = cmd->alias_map.entries[i].table_id;
+        found = true;
+        break;
+      }
+    }
+  }
+
+  if (table_id < 0 || table_id >= MAX_TABLES) {
+    LOG_ERROR("Invalid table_id resolved for alias/table: %s", alias_or_table);
+    return NULL;
+  }
+
+  if (db->tc[table_id].schema) {
+    return db->tc[table_id].schema;
+  }
+
+  if (!load_schema_for_table(db, table_id, alias_or_table)) {
+    LOG_ERROR("Failed to load schema for alias/table: %s", alias_or_table);
+    return NULL;
+  }
+
+  return db->tc[table_id].schema;
+}
+
+TableSchema* get_primary_schema(Database* db, JQLCommand* cmd) {
+  if (!db || !cmd) {
+    LOG_ERROR("Invalid args in get_primary_schema.");
+    return NULL;
+  }
+
+  int table_id = (cmd->alias_map && cmd->alias_map.count > 0)
+    ? cmd->alias_map.entries[0].table_id
+    : cmd->table_id;
+
+  if (table_id < 0 || table_id >= MAX_TABLES) {
+    LOG_ERROR("Invalid table_id resolved in get_primary_schema.");
+    return NULL;
+  }
+
+  if (db->tc[table_id].schema) {
+    return db->tc[table_id].schema;
+  }
+
+  if (!load_schema_for_table(db, table_id, db->tc[table_id].name)) {
+    LOG_ERROR("Failed to load schema for table_id=%d", table_id);
+    return NULL;
+  }
+
+  return db->tc[table_id].schema;
+}
+
+
 bool load_initial_schema(Database* db) {
   if (!db || !db->tc_reader) {
     LOG_ERROR("No database file is open.");
