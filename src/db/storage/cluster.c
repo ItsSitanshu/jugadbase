@@ -81,36 +81,38 @@ ClusterManager* cluster_manager_init(char* root_dir) {
 
 bool cluster_manager_save(ClusterManager* manager) {
   if (!manager) return false;
-  
+
   char config_path[512] = {0};
   snprintf(config_path, sizeof(config_path), "%s/%s", manager->path, CONFIG_FILE);
-  
-  ClusterManager temp_manager;
-  xmemcpy(&temp_manager, manager, sizeof(ClusterManager));
-  
-  for (int i = 0; i < temp_manager.cluster_count; i++) {
-    DbCluster* cluster = &temp_manager.clusters[i];
-    for (int j = 0; j < cluster->db_count; j++) {
-      cluster->databases[j] = NULL;
-    }
+
+  ClusterManager temp_manager = {0};
+  temp_manager.cluster_count = manager->cluster_count;
+  temp_manager.active_cluster = manager->active_cluster;
+  temp_manager.initialized = manager->initialized;
+  strncpy(temp_manager.path, manager->path, sizeof(temp_manager.path)-1);
+
+  for (int i = 0; i < manager->cluster_count; i++) {
+    temp_manager.clusters[i].db_count = manager->clusters[i].db_count;
+    strncpy(temp_manager.clusters[i].name, manager->clusters[i].name, sizeof(temp_manager.clusters[i].name)-1);
   }
-  
+
   FILE* config_file = fopen(config_path, "wb");
   if (!config_file) {
     LOG_ERROR("Failed to open cluster configuration file for writing");
     return false;
   }
-  
+
   if (fwrite(&temp_manager, sizeof(ClusterManager), 1, config_file) != 1) {
     LOG_ERROR("Failed to write cluster configuration");
     fclose(config_file);
     return false;
   }
-  
+
   fclose(config_file);
   LOG_INFO("Saved cluster configuration to %s", config_path);
   return true;
 }
+
 
 void cluster_manager_free(ClusterManager* manager) {
   if (!manager) return;
@@ -189,7 +191,7 @@ bool cluster_create(ClusterManager* manager, char* name) {
   __gdb();
 
   
-  process_file(db, CORE_JCL_PATH, true, true);
+  process_file(db, CORE_JCL_PATH, false, true);
 
   return true;
 }

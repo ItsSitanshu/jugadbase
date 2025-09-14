@@ -11,8 +11,6 @@ char* CONSTRAINT_FLAGS[N_CONSTRAINTS_TYPES][N_CONSTRAINTS_FLAGS] = {
 int64_t find_table(Database* db, char* name) {
   if (strcmp(name, "jb_tables") == 0) {
     return 0;
-  } else if (strcmp(name, "jb_sequences") == 0) {
-    return 1;
   } else if (strcmp(name, "jb_attribute") == 0) {
     return 2;
   }
@@ -149,7 +147,6 @@ Attribute* load_attribute(Database* db, int64_t table_id, const char* column_nam
     "WHERE table_id = %ld AND column_name = '%s';",
     table_id, column_name);
 
-  // LOG_DEBUG("l[attribute]: %s", query);
 
   Result res = process_silent(db->core, query);
   if (res.exec.code != 0 || res.exec.row_count == 0) {

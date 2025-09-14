@@ -828,6 +828,5 @@ bool parser_parse_column_definition(Parser *parser, JQLCommand *command) {
   schema->columns[schema->column_count] = column;
   schema->column_count += 1;
 
-
   return true;
 }

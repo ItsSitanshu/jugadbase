@@ -531,10 +531,12 @@ ExecutionResult collect_fk_tuples_delete(Database* db, TableSchema* schema, JQLC
   return (ExecutionResult){0, "Success"};
 }
 
-ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLCommand* cmd,
-                                         Constraint* referencing_fks, int fk_count,
-                                         RowSet* update_set, FKConstraintValues* old_fk,
-                                         FKConstraintValues* new_fk) {
+ExecutionResult collect_fk_tuples_update(
+  Database* db, TableSchema* schema, JQLCommand* cmd,
+  Constraint* referencing_fks, int fk_count,
+  RowSet* update_set, FKConstraintValues* old_fk,
+  FKConstraintValues* new_fk
+) {
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
 
@@ -544,17 +546,22 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
 
     for (uint16_t row_idx = 0; row_idx < page->num_rows; ++row_idx) {
       Row* row = &page->rows[row_idx];
-      if (row->deleted || !row) continue;
-      if (cmd->has_where && !evaluate_condition(cmd->where, &__tup(row), db, NULL, NULL)) continue;
+      if (!row || row->deleted) continue;
 
+      if (cmd->has_where && !evaluate_condition(cmd->where, &__tup(row), db, NULL, NULL)) {
+        continue;
+      }
+
+      // Add row to update set
       if (!expand_row_set(update_set)) return (ExecutionResult){1, "Out of memory"};
       update_set->rows[update_set->count++] = (RowID){page_idx, row_idx};
 
-      for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
+      // Process each FK constraint
+      for (int fk_idx = 0; fk_idx < fk_count; ++fk_idx) {
         Constraint* fk = &referencing_fks[fk_idx];
+
         ColumnValue* old_tuple = xmalloc(sizeof(ColumnValue) * fk->ref_column_count);
         ColumnValue* new_tuple = xmalloc(sizeof(ColumnValue) * fk->ref_column_count);
-
         if (!old_tuple || !new_tuple) {
           xfree(old_tuple);
           xfree(new_tuple);
@@ -567,15 +574,16 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
           continue;
         }
 
-        for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
+        // Compute new FK values based on updates
+        for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; ++col_idx) {
           int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
-          bool will_update = false;
           ColumnValue new_value = row->values[schema_col_idx];
+          bool will_update = false;
 
           for (int k = 0; k < cmd->value_counts[0]; ++k) {
             if (cmd->update_columns[k].index == schema_col_idx) {
               ColumnValue eval = evaluate_expression(cmd->values[0][k], &__tup(row), db, NULL, NULL);
-              ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, &__tup(row), db, NULL, NULL);
+              ColumnValue array_idx = evaluate_expression(cmd->update_columns[k].array_idx, &__tup(row), db, NULL, NULL);
 
               if (!infer_and_cast_value(&eval, &schema->columns[schema_col_idx])) {
                 xfree(old_tuple);
@@ -592,6 +600,8 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
               break;
             }
           }
+
+
           new_tuple[col_idx] = will_update ? new_value : row->values[schema_col_idx];
         }
 
@@ -607,8 +617,11 @@ ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLC
       }
     }
   }
+
   return (ExecutionResult){0, "Success"};
 }
+
+
 
 bool tuple_exists(FKConstraintValues* fk_constraint, ColumnValue* key_tuple, Constraint* fk, TableSchema* schema) {
   for (uint32_t i = 0; i < fk_constraint->count; i++) {

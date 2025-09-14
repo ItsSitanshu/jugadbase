@@ -555,6 +555,7 @@ void free_jql_command(JQLCommand* cmd);
 void alias_map_init(AliasMap* map);
 void alias_map_add(AliasMap* map, const char* alias, int table_id);
 int alias_map_resolve(AliasMap* map, const char* alias);
+void alias_map_free(AliasMap* map);
 
 #endif // JQL_PARSER_CORE_H
 

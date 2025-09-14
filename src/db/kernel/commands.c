@@ -158,8 +158,6 @@ ExecutionResult execute_alter_table(Database* db, JQLCommand* cmd) {
     return result;
   }
   
-  LOG_DEBUG("alter table %s with operation %d", alter_cmd->table_name, alter_cmd->operation);
-
   TableSchema* schema = get_table_schema(db, alter_cmd->table_name);
   int64_t table_id = find_table(db, alter_cmd->table_name);
 
@@ -717,7 +715,7 @@ Row* execute_row_insert(ExprNode** src, Database* db, uint8_t schema_idx,
 }
 
 ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
-  LOG_DEBUG("!!! execute_select: Starting execution");
+  ExecutionResult result = {0};
 
   if (!db || !cmd) {
     return (ExecutionResult){1, "Invalid execution context or command"};
@@ -733,16 +731,17 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     int idx = cmd->alias_map.entries[t].table_id;
     schemas[t] = db->tc[idx].schema;
     if (!schemas[t]) {
+      xfree(schemas);
       return (ExecutionResult){1, "Error: Invalid schema"};
     }
-    LOG_DEBUG("Loading table '%s' into buffer pool", schemas[t]->table_name);
     load_btree_cluster(db, schemas[t]->table_name);
   }
 
   TupleSet* tuples = generate_all_tuples(db, cmd, schemas);
   if (!tuples || tuples->count == 0) {
     LOG_DEBUG("No rows found in any table combination");
-    return (ExecutionResult){0, "Select executed successfully"};
+    result = (ExecutionResult){0, "Select executed successfully"};
+    goto cleanup;
   }
 
   bool* is_aggregate_col = xcalloc(cmd->value_counts[0], sizeof(bool));
@@ -784,11 +783,48 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
 
   Row* result_rows = xcalloc(out_count, sizeof(Row));
   char** aliases = xcalloc(cmd->value_counts[0], sizeof(char*));
+  bool multi_row = cmd->alias_map.count > 1;
+
+  for (int j = 0; j < cmd->value_counts[0]; j++) {
+    ExprNode* expr = cmd->sel_columns[j].expr;
+
+    if (cmd->sel_columns[j].alias) {
+      aliases[j] = xstrdup(cmd->sel_columns[j].alias);
+    } else if (expr) {
+      switch (expr->type) {
+        case EXPR_FUNCTION:
+          aliases[j] = xstrdup(expr->fn.name);
+          break;
+        case EXPR_ARRAY_ACCESS: {
+          int base_idx = expr->column.index;
+          int array_idx = expr->column.array_idx->literal.int_value;
+          char buffer[256];
+          snprintf(buffer, sizeof(buffer), "%s[%d]",
+                db->tc[expr->column.table].schema->columns[base_idx].name,
+                array_idx);
+          aliases[j] = xstrdup(buffer);
+          break;
+        }
+        case EXPR_COLUMN: {
+          if (expr->column.col_name) {
+            aliases[j] = xstrdup(expr->column.col_name);
+          } else {
+            aliases[j] = xstrdup("UNKNOWN_COL");
+          }
+          break;
+        }
+        default:
+          aliases[j] = xstrdup("EXPR_COL");
+      }
+    } else {
+      aliases[j] = xstrdup("VAL");
+    }
+  }
 
   for (uint32_t i = 0; i < out_count; i++) {
     Tuple* tuple = (Tuple*)matching_rows[start + i];
     Row* dst = &result_rows[i];
-    memset(dst, 0, sizeof(Row));
+
     dst->n_values = cmd->value_counts[0];
     dst->values = xcalloc(dst->n_values, sizeof(ColumnValue));
 
@@ -796,24 +832,8 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
       ExprNode* expr = cmd->sel_columns[j].expr;
       ColumnValue val = {0};
 
-      if (cmd->sel_columns[j].alias) {
-        aliases[j] = xstrdup(cmd->sel_columns[j].alias);
-      } else if (expr && expr->type == EXPR_FUNCTION) {
-        aliases[j] = xstrdup(expr->fn.name);
-      } else if (expr && expr->type == EXPR_ARRAY_ACCESS) {
-        int base_idx = expr->column.index;
-        int array_idx = expr->column.array_idx->literal.int_value;
-        char buffer[256];
-        snprintf(buffer, sizeof(buffer), "%s[%d]",
-                 tuple->rows[expr->column.table]->values[base_idx].str_value,
-                 array_idx);
-        aliases[j] = xstrdup(buffer);
-      } else if (expr && expr->type == EXPR_COLUMN) {
-        aliases[j] = xstrdup(db->tc[expr->column.table].schema->columns[expr->column.index].name);
-      }
-
       if (!expr) {
-        val = tuple->rows[0]->values[j];
+        val = tuple->rows[0] ? tuple->rows[0]->values[j] : (ColumnValue){0};
       } else if (is_aggregate_col[j]) {
         val = aggregate_results[j];
       } else {
@@ -824,14 +844,24 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     }
   }
 
-  for (uint32_t i = 0; i < tuples->count; i++) free(tuples->tuples[i].rows);
-  free(tuples->tuples);
-  free(tuples);
-  xfree(is_aggregate_col);
-  xfree(aggregate_results);
-  xfree(matching_rows);
 
-  return (ExecutionResult){
+  cleanup:
+    if (tuples || tuples->count != 0) {
+      for (uint32_t i = 0; i < tuples->count; i++) {
+        if (tuples->tuples[i].rows)
+          xfree(tuples->tuples[i].rows); // array only, not Row* elements
+      }
+      xfree(tuples->tuples); // array of tuples
+      xfree(tuples);         // TupleSet itself
+    }
+
+    xfree(is_aggregate_col);
+    xfree(aggregate_results);
+    xfree(matching_rows);
+    if (schemas) xfree(schemas);
+
+
+  result = (ExecutionResult){
     .code = 0,
     .message = "Select executed successfully",
     .rows = result_rows,
@@ -840,6 +870,8 @@ ExecutionResult execute_select(Database* db, JQLCommand* cmd) {
     .n_cols = cmd->value_counts[0],
     .owns_rows = 1
   };
+
+  return result;
 }
 
 ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
@@ -889,7 +921,7 @@ ExecutionResult execute_update(Database* db, JQLCommand* cmd) {
     }
   }
 
-  RowSet update_set = {xmalloc(sizeof(RowID) * 4096), 0, 4096};
+  RowSet update_set = {xcalloc(4096, sizeof(RowID)), 0, 4096};
   if (!update_set.rows) {
     goto cleanup;
   }

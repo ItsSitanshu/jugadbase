@@ -17,7 +17,7 @@ int64_t sequence_next_val(Database* db, char* name) {
     name
   );
 
-  Result pres = process_silent(db->core, pquery);
+  Result pres = process(db->core, pquery);
   bool psuccess = pres.exec.code == 0;
   if (!psuccess) {
     LOG_ERROR("Failed to update the sequence '%s'", name);
@@ -43,7 +43,7 @@ int64_t sequence_next_val(Database* db, char* name) {
   int table_idx = hash_fnv1a("jb_sequences", MAX_TABLES);
   int cv_idx = find_column_index(db->core->tc[table_idx].schema, "current_value");
 
-  int copy = res.exec.rows[0].values[0].int_value;
+  int copy = res.exec.rows[0].values[cv_idx].int_value;
   // free_result(&res);
 
   parser_restore_state(db->core->parser, state);

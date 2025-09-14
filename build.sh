@@ -324,7 +324,7 @@ if [ "$DEBUG_WITH_VALGRIND" -eq 1 ]; then
         "--track-origins=yes"
         "--error-exitcode=1"
         "--log-file=$VALGRIND_LOG_FILE"
-        "\"$BUILD_DIR/jugad-cli\""
+        "$BUILD_DIR/jugad-cli"
     )
 
     [ "$VERBOSE_LEVEL" -gt 0 ] && VALGRIND_CMD+=("--verbose" "$VERBOSE_LEVEL")

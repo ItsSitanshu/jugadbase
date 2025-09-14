@@ -278,7 +278,7 @@ ColumnValue resolve_expr_value(ExprNode* expr, Tuple* tuple, Database* db, int* 
   ColumnValue val = {0};
 
   bool multi_row = !(table_map == NULL && schemas == NULL && tuple->dimension == 1);
-  LOG_DEBUG("Resolving expr of type %d (multi_row=%d) tuple dim = %d", expr->type, multi_row, tuple->dimension);
+  // LOG_DEBUG("Resolving expr of type %d (multi_row=%d) tuple dim = %d", expr->type, multi_row, tuple->dimension);
   
   if (expr->type == EXPR_COLUMN) {
     Row* row = tuple->rows[0];
@@ -289,6 +289,11 @@ ColumnValue resolve_expr_value(ExprNode* expr, Tuple* tuple, Database* db, int* 
       
       schema = schemas[table_idx];
       row = tuple->rows[table_idx];
+    }
+
+    if (!row || !schema) {
+      LOG_ERROR("Invalid row or schema for table index %d", expr->column.table);
+      return val;
     }
     
     int col_index = find_column_index(schema, expr->column.col_name);

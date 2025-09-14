@@ -270,7 +270,7 @@ void process_file(Database* db, char* filename, bool show, bool internal) {
   parser_reset(db->parser);
  
   JQLCommand* cmd = parser_parse(db);
-  while (!is_struct_zeroed(cmd, sizeof(JQLCommand))) {
+  while (cmd) {
     Result res = execute_cmd(db, cmd, show);
     free_result(&res);
     cmd = parser_parse(db);
@@ -401,7 +401,6 @@ void load_table_schema(Database* db) {
 }
 
 void load_btree_cluster(Database* db, char* name) {
-  LOG_DEBUG();
   uint8_t idx = hash_fnv1a(name, MAX_TABLES);
 
   if (db->tc[idx].is_populated) {
@@ -410,6 +409,11 @@ void load_btree_cluster(Database* db, char* name) {
   }
 
   TableSchema* schema = db->tc[idx].schema;
+
+  if (!schema) {
+    LOG_FATAL("Schema not found for table: %s", name);
+    return;
+  }
 
   char rows_db_path[MAX_PATH_LENGTH];
   snprintf(rows_db_path, sizeof(rows_db_path), "%s" SEP "%s" SEP "rows.db", 
@@ -423,7 +427,7 @@ void load_btree_cluster(Database* db, char* name) {
     pop_btree_cluster(db);
   }
 
-  uint8_t found_prims = 0;
+  uint32_t found_prims = 0;
   for (uint8_t i = 0; i < schema->column_count; i++) {
     if (schema->columns[i].is_primary_key) {
       unsigned int file_hash = hash_fnv1a(schema->columns[i].name, MAX_COLUMNS);
@@ -1060,10 +1064,6 @@ void flush_lake(Database* db) {
       
       for (int j = 0; j < POOL_SIZE; j++) {
         if (db->lake[idx].pages[j] == NULL) {
-          continue;
-        }
-        
-        if (is_struct_zeroed(db->lake[idx].pages[j], sizeof(Page))) {
           continue;
         }
 

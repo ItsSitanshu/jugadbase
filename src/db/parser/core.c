@@ -114,7 +114,6 @@ ParserState parser_save_state(Parser* parser) {
 
   state.buffer_size = parser->lexer->buf_size;
   state.buffer_copy = xmalloc(state.buffer_size + 1);
-  LOG_INFO("Buffer size: %zu", state.buffer_size);
   xmemcpy(state.buffer_copy, parser->lexer->buf, state.buffer_size);
 
   state.current_token = token_clone(parser->cur);
@@ -776,10 +775,6 @@ void free_table_schema(TableSchema* schema) {
 void free_jql_command(JQLCommand* cmd) {
   if (!cmd) return;
 
-  if (cmd->schema) {
-    xfree(cmd->schema);
-  }
-
   if (cmd->schema_name) {
     xfree(cmd->schema_name);
   }
@@ -790,6 +785,10 @@ void free_jql_command(JQLCommand* cmd) {
 
   if (cmd->where) {
     free_expr_node(cmd->where);
+  }
+
+  if (&cmd->alias_map) {
+    alias_map_free(&cmd->alias_map);
   }
 
   if (cmd->values) {
@@ -804,24 +803,6 @@ void free_jql_command(JQLCommand* cmd) {
       }
     }
     xfree(cmd->values);
-  }
-
-  if (cmd->returning_columns) {
-    for (uint8_t i = 0; i < cmd->ret_col_count; i++) {
-      if (cmd->returning_columns[i]) {
-        xfree(cmd->returning_columns[i]);
-      }
-    }
-    xfree(cmd->returning_columns);
-  }
-
-  if (cmd->columns) {
-    for (uint8_t i = 0; i < cmd->col_count; i++) {
-      if (cmd->columns[i]) {
-        xfree(cmd->columns[i]);
-      }
-    }
-    xfree(cmd->columns);
   }
 
   if (cmd->sel_columns) {
@@ -867,7 +848,7 @@ void alias_map_add(AliasMap* map, const char* alias, int table_id) {
     map->capacity = map->capacity ? map->capacity * 2 : 4;
     map->entries = realloc(map->entries, map->capacity * sizeof(AliasEntry));
   }
-  map->entries[map->count].alias = strdup(alias);
+  map->entries[map->count].alias = xstrdup(alias);
   map->entries[map->count].table_id = table_id;
   map->count++;
 }
@@ -879,4 +860,17 @@ int alias_map_resolve(AliasMap* map, const char* alias) {
     }
   }
   return -1; // not found
+}
+
+void alias_map_free(AliasMap* map) {
+  if (!map) return;
+
+  for (size_t i = 0; i < map->count; i++) {
+    free(map->entries[i].alias);
+  }
+
+  free(map->entries);
+  map->entries = NULL;
+  map->count = 0;
+  map->capacity = 0;
 }

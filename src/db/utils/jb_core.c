@@ -3,7 +3,7 @@
 #include "kernel/kernel.h"
 
 TableSchema* jb_tables_schema() {
-  TableSchema* schema = xmalloc(sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   memset(schema, 0, sizeof(TableSchema));
 
   xstrncpy(schema->table_name, "jb_tables", MAX_TABLE_NAME - 1);
@@ -79,7 +79,7 @@ TableSchema* jb_sequences_schema() {
 }
 
 TableSchema* jb_attribute_schema() {
-  TableSchema* schema = xmalloc(sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   xstrncpy(schema->table_name, "jb_attribute", MAX_TABLE_NAME - 1);
   schema->table_name[MAX_TABLE_NAME - 1] = '\0';
 
@@ -121,7 +121,7 @@ TableSchema* jb_attribute_schema() {
 }
 
 TableSchema* jb_attrdef_schema() {
-  TableSchema* schema = xmalloc(sizeof(TableSchema));
+  TableSchema* schema = xcalloc(1, sizeof(TableSchema));
   xstrncpy(schema->table_name, "jb_attrdef", MAX_TABLE_NAME - 1);
   schema->table_name[MAX_TABLE_NAME - 1] = '\0';
 

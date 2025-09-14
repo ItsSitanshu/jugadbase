@@ -58,6 +58,7 @@ JQLCommand* parser_parse_create_table(Parser* parser, Database* db) {
   JQLCommand* command = jql_command_init(CMD_CREATE);
   
   TableSchema* schema = xcalloc(1, sizeof(TableSchema));
+  command->schema = schema;
   parser_consume(parser);
 
   if (parser->cur->type == TOK_CI_A) {
@@ -130,6 +131,7 @@ JQLCommand* parser_parse_insert(Parser *parser, Database* db) {
     return command;
   }
   command->schema = schema;
+  command->table_id = hash_fnv1a(parser->cur->value, MAX_TABLES);
 
   parser_consume(parser);
   command->columns = xcalloc(MAX_COLUMNS, sizeof(char *));
@@ -254,18 +256,18 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
       }
     }
 
-    char* table_name = parser->cur->value;
+    char* table_name = xstrdup(parser->cur->value);
     int table_id = hash_fnv1a(table_name, MAX_TABLES);
     parser_consume(parser);
 
-    char* alias = NULL;
     if (parser->cur->type == TOK_ID) {
-      alias = __strdup(parser->cur->value);
-      alias_map_add(&command->alias_map, alias, table_id);
+      alias_map_add(&command->alias_map, parser->cur->value, table_id);
       parser_consume(parser);
     } else {
       alias_map_add(&command->alias_map, table_name, table_id);
     }
+
+    xfree(table_name);
 
     if (is_primary) {
       if (primary_table_id != -1) {
@@ -282,10 +284,8 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
     break;
   }
 
-  LOG_INFO("ALIAS MAP SIZE: %zu", command->alias_map.count);
   for (int i = 0; i < command->alias_map.count; i++) {
     uint32_t t_id = command->alias_map.entries[i].table_id;
-    LOG_DEBUG("table id at alias idx [%d] = %d", i, t_id);
   }
 
   parser_restore_state(parser, state);
@@ -295,6 +295,7 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
 
   if (primary_table_id < 0 && command->alias_map.count == 1) {
     primary_table_id = command->alias_map.entries[0].table_id;
+    command->table_id = primary_table_id;
   }
 
 
@@ -306,9 +307,10 @@ JQLCommand* parser_parse_select(Parser* parser, Database* db) {
 
     TableSchema* schema = db->tc[primary_table_id].schema;
     for (int i = 0; i < schema->column_count; i++) {
-      ExprNode* expr = xmalloc(sizeof(ExprNode));
+      ExprNode* expr = xcalloc(1, sizeof(ExprNode));
       expr->type = EXPR_COLUMN;
       expr->column.index = i;
+      expr->column.col_name = xstrdup(schema->columns[i].name);
       expr->column.table = primary_table_id;
       command->sel_columns[i].expr = expr;
       LOG_DEBUG("col: %d tbl: %d", expr->column.index, expr->column.table);
@@ -374,11 +376,10 @@ JQLCommand* parser_parse_update(Parser* parser, Database* db) {
 
   parser_expect_nc(parser, TOK_ID, "SYE_E_MISSING_TABLE_NAME");
   
-  uint32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
+  int32_t idx = hash_fnv1a(parser->cur->value, MAX_TABLES);
   TableSchema* schema = db->tc[idx].schema;
   command->schema = schema;
-
-  LOG_ERROR("command->schema->table_name: %s", command->schema->table_name);
+  command->table_id = idx;
 
   if (is_struct_zeroed(command->schema, sizeof(TableSchema))) return command;
   
