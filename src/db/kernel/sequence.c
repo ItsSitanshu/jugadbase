@@ -40,6 +40,20 @@ int64_t sequence_next_val(Database* db, char* name) {
     return -1;
   }
 
+  snprintf(query, sizeof(query),
+    "SELECT * FROM jb_sequences "
+    "WHERE name = '%s'; ",
+    name
+  );
+
+  Result res2 = process(db->core, query);
+  bool success2 = res2.exec.code == 0;
+  if (!success2) {
+    LOG_ERROR("Failed to find a valid sequence '%s'", name);
+    return -1;
+  }
+
+
   int table_idx = hash_fnv1a("jb_sequences", MAX_TABLES);
   int cv_idx = find_column_index(db->core->tc[table_idx].schema, "current_value");
 

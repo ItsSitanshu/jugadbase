@@ -53,18 +53,18 @@ void log_transaction(const char* filename, const char* fmt, ...) {
   gettimeofday(&tv, NULL);
   tm_info = *localtime(&tv.tv_sec);
 
-  int hour = tm_info.tm_hour;
-  if (hour < 12) {
-    snprintf(log_file_path, sizeof(log_file_path),
-             "%s%02d-%02d-%02d-0h.log",
-             filename, tm_info.tm_year + 1900,
-             tm_info.tm_mon + 1, tm_info.tm_mday);
-  } else {
-    snprintf(log_file_path, sizeof(log_file_path),
-             "%s%02d-%02d-%02d-12h.log",
-             filename, tm_info.tm_year + 1900,
-             tm_info.tm_mon + 1, tm_info.tm_mday);
-  }
+  // int hour = tm_info.tm_hour;
+  // if (hour < 12) {
+  //   snprintf(log_file_path, sizeof(log_file_path),
+  //            "%s%02d-%02d-%02d-0h.log",
+  //            filename, tm_info.tm_year + 1900,
+  //            tm_info.tm_mon + 1, tm_info.tm_mday);
+  // } else {
+  //   snprintf(log_file_path, sizeof(log_file_path),
+  //            "%s%02d-%02d-%02d-12h.log",
+  //            filename, tm_info.tm_year + 1900,
+  //            tm_info.tm_mon + 1, tm_info.tm_mday);
+  // }
 
   FILE* log_file = fopen(log_file_path, "a");
   if (!log_file) {

@@ -101,6 +101,7 @@ ColumnValue evaluate_binary_op_expression(ExprNode* expr, Tuple* tuple, Database
   ColumnValue right = resolve_expr_value(expr->binary.right, tuple, db, table_map, schemas, &defn);
   if (left.is_null || right.is_null) { result.is_null = true; return result; }
 
+
   switch (defn.type) {
     case TOK_T_INT: case TOK_T_UINT: case TOK_T_SERIAL: case TOK_T_FLOAT: case TOK_T_DOUBLE:
       return evaluate_numeric_binary_op(left, right, expr->binary.op);
@@ -112,6 +113,8 @@ ColumnValue evaluate_binary_op_expression(ExprNode* expr, Tuple* tuple, Database
 ColumnValue evaluate_numeric_binary_op(ColumnValue left, ColumnValue right, int op) {
   ColumnValue result = {0};
   if (!infer_and_cast_va(2, (__c){&left, TOK_T_DOUBLE}, (__c){&right, TOK_T_DOUBLE})) return result;
+
+
   result.type = TOK_T_DOUBLE;
   switch (op) {
     case TOK_ADD: result.double_value = left.double_value + right.double_value; break;
@@ -123,6 +126,14 @@ ColumnValue evaluate_numeric_binary_op(ColumnValue left, ColumnValue right, int 
       break;
     default: result.is_null = true; break;
   }
+
+  LOG_DEBUG("LEFT: %s -(%d)- RIGHT %s = %s",
+    str_column_value(&left),
+    op,
+    str_column_value(&right),
+    str_column_value(&result)
+  );
+
   return result;
 }
 

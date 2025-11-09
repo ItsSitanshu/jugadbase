@@ -406,7 +406,7 @@ JQLCommand* parser_parse_update(Parser* parser, Database* db) {
     
     parser_expect(parser, TOK_EQ, "SYE_E_EXPECTED_EQUAL_IN_SET");
     
-  ExprNode* value = parser_parse_expression(parser, command);
+    ExprNode* value = parser_parse_expression(parser, command);
     if (!value) {
       REPORT_ERROR(parser->lexer, "SYE_E_INVALID_VALUE_IN_SET");
       return command;

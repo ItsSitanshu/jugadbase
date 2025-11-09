@@ -531,12 +531,10 @@ ExecutionResult collect_fk_tuples_delete(Database* db, TableSchema* schema, JQLC
   return (ExecutionResult){0, "Success"};
 }
 
-ExecutionResult collect_fk_tuples_update(
-  Database* db, TableSchema* schema, JQLCommand* cmd,
-  Constraint* referencing_fks, int fk_count,
-  RowSet* update_set, FKConstraintValues* old_fk,
-  FKConstraintValues* new_fk
-) {
+ExecutionResult collect_fk_tuples_update(Database* db, TableSchema* schema, JQLCommand* cmd,
+                                        Constraint* referencing_fks, int fk_count,
+                                        RowSet* update_set, FKConstraintValues* old_fk,
+                                        FKConstraintValues* new_fk) {
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
 
@@ -547,52 +545,55 @@ ExecutionResult collect_fk_tuples_update(
     for (uint16_t row_idx = 0; row_idx < page->num_rows; ++row_idx) {
       Row* row = &page->rows[row_idx];
       if (!row || row->deleted) continue;
+      if (cmd->has_where && !evaluate_condition(cmd->where, row, schema, db, schema_idx)) continue;
 
-      if (cmd->has_where && !evaluate_condition(cmd->where, &__tup(row), db, NULL, NULL)) {
-        continue;
-      }
-
-      // Add row to update set
       if (!expand_row_set(update_set)) return (ExecutionResult){1, "Out of memory"};
       update_set->rows[update_set->count++] = (RowID){page_idx, row_idx};
 
-      // Process each FK constraint
-      for (int fk_idx = 0; fk_idx < fk_count; ++fk_idx) {
+      for (int fk_idx = 0; fk_idx < fk_count; fk_idx++) {
         Constraint* fk = &referencing_fks[fk_idx];
+        ColumnValue* old_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
+        ColumnValue* new_tuple = malloc(sizeof(ColumnValue) * fk->ref_column_count);
 
-        ColumnValue* old_tuple = xmalloc(sizeof(ColumnValue) * fk->ref_column_count);
-        ColumnValue* new_tuple = xmalloc(sizeof(ColumnValue) * fk->ref_column_count);
         if (!old_tuple || !new_tuple) {
-          xfree(old_tuple);
-          xfree(new_tuple);
+          free(old_tuple);
+          free(new_tuple);
           return (ExecutionResult){1, "Out of memory"};
         }
 
         if (!extract_fk_tuple(row, schema, fk, old_tuple)) {
-          xfree(old_tuple);
-          xfree(new_tuple);
+          free(old_tuple);
+          free(new_tuple);
           continue;
         }
 
-        // Compute new FK values based on updates
-        for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; ++col_idx) {
+        for (uint8_t col_idx = 0; col_idx < fk->ref_column_count; col_idx++) {
           int schema_col_idx = find_column_index(schema, fk->ref_columns[col_idx]);
-          ColumnValue new_value = row->values[schema_col_idx];
           bool will_update = false;
+          ColumnValue new_value;
+          new_value = row->values[schema_col_idx];
 
           for (int k = 0; k < cmd->value_counts[0]; ++k) {
             if (cmd->update_columns[k].index == schema_col_idx) {
-              ColumnValue eval = evaluate_expression(cmd->values[0][k], &__tup(row), db, NULL, NULL);
-              ColumnValue array_idx = evaluate_expression(cmd->update_columns[k].array_idx, &__tup(row), db, NULL, NULL);
+              ColumnValue eval = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
+
+              ColumnValue array_idx = evaluate_expression(cmd->update_columns[k].array_idx, row, schema, db, schema_idx);
 
               if (!infer_and_cast_value(&eval, &schema->columns[schema_col_idx])) {
-                xfree(old_tuple);
-                xfree(new_tuple);
+                free(old_tuple);
+                free(new_tuple);
                 return (ExecutionResult){1, "Invalid type casting in FK update"};
               }
 
               if (!is_struct_zeroed(&array_idx, sizeof(ColumnValue))) {
-                new_value.array.array_value[array_idx.int_value] = eval;
+                if (!new_value.is_array) {
+                  free(old_tuple);
+                  free(new_tuple);
+                  return (ExecutionResult){1, "Array index on non-array column"};
+                }
+                int ai = array_idx.int_value;
+                ensure_array_capacity(&new_value.array, ai + 1);
+                new_value.array.array_value[ai] = eval;
               } else {
                 new_value = eval;
               }
@@ -601,26 +602,37 @@ ExecutionResult collect_fk_tuples_update(
             }
           }
 
+          if (will_update) {
+            new_tuple[col_idx] = new_value;
+          } else {
+            new_tuple[col_idx] = row->values[schema_col_idx];
+          }
 
-          new_tuple[col_idx] = will_update ? new_value : row->values[schema_col_idx];
+          free_column_value(&new_value);
         }
 
         if (!store_fk_tuple(&old_fk[fk_idx], old_tuple, fk, schema) ||
             !store_fk_tuple(&new_fk[fk_idx], new_tuple, fk, schema)) {
-          xfree(old_tuple);
-          xfree(new_tuple);
+          for (uint8_t i = 0; i < fk->ref_column_count; ++i) {
+            free_column_value(&old_tuple[i]);
+            free_column_value(&new_tuple[i]);
+          }
+          free(old_tuple);
+          free(new_tuple);
           return (ExecutionResult){1, "Out of memory"};
         }
 
-        xfree(old_tuple);
-        xfree(new_tuple);
+        for (uint8_t i = 0; i < fk->ref_column_count; ++i) {
+          free_column_value(&old_tuple[i]);
+          free_column_value(&new_tuple[i]);
+        }
+        free(old_tuple);
+        free(new_tuple);
       }
     }
   }
-
   return (ExecutionResult){0, "Success"};
 }
-
 
 
 bool tuple_exists(FKConstraintValues* fk_constraint, ColumnValue* key_tuple, Constraint* fk, TableSchema* schema) {
@@ -893,7 +905,6 @@ int64_t find_constraint_by_name(Database* db, int64_t table_id, const char* name
   return -1;
 }
 
-
 ExecutionResult perform_deletes(Database* db, TableSchema* schema, RowSet* delete_set) {
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
@@ -928,74 +939,86 @@ ExecutionResult perform_deletes(Database* db, TableSchema* schema, RowSet* delet
   return (ExecutionResult){0, "Delete executed successfully", .row_count = rows_deleted};
 }
 
+static void debug_dump_colval(const ColumnValue *v) {
+  const unsigned char *p = (const unsigned char*)v;
+  size_t n = sizeof(ColumnValue);
+  size_t to = n < 16 ? n : 16;
+  fprintf(stderr, "> ColumnValue %p surf = %s:", (const void*)v, str_column_value(v));
+  for (size_t i = 0; i < to; ++i) fprintf(stderr, " %02x", p[i]);
+  fprintf(stderr, "\n");
+}
+
 ExecutionResult perform_updates(Database* db, TableSchema* schema, JQLCommand* cmd, RowSet* update_set) {
   uint8_t schema_idx = hash_fnv1a(schema->table_name, MAX_TABLES);
   BufferPool* pool = &db->lake[schema_idx];
-  size_t null_bitmap_size = (schema->column_count + 7) / 8;
   uint32_t rows_updated = 0;
 
   for (uint32_t i = 0; i < update_set->count; i++) {
     uint16_t page_idx = update_set->rows[i].page_id;
-    uint16_t row_idx = update_set->rows[i].row_id;
+    uint16_t row_idx  = update_set->rows[i].row_id;
     Page* page = pool->pages[page_idx];
     Row* row = &page->rows[row_idx];
 
-    int max_updates = cmd->value_counts[0];
-    UpdateData upd = {
-        .cols = xmalloc(sizeof(uint16_t) * max_updates),
-        .old_vals = xmalloc(sizeof(ColumnValue) * max_updates),
-        .new_vals = xmalloc(sizeof(ColumnValue) * max_updates),
-        .count = 0};
+    Row before;
+    copy_row(&before, row, schema); // deep copy whole row
 
-    if (!upd.cols || !upd.old_vals || !upd.new_vals) {
-      xfree(upd.cols);
-      xfree(upd.old_vals);
-      xfree(upd.new_vals);
-      return (ExecutionResult){1, "Out of memory"};
-    }
+    for (int k = 0; k < cmd->value_counts[0]; ++k) {
+      int col_idx = cmd->update_columns[k].index;
+      ColumnValue new_val = evaluate_expression(cmd->values[0][k], row, schema, db, schema_idx);
 
-    for (int k = 0; k < max_updates; ++k) {
-      int col_index = cmd->update_columns[k].index;
-      ColumnValue eval = evaluate_expression(cmd->values[0][k], &__tup(row), db, NULL, NULL);
-      ColumnValue array_idx = evaluate_expression(cmd->update_columns->array_idx, &__tup(row), db, NULL, NULL);
+      ColumnValue array_idx = evaluate_expression(cmd->update_columns[k].array_idx, row, schema, db, schema_idx);
 
-      if (!infer_and_cast_value(&eval, &schema->columns[col_index])) {
-        xfree(upd.cols);
-        xfree(upd.old_vals);
-        xfree(upd.new_vals);
-        return (ExecutionResult){-1, "Invalid conversion whilst trying to update row"};
+      if (!infer_and_cast_value(&new_val, &schema->columns[col_idx])) {
+        free_row_contents(&before, schema);
+        return (ExecutionResult){1, "Invalid type casting in UPDATE"};
       }
-
-      upd.cols[upd.count] = col_index;
-      upd.old_vals[upd.count] = row->values[col_index];
 
       if (!is_struct_zeroed(&array_idx, sizeof(ColumnValue))) {
-        upd.new_vals[upd.count] = upd.old_vals[upd.count];
-        upd.new_vals[upd.count].array.array_value[array_idx.int_value] = eval;
+        if (!row->values[col_idx].is_array) {
+          free_column_value(&new_val);
+          free_row_contents(&before, schema);
+          return (ExecutionResult){1, "Array index on non-array column"};
+        }
+        int ai = array_idx.int_value;
+        ensure_array_capacity(&row->values[col_idx].array, ai + 1);
+        free_column_value(&row->values[col_idx].array.array_value[ai]);
+        copy_column_value(&row->values[col_idx].array.array_value[ai], &new_val);
       } else {
-        upd.new_vals[upd.count] = eval;
+        if (row->values[col_idx].is_toast) {
+          toast_delete(db, row->values[col_idx].toast_object);
+        }
+        free_column_value(&row->values[col_idx]);
+        copy_column_value(&row->values[col_idx], &new_val);
       }
-      upd.count++;
+
+      free_column_value(&new_val);
     }
 
-    if (upd.count > 0) {
-      write_update_wal(db->wal, schema_idx, page_idx, row_idx, upd.cols, upd.old_vals, upd.new_vals, upd.count, schema);
-      for (int u = 0; u < upd.count; ++u) {
-        row->values[upd.cols[u]] = upd.new_vals[u];
+    for (uint8_t c = 0; c < schema->column_count; ++c) {
+      if (!schema->columns[c].is_primary_key) continue;
+      void* old_key = get_column_value_as_pointer(&before.values[c]);
+      void* new_key = get_column_value_as_pointer(&row->values[c]);
+      if (!column_value_equal(&before.values[c], &row->values[c])) {
+        uint8_t btree_idx = hash_fnv1a(schema->columns[c].name, MAX_COLUMNS);
+        if (!btree_delete(db->tc[schema_idx].btree[btree_idx], old_key)) {
+          LOG_WARN("Warning: failed to delete PK from B-tree");
+        }
+        if (!btree_insert(db->tc[schema_idx].btree[btree_idx], new_key, (RowID){page_idx, row_idx})) {
+          free_row_contents(row, schema);
+          copy_row(row, &before, schema);
+          free_row_contents(&before, schema);
+          return (ExecutionResult){1, "Failed to update PK in index"};
+        }
       }
-      if (cmd->bitmap) {
-        row->null_bitmap = (uint8_t*)xmalloc(null_bitmap_size);
-        xmemcpy(row->null_bitmap, cmd->bitmap, null_bitmap_size);
-      } else {
-        row->null_bitmap = (uint8_t*)xcalloc(null_bitmap_size, 1);
-      }
-      rows_updated++;
-      page->is_dirty = true;
     }
 
-    xfree(upd.cols);
-    xfree(upd.old_vals);
-    xfree(upd.new_vals);
+    // write_update_wal(db->wal, schema_idx, page_idx, row_idx, &before, row, schema);
+
+    serialize_update(pool, (RowID){page_idx, row_idx + 1});
+    page->is_dirty = true;
+    rows_updated++;
+
+    free_row_contents(&before, schema);
   }
 
   return (ExecutionResult){0, "Update executed successfully", .row_count = rows_updated};

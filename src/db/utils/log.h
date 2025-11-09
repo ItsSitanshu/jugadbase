@@ -57,8 +57,8 @@ const char* get_token_type(int type);
     if (get_verbosity() >= level_threshold) { \
       char time_str[30]; \
       get_current_time_with_ms(time_str, sizeof(time_str)); \
-      fprintf(stderr, "<%s>%s[%s] " fmt COLOR_RESET "\n", \
-        time_str, color, #level, ##__VA_ARGS__); \
+      fprintf(stderr, "%s[%s] " fmt COLOR_RESET "\n", \
+        color, #level, ##__VA_ARGS__); \
     } \
   } while (0)
 
