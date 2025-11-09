@@ -243,6 +243,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   strcpy(command.schema->table_name, parser->cur->value);
   
   command.sel_columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
+  int column_count = 0;
 
   while (true) {
     ExprNode* expr = parser_parse_expression(parser, schema);
@@ -275,7 +276,7 @@ JQLCommand parser_parse_select(Parser* parser, Database* db) {
   parser_restore_state(parser, state);
 
   command.sel_columns = calloc(MAX_COLUMNS, sizeof(SelectColumn));
-  int column_count = 0;
+  column_count = 0;
   
   if (parser->cur->type == TOK_MUL) {
     for (int i = 0; i < schema->column_count; i++) {
